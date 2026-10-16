@@ -8,7 +8,6 @@ import { useQuery } from "@apollo/client/react";
 import { gql } from "../src/__generated__";
 
 
-
 const LINKS = [
   {
     title: "Docs",
@@ -43,7 +42,6 @@ const USERS = gql(/* GraphQL */`
   )
 
   
-
 export default function Page() {
   const { loading, error, data:users } =useQuery(USERS);
 
