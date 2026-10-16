@@ -23,5 +23,8 @@
     "overrides": {
       "graphql": "16.14.2"
     }
+  },
+    "scripts": {
+      "api": "pnpm tsx src/server.ts"
   }
 }
