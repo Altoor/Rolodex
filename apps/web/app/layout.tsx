@@ -2,6 +2,7 @@ import "@repo/ui/styles.css";
 import "./globals.css";
 import type { Metadata } from "next";
 import { GeistSans } from "geist/font/sans";
+import App from "./App";
 
 export const metadata: Metadata = {
   title: "Create Turborepo",
@@ -15,7 +16,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={GeistSans.className}>{children}</body>
+      <App>
+        <body className={GeistSans.className}>{children}</body>
+      </App>
     </html>
   );
 }

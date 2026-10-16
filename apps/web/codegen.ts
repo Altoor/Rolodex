@@ -1,23 +1,19 @@
-import type { CodegenConfig } from '@graphql-codegen/cli'
+import { CodegenConfig } from '@graphql-codegen/cli';
 
 const config: CodegenConfig = {
   schema: 'http://localhost:4000/graphql',
-  documents: ['src/**/*.{ts,tsx}'],
-  ignoreNoDocuments: true,
+  // this assumes that all your source files are in a top-level `src/` directory - you might need to adjust this to your file structure
+  documents: ['src/**/*.{ts,tsx}','app/*.{ts,tsx}'],
   generates: {
-    './src/graphql/': {
+    './src/__generated__/': {
       preset: 'client',
-      config: {
-        documentMode: 'string'
-      }
-    },
-    './schema.graphql': {
-      plugins: ['schema-ast'],
-      config: {
-        includeDirectives: true
+      plugins: [],
+      presetConfig: {
+        gqlTagName: 'gql',
       }
     }
-  }
-}
+  },
+  ignoreNoDocuments: false,
+};
 
-export default config
+export default config;

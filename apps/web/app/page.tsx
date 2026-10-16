@@ -1,8 +1,13 @@
+'use client'
+
 import Image from "next/image";
 import { Card } from "@repo/ui/card";
 import { Gradient } from "@repo/ui/gradient";
 import { TurborepoLogo } from "@repo/ui/turborepo-logo";
-import { graphql } from "../src/graphql";
+import { useQuery } from "@apollo/client/react";
+import { gql } from "../src/__generated__";
+
+
 
 const LINKS = [
   {
@@ -28,16 +33,24 @@ const LINKS = [
   },
 ];
 
-const users = graphql(`
+const USERS = gql(/* GraphQL */`
   query GetUsers{
     users(limit: 10) {
       id
       name
     }
-  }`)
+  }`
+  )
+
+  
 
 export default function Page() {
+  const { loading, error, data:users } =useQuery(USERS);
+
+  console.log(users?.users)
+
   return (
+
     <main className="flex flex-col items-center justify-between min-h-screen p-24">
       <div className="z-10 items-center justify-between w-full max-w-5xl font-mono text-sm lg:flex">
         <p className="fixed top-0 left-0 flex justify-center w-full px-4 pt-8 pb-6 border backdrop-blur-2xl border-neutral-800 from-inherit lg:static lg:w-auto lg:rounded-xl lg:p-4">
@@ -64,6 +77,7 @@ export default function Page() {
         </div>
       </div>
 
+
       <div className="relative flex place-items-center ">
         <div className="font-sans w-auto pb-16 pt-[48px] md:pb-24 lg:pb-32 md:pt-16 lg:pt-20 flex justify-between gap-8 items-center flex-col relative z-0">
           <div className="z-50 flex items-center justify-center w-full">
@@ -74,6 +88,8 @@ export default function Page() {
                 src="circles.svg"
                 width={614}
               />
+                    
+
             </div>
             <div className="absolute z-50 flex items-center justify-center w-64 h-64">
               <Gradient
@@ -112,6 +128,8 @@ export default function Page() {
           </div>
         </div>
       </div>
+
+      {!loading && users && users.users.map((user) => {return(<div><p>{user.name}</p></div>)} )}
 
       <div className="grid mb-32 text-center lg:max-w-5xl lg:w-full lg:mb-0 lg:grid-cols-4 lg:text-left">
         {LINKS.map(({ title, href, description }) => (
