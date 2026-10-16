@@ -5,20 +5,27 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 3001",
+    "codegen": "graphql-codegen --config codegen.ts --watch",
     "build": "next build",
     "start": "next start",
     "lint": "eslint --max-warnings 0",
     "check-types": "next typegen && tsc --noEmit"
   },
   "dependencies": {
+    "@graphql-typed-document-node/core": "^3.2.0",
     "@repo/ui": "workspace:*",
     "geist": "1.7.2",
+    "graphql": "^16.14.2",
     "next": "16.3.8",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@0no-co/graphqlsp": "^1.17.5",
+    "@graphql-codegen/cli": "^7.4.6",
+    "@graphql-codegen/schema-ast": "^6.1.1",
     "@next/eslint-plugin-next": "16.3.6",
+    "@parcel/watcher": "^2.6.0",
     "@repo/eslint-config": "workspace:*",
     "@repo/tailwind-config": "workspace:*",
     "@repo/typescript-config": "workspace:*",
@@ -27,6 +34,9 @@
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "eslint": "10.11.0",
+    "graphql-codegen-typescript-client": "0.18.2",
+    "graphql-codegen-typescript-common": "0.18.2",
+    "graphql-codegen-typescript-server": "0.18.2",
     "postcss": "8.5.28",
     "tailwindcss": "4.3.3",
     "typescript": "7.0.2"

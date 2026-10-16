@@ -26,6 +26,9 @@ yarn-error.log*
 # turbo
 .turbo
 
+# vsCode
+.vscode
+
 # ui
 dist/
 
