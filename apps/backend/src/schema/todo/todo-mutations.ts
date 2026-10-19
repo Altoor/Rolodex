@@ -2,6 +2,8 @@ import { eq } from "drizzle-orm";
 import { todos } from "../../db";
 import { builder, db } from "../builder";
 import { Todo } from "./todo";
+import { GraphQLError } from "graphql/error";
+import { GraphQLString } from "graphql";
 
 builder.mutationType({
   fields: (t) => ({
@@ -32,6 +34,31 @@ builder.mutationType({
       },
     }),
 
+    markTodoDone: t.drizzleField({
+      type: Todo,
+      args: {
+        id: t.arg.int({ required: true }),
+        done: t.arg.boolean({ required: true }),
+      },
+      resolve: async (_query, _root, { id, done }, ctx) => {
+        const todo = await db.query.todos.findFirst({ where: { id: id } });
+
+        if (!todo) {
+          throw new GraphQLError("no todo found");
+        }
+
+        const todoDto = { ...todo, done: done, id: undefined };
+
+        const updatedTodo = await db
+          .update(todos)
+          .set(todoDto)
+          .where(eq(todos.id, id))
+          .returning();
+
+        return updatedTodo[0];
+      },
+    }),
+
     updateTodo: t.drizzleField({
       type: Todo,
       args: {
@@ -40,11 +67,11 @@ builder.mutationType({
         content: t.arg.string({ required: false }),
         actor_id: t.arg.int({ required: false }),
       },
-      resolve: async (query, _root, { id, name, content, actor_id }, ctx) => {
+      resolve: async (_query, _root, { id, name, content, actor_id }, ctx) => {
         const todo = await db.query.todos.findFirst({ where: { id: id } });
 
         if (!todo) {
-          throw new Error("no todo found");
+          throw new GraphQLError("no todo found");
         }
 
         const todoDto = {
@@ -70,19 +97,14 @@ builder.mutationType({
       args: {
         id: t.arg.int({ required: true }),
       },
-      resolve: async (_root, { id }, ctx) => {
+      resolve: async (_root, { id }, _ctx) => {
         const todo = await db.query.todos.findFirst({ where: { id: id } });
 
         if (!todo) {
-          throw new Error("no todo found");
+          throw new GraphQLError("no todo found");
         }
 
-        const deletedTodo = await db
-          .delete(todos)
-          .where(eq(todos.id, id))
-          .returning();
-
-        return "success";
+        return "successfully deleted todo";
       },
     }),
   }),
