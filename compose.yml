@@ -9,5 +9,23 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports: ["11434:11434"]
+    volumes:
+      - model_files:/var/lib/models # Mount the directory with the trained mode
+    pull_policy: always
+    tty: true
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all # alternatively, use `count: all` for all GPUs
+              capabilities: [gpu]
+
 volumes:
   postgres_data:
+  model_files:

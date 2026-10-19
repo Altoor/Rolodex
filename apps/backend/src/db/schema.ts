@@ -1,26 +1,16 @@
-import { integer, text, pgTable } from 'drizzle-orm/pg-core';
-import { relations } from "drizzle-orm/relations";
+import { boolean } from "drizzle-orm/cockroach-core";
+import { integer, text, pgTable } from "drizzle-orm/pg-core";
 
-export const users = pgTable('users', {
+export const users = pgTable("users", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-  name: text('name').notNull(),
+  name: text("name").notNull(),
 });
 
-
-export const posts = pgTable('posts', {
+export const todos = pgTable("todos", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-  content: text('content').notNull(),
-  authorId: integer('author_id').notNull(),
+  name: text("name").notNull(),
+  content: text("content").notNull(),
+  done: boolean("done").default(false).notNull(),
+  authorId: integer("author_id").notNull(),
+  actorId: integer("actor_id").notNull(),
 });
-
-
-export const usersRelation = relations(users, ({ one, many }) => ({
-  posts: many(posts),
-}));
-
-export const postsRelation = relations(posts, ({ one, many }) => ({
-  author: one(users, {
-    fields: [posts.authorId],
-    references: [users.id],
-  }),
-}));
