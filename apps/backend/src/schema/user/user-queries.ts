@@ -1,8 +1,9 @@
-import { eq } from "drizzle-orm";
-import { users } from "../../db";
+import bcrypt from "bcrypt";
 import { builder, db } from "../builder";
 import { User } from "./user";
 import jwt from "jsonwebtoken";
+import { getUserByEmail } from "./user-service";
+import { GraphQLError } from "graphql";
 
 builder.queryType({
   fields: (t) => ({
@@ -18,17 +19,26 @@ builder.queryType({
     }),
     login: t.field({
       type: "String",
-      description: "ony user name right now",
+      description: "login with email and password",
       args: {
-        name: t.arg({ type: "String", required: true }),
+        email: t.arg({ type: "String", required: true }),
+        password: t.arg({ type: "String", required: true }),
       },
-      resolve: async (_root, { name }) => {
-        const user = await db
-          .select({ id: users.id, name: users.name })
-          .from(users)
-          .where(eq(users.name, name));
-        if (!user) return "user not found";
-        jwt.sign({ aud: user[0]?.id, user: user[0] }, process.env.TOKEN_SECRET);
+      resolve: async (_root, { email, password }) => {
+        const user = await getUserByEmail(email);
+
+        if (bcrypt.compareSync(password, user.hashedPassword!)) {
+          return jwt.sign(
+            { aud: user.id, user: user },
+            process.env.TOKEN_SECRET,
+          );
+        } else {
+          throw new GraphQLError("Incorrect password", {
+            extensions: {
+              code: "BAD_USER_INPUT",
+            },
+          });
+        }
       },
     }),
   }),

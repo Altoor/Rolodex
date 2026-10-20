@@ -12,15 +12,10 @@ builder.mutationType({
       args: {
         name: t.arg.string({ required: true }),
         content: t.arg.string({ required: false }),
-        author_id: t.arg.int({ required: true }),
         actor_id: t.arg.int({ required: false }),
       },
-      resolve: async (
-        _query,
-        _root,
-        { name, content, author_id, actor_id },
-        _ctx,
-      ) => {
+      resolve: async (_query, _root, { name, content, actor_id }, ctx) => {
+        const author_id = (ctx as any).user.id;
         const todo = {
           name,
           content: content ?? "",

@@ -6,6 +6,7 @@ import jwt from "jsonwebtoken";
 import { db } from "./src/schema/builder.ts";
 import { users } from "./src/db/schema.ts";
 import { eq } from "drizzle-orm";
+import { getUser } from "./src/schema/user/user-service.ts";
 
 const yoga = createYoga({
   schema,
@@ -24,13 +25,17 @@ async function extract_user(auth_header: string | null) {
   if (!auth_header) return {};
 
   const token = auth_header.split(" ")[1];
+
+  if (!token) return {};
+
+  console.log(jwt.verify(token, process.env.TOKEN_SECRET));
+
   try {
     const theTokenVerified = jwt.verify(token, process.env.TOKEN_SECRET);
-    if (typeof theTokenVerified === "string") return {};
+    if (typeof theTokenVerified === "string" || !theTokenVerified.aud)
+      return {};
 
-    return (
-      await db.select().from(users).where(eq(users.id, theTokenVerified))
-    ).at(0);
+    return await getUser(parseInt(theTokenVerified.aud as string));
   } catch {
     return {};
   }
