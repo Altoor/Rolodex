@@ -5,5 +5,14 @@ export const User = builder.drizzleObject("users", {
   fields: (t) => ({
     id: t.exposeInt("id"),
     name: t.exposeString("name"),
+    email: t.exposeString("email"),
+  }),
+});
+
+export const SimpleUser = builder.drizzleObject("users", {
+  variant: "SimpleUser",
+  fields: (t) => ({
+    id: t.exposeInt("id"),
+    name: t.exposeString("name"),
   }),
 });

@@ -28,8 +28,6 @@ async function extract_user(auth_header: string | null) {
 
   if (!token) return {};
 
-  console.log(jwt.verify(token, process.env.TOKEN_SECRET));
-
   try {
     const theTokenVerified = jwt.verify(token, process.env.TOKEN_SECRET);
     if (typeof theTokenVerified === "string" || !theTokenVerified.aud)

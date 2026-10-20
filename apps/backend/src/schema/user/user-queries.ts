@@ -1,6 +1,6 @@
 import bcrypt from "bcrypt";
 import { builder, db } from "../builder";
-import { User } from "./user";
+import { SimpleUser, User } from "./user";
 import jwt from "jsonwebtoken";
 import { getUserByEmail } from "./user-service";
 import { GraphQLError } from "graphql";
@@ -8,7 +8,7 @@ import { GraphQLError } from "graphql";
 builder.queryType({
   fields: (t) => ({
     users: t.drizzleField({
-      type: [User],
+      type: [SimpleUser],
       resolve: () => db.query.users.findMany(),
     }),
     me: t.field({
