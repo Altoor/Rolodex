@@ -6,14 +6,14 @@
   "dependencies": {
     "@pothos/core": "^4.15.1",
     "@pothos/plugin-drizzle": "^0.20.0",
-    "dotenv": "^18.0.8",
     "drizzle-graphql": "^0.8.5",
     "drizzle-orm": "^1.0.0-rc.4",
     "graphql": "^17.0.2",
     "graphql-scalars": "^2.0.1",
     "graphql-yoga": "^5.24.6",
     "jsonwebtoken": "^9.0.3",
-    "pg": "^8.23.1"
+    "pg": "^8.23.1",
+    "dotenv": "^18.0.8"
   },
   "devDependencies": {
     "@pothos/plugin-with-input": "^4.1.5",
@@ -31,6 +31,6 @@
     }
   },
   "scripts": {
-    "api": "pnpm tsx watch src/server.ts -w"
+    "api": "pnpm tsx watch server.ts -w"
   }
 }

@@ -13,7 +13,8 @@
     "check-types": {
       "dependsOn": ["^build", "^check-types"]
     },
-      "api": {
+    "api": {
+      "inputs": ["$TURBO_DEFAULT$", ".env"],
       "cache": false,
       "persistent": true
     },

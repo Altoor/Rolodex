@@ -3,7 +3,6 @@ import { users } from "../../db";
 import { builder, db } from "../builder";
 import { User } from "./user";
 import jwt from "jsonwebtoken";
-import { env } from "node:process";
 
 builder.queryType({
   fields: (t) => ({
@@ -29,7 +28,7 @@ builder.queryType({
           .from(users)
           .where(eq(users.name, name));
         if (!user) return "user not found";
-        jwt.sign({ aud: user[0]?.id, user: user[0] }, env.TOKEN_SECRET);
+        jwt.sign({ aud: user[0]?.id, user: user[0] }, process.env.TOKEN_SECRET);
       },
     }),
   }),

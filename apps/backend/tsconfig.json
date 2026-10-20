@@ -1,7 +1,7 @@
 {
   "extends": "@repo/typescript-config/base.json",
   "compilerOptions": {
-    "types" : ["node",],
+    "types": ["node"],
     "allowImportingTsExtensions": true,
     "strictNullChecks": true,
     "module": "ESNext",
@@ -10,9 +10,6 @@
     "jsx": "preserve",
     "noEmit": true
   },
-  "include": [
-    "**/*.ts",
-    "**/*.tsx",
-  ],
+  "include": ["**/*.ts", "**/*.tsx"],
   "exclude": ["node_modules"]
 }
