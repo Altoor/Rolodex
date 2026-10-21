@@ -1,0 +1,31 @@
+{
+  "name": "@repo/queries",
+  "version": "0.0.0",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    "./*": "./dist/*.js"
+  },
+  "license": "MIT",
+  "scripts": {
+    "codegen": "graphql-codegen --config codegen.ts --watch",
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "@0no-co/graphqlsp": "^1.17.5",
+    "@graphql-codegen/cli": "^7.4.6",
+    "@graphql-codegen/client-preset": "^6.2.0",
+    "@graphql-typed-document-node/core": "^3.2.0",
+    "@parcel/watcher": "^2.6.0",
+    "@repo/eslint-config": "workspace:*",
+    "@repo/typescript-config": "workspace:*",
+    "eslint": "10.11.0",
+    "typescript": "7.0.2"
+  },
+  "dependencies": {
+    "@apollo/client": "^4.3.3",
+    "@graphql-typed-document-node/core": "^3.2.0",
+    "graphql": "^16.14.2"
+  }
+}

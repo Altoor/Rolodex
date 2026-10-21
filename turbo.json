@@ -19,6 +19,7 @@
       "persistent": true
     },
     "dev": {
+      "dependsOn": ["^build"],
       "with": ["api"],
       "cache": false,
       "persistent": true

@@ -52,6 +52,17 @@ export const createUser = async (
     .values({ email: email, name: name, hashedPassword: hash })
     .returning();
 
+  if (!user[0]) {
+    throw new GraphQLError(
+      "Something went wrong when creating user. Please try again.",
+      {
+        extensions: {
+          code: "BAD_USER_INPUT",
+        },
+      },
+    );
+  }
+
   return user[0];
 };
 
