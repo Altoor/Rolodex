@@ -14,11 +14,17 @@ import { TypedDocumentNode as DocumentNode } from '@graphql-typed-document-node/
  * Learn more about it here: https://the-guild.dev/graphql/codegen/plugins/presets/preset-client#reducing-bundle-size
  */
 type Documents = {
+    "\n  query systemOneScoreQuery(\n    $decisionType: String!\n    $instruction: String!\n    $options: [String!]!\n    $state: String!\n  ) {\n    systemOneScorePrompt(\n      decisionType: $decisionType\n      instruction: $instruction\n      options: $options\n      state: $state\n    ) {\n      answer\n      model\n    }\n  }\n": typeof types.SystemOneScoreQueryDocument,
+    "\n  query systemOneNoulQuery(\n    $decisionType: String!\n    $instruction: String!\n    $state: String!\n  ) {\n    systemOneNoulPrompt(\n      decisionType: $decisionType\n      instruction: $instruction\n      state: $state\n    ) {\n      answer\n      model\n    }\n  }\n": typeof types.SystemOneNoulQueryDocument,
+    "\n  query systemOneChoiceQuery(\n    $decisionType: String!\n    $instruction: String!\n    $options: [String!]!\n    $optionDescriptions: [String!]!\n    $state: String!\n  ) {\n    systemOneChoicePrompt(\n      decisionType: $decisionType\n      instruction: $instruction\n      options: $options\n      optionDescriptions: $optionDescriptions\n      state: $state\n    ) {\n      answer\n      model\n    }\n  }\n": typeof types.SystemOneChoiceQueryDocument,
     "\n  mutation Login($email: String!, $password: String!) {\n    login(email: $email, password: $password)\n  }\n": typeof types.LoginDocument,
     "\n  mutation MyMutation($email: String!, $name: String!, $password: String!) {\n    createUser(email: $email, name: $name, password: $password)\n  }\n": typeof types.MyMutationDocument,
     "\n  query GetMe {\n    me {\n      email\n      id\n      name\n    }\n  }\n": typeof types.GetMeDocument,
 };
 const documents: Documents = {
+    "\n  query systemOneScoreQuery(\n    $decisionType: String!\n    $instruction: String!\n    $options: [String!]!\n    $state: String!\n  ) {\n    systemOneScorePrompt(\n      decisionType: $decisionType\n      instruction: $instruction\n      options: $options\n      state: $state\n    ) {\n      answer\n      model\n    }\n  }\n": types.SystemOneScoreQueryDocument,
+    "\n  query systemOneNoulQuery(\n    $decisionType: String!\n    $instruction: String!\n    $state: String!\n  ) {\n    systemOneNoulPrompt(\n      decisionType: $decisionType\n      instruction: $instruction\n      state: $state\n    ) {\n      answer\n      model\n    }\n  }\n": types.SystemOneNoulQueryDocument,
+    "\n  query systemOneChoiceQuery(\n    $decisionType: String!\n    $instruction: String!\n    $options: [String!]!\n    $optionDescriptions: [String!]!\n    $state: String!\n  ) {\n    systemOneChoicePrompt(\n      decisionType: $decisionType\n      instruction: $instruction\n      options: $options\n      optionDescriptions: $optionDescriptions\n      state: $state\n    ) {\n      answer\n      model\n    }\n  }\n": types.SystemOneChoiceQueryDocument,
     "\n  mutation Login($email: String!, $password: String!) {\n    login(email: $email, password: $password)\n  }\n": types.LoginDocument,
     "\n  mutation MyMutation($email: String!, $name: String!, $password: String!) {\n    createUser(email: $email, name: $name, password: $password)\n  }\n": types.MyMutationDocument,
     "\n  query GetMe {\n    me {\n      email\n      id\n      name\n    }\n  }\n": types.GetMeDocument,
@@ -38,6 +44,18 @@ const documents: Documents = {
  */
 export function gql(source: string): unknown;
 
+/**
+ * The gql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function gql(source: "\n  query systemOneScoreQuery(\n    $decisionType: String!\n    $instruction: String!\n    $options: [String!]!\n    $state: String!\n  ) {\n    systemOneScorePrompt(\n      decisionType: $decisionType\n      instruction: $instruction\n      options: $options\n      state: $state\n    ) {\n      answer\n      model\n    }\n  }\n"): (typeof documents)["\n  query systemOneScoreQuery(\n    $decisionType: String!\n    $instruction: String!\n    $options: [String!]!\n    $state: String!\n  ) {\n    systemOneScorePrompt(\n      decisionType: $decisionType\n      instruction: $instruction\n      options: $options\n      state: $state\n    ) {\n      answer\n      model\n    }\n  }\n"];
+/**
+ * The gql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function gql(source: "\n  query systemOneNoulQuery(\n    $decisionType: String!\n    $instruction: String!\n    $state: String!\n  ) {\n    systemOneNoulPrompt(\n      decisionType: $decisionType\n      instruction: $instruction\n      state: $state\n    ) {\n      answer\n      model\n    }\n  }\n"): (typeof documents)["\n  query systemOneNoulQuery(\n    $decisionType: String!\n    $instruction: String!\n    $state: String!\n  ) {\n    systemOneNoulPrompt(\n      decisionType: $decisionType\n      instruction: $instruction\n      state: $state\n    ) {\n      answer\n      model\n    }\n  }\n"];
+/**
+ * The gql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function gql(source: "\n  query systemOneChoiceQuery(\n    $decisionType: String!\n    $instruction: String!\n    $options: [String!]!\n    $optionDescriptions: [String!]!\n    $state: String!\n  ) {\n    systemOneChoicePrompt(\n      decisionType: $decisionType\n      instruction: $instruction\n      options: $options\n      optionDescriptions: $optionDescriptions\n      state: $state\n    ) {\n      answer\n      model\n    }\n  }\n"): (typeof documents)["\n  query systemOneChoiceQuery(\n    $decisionType: String!\n    $instruction: String!\n    $options: [String!]!\n    $optionDescriptions: [String!]!\n    $state: String!\n  ) {\n    systemOneChoicePrompt(\n      decisionType: $decisionType\n      instruction: $instruction\n      options: $options\n      optionDescriptions: $optionDescriptions\n      state: $state\n    ) {\n      answer\n      model\n    }\n  }\n"];
 /**
  * The gql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
