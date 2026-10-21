@@ -3,7 +3,6 @@ import {
   CardHeader,
   CardTitle,
   CardDescription,
-  CardAction,
   CardContent,
   CardFooter,
 } from "@repo/ui/components/ui/card";
@@ -12,15 +11,12 @@ export default function LandingPage() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Please Login to continue</CardTitle>
-        <CardDescription>Card Description</CardDescription>
-        <CardAction>Card Action</CardAction>
+        <CardTitle>What do you want to do today?</CardTitle>
+        <CardDescription>Upload files or write a prompt</CardDescription>
       </CardHeader>
-      <CardContent>
-        <p>Card Content</p>
-      </CardContent>
+      <CardContent className="min-h-32"></CardContent>
       <CardFooter>
-        <p>Card Footer</p>
+        <p>Currently not doing anything</p>
       </CardFooter>
     </Card>
   );

@@ -16,6 +16,15 @@ builder.mutationType({
       },
       resolve: async (_query, _root, { name, content, actor_id }, ctx) => {
         const author_id = (ctx as any).user.id;
+
+        if (!author_id) {
+          throw new GraphQLError("Not logged in", {
+            extensions: {
+              code: "BAD_USER_INPUT",
+            },
+          });
+        }
+
         const todo = {
           name,
           content: content ?? "",
@@ -36,7 +45,20 @@ builder.mutationType({
         done: t.arg.boolean({ required: true }),
       },
       resolve: async (_query, _root, { id, done }, ctx) => {
-        const todo = await db.query.todos.findFirst({ where: { id: id } });
+        const todo = await db.query.todos.findFirst({
+          where: {
+            AND: [
+              {
+                OR: [
+                  { actorId: (ctx as any).user.id },
+                  { authorId: (ctx as any).user.id },
+                ],
+              },
+
+              { id: id },
+            ],
+          },
+        });
 
         if (!todo) {
           throw new GraphQLError("no todo found");
@@ -63,7 +85,20 @@ builder.mutationType({
         actor_id: t.arg.int({ required: false }),
       },
       resolve: async (_query, _root, { id, name, content, actor_id }, ctx) => {
-        const todo = await db.query.todos.findFirst({ where: { id: id } });
+        const todo = await db.query.todos.findFirst({
+          where: {
+            AND: [
+              {
+                OR: [
+                  { actorId: (ctx as any).user.id },
+                  { authorId: (ctx as any).user.id },
+                ],
+              },
+
+              { id: id },
+            ],
+          },
+        });
 
         if (!todo) {
           throw new GraphQLError("no todo found");
@@ -93,7 +128,20 @@ builder.mutationType({
         id: t.arg.int({ required: true }),
       },
       resolve: async (_root, { id }, _ctx) => {
-        const todo = await db.query.todos.findFirst({ where: { id: id } });
+        const todo = await db.query.todos.findFirst({
+          where: {
+            AND: [
+              {
+                OR: [
+                  { actorId: (ctx as any).user.id },
+                  { authorId: (ctx as any).user.id },
+                ],
+              },
+
+              { id: id },
+            ],
+          },
+        });
 
         if (!todo) {
           throw new GraphQLError("no todo found");

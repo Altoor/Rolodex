@@ -7,6 +7,7 @@ import {
   NavigationMenuList,
   NavigationMenuButton,
   NavigationMenuTrigger,
+  NavigationMenuPositioner,
 } from "#components/ui/navigation-menu";
 import { Spinner } from "#components/ui/spinner";
 import { useQuery } from "@apollo/client/react";
@@ -21,15 +22,17 @@ export default function HeaderMenu() {
   };
 
   return (
-    <div className="flex w-full items-center justify-center p-6 md:p-10">
-      <NavigationMenu className="w-full">
-        <NavigationMenuList>
+    <div className="flex w-full p-6 md:p-10">
+      <NavigationMenu className="w-full flex flex-row ">
+        <NavigationMenuList className="w-full">
           <NavigationMenuItem>
-            <NavigationMenuTrigger>Item One</NavigationMenuTrigger>
-            <NavigationMenuContent>
-              <NavigationMenuLink>Link</NavigationMenuLink>
-            </NavigationMenuContent>
+            <NavigationMenuLink href="/">Main</NavigationMenuLink>
           </NavigationMenuItem>
+          <NavigationMenuItem>
+            <NavigationMenuLink href="/decisions">Decisions</NavigationMenuLink>
+          </NavigationMenuItem>
+        </NavigationMenuList>
+        <NavigationMenuList>
           <NavigationMenuItem>
             {loading ? (
               <Spinner />
