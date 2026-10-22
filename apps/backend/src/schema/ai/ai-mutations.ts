@@ -1,8 +1,8 @@
 import { eq } from "drizzle-orm";
-import { decisions, decisions } from "../../db";
+import { decisions } from "../../db";
 import { builder, db } from "../builder";
 import { GraphQLError } from "graphql/error";
-import { SystemOnePrompt, SystemOneResponse } from "./ai";
+import { Model, Progress, SystemOnePrompt, SystemOneResponse } from "./ai";
 import { setupQuestions } from "./ai-service";
 import { ollama } from "../../ai/Ollama";
 
@@ -208,6 +208,26 @@ builder.mutationType({
         }
 
         return "successfully deleted decision";
+      },
+    }),
+
+    installModel: t.field({
+      type: Progress,
+      args: {
+        name: t.arg.string({ required: true }),
+      },
+      resolve: async (_query, { name }, ctx) => {
+        if (!(ctx as any).user) {
+          throw new GraphQLError(
+            "Not logged in. try logging in and try again",
+            {
+              extensions: { code: "BAD_USER_INPUT" },
+            },
+          );
+        }
+
+        const response = await ollama.pull({ model: name });
+        return response;
       },
     }),
   }),

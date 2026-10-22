@@ -1,11 +1,28 @@
 import { GraphQLError } from "graphql";
 import { builder } from "../builder";
-import { SystemOneResponse } from "./ai";
+import { Model, SystemOneResponse } from "./ai";
 import { ollama } from "../../ai/Ollama";
 import { setupQuestions } from "./ai-service";
 
 builder.queryType({
   fields: (t) => ({
+    models: t.field({
+      type: [Model],
+      resolve: async (_root, _args, ctx) => {
+        if (!(ctx as any).user) {
+          throw new GraphQLError(
+            "Not logged in. try logging in and try again",
+            {
+              extensions: { code: "BAD_USER_INPUT" },
+            },
+          );
+        }
+
+        const response = (await ollama.list()).models;
+        return response;
+      },
+    }),
+
     systemOneChoicePrompt: t.field({
       type: SystemOneResponse,
       args: {

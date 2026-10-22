@@ -5,7 +5,7 @@ import { getTableConfig } from "drizzle-orm/pg-core";
 import * as schema from "../db";
 import { User } from "./user";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { DateTimeResolver, GraphQLJSON } from "graphql-scalars";
+import { DateTimeResolver, GraphQLJSON, GraphQLLong } from "graphql-scalars";
 import { relations } from "../db";
 
 export interface PothosTypes {
@@ -13,12 +13,16 @@ export interface PothosTypes {
   Context: { user: typeof User };
   Scalars: {
     DateTime: {
-      Output: Date;
       Input: Date;
+      Output: Date;
     };
     JSON: {
       Input: Record<string, any>;
       Output: Record<string, any>;
+    };
+    Long: {
+      Input: BigInt;
+      Output: BigInt;
     };
   };
 }
@@ -44,3 +48,4 @@ builder.queryType({
 });
 builder.addScalarType("DateTime", DateTimeResolver);
 builder.addScalarType("JSON", GraphQLJSON, {});
+builder.addScalarType("Long", GraphQLLong, {});

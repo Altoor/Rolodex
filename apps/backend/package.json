@@ -12,6 +12,7 @@
     "drizzle-orm": "^1.0.0-rc.4",
     "graphql": "^17.0.2",
     "graphql-scalars": "^2.0.1",
+    "graphql-sse": "^2.6.3",
     "graphql-yoga": "^5.24.6",
     "jsonwebtoken": "^9.0.3",
     "ollama": "^0.6.4",

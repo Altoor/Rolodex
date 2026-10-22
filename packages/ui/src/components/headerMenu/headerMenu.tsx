@@ -31,6 +31,9 @@ export default function HeaderMenu() {
           <NavigationMenuItem>
             <NavigationMenuLink href="/decisions">Decisions</NavigationMenuLink>
           </NavigationMenuItem>
+          <NavigationMenuItem>
+            <NavigationMenuLink href="/models">Models</NavigationMenuLink>
+          </NavigationMenuItem>
         </NavigationMenuList>
         <NavigationMenuList>
           <NavigationMenuItem>
