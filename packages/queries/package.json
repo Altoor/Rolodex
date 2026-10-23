@@ -10,7 +10,9 @@
   "license": "MIT",
   "scripts": {
     "codegen": "graphql-codegen --config codegen.ts ",
-    "build": "tsc"
+    "build": "tsc",
+    "dev:ts": "tsc --watch",
+    "dev:codegen": "graphql-codegen --config codegen.ts --watch"
   },
   "devDependencies": {
     "@0no-co/graphqlsp": "^1.17.5",

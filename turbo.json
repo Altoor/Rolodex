@@ -2,8 +2,13 @@
   "$schema": "https://turborepo.dev/schema.json",
   "ui": "tui",
   "tasks": {
+    "codegen": {
+      "dependsOn": ["^codegen"],
+      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "outputs": ["src/__generated__/**"]
+    },
     "build": {
-      "dependsOn": ["^build"],
+      "dependsOn": ["^build", "^codegen"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
       "outputs": ["dist/**", ".next/**", "!.next/cache/**", "!.next/dev/**"]
     },

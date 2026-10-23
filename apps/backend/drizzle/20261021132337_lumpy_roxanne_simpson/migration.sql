@@ -1,1 +1,0 @@
-ALTER TABLE "decisions" ALTER COLUMN "type" SET NOT NULL;

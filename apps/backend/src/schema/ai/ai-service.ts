@@ -2,7 +2,7 @@ import { GraphQLError } from "graphql";
 
 interface Question {
   type: "choice" | "noul" | "score";
-  decisionType: string;
+  decisionPremise: string;
   instruction: string;
   options?: string[];
   optionDescriptions?: string[];
@@ -10,13 +10,12 @@ interface Question {
 
 export const setupQuestion = ({
   type,
-  decisionType,
+  decisionPremise,
   instruction,
   options,
   optionDescriptions,
 }: Question) => {
   let questionJSON = {};
-  console.log("type", type);
   switch (type) {
     case "choice":
       if (!options) {
@@ -30,7 +29,7 @@ export const setupQuestion = ({
         });
       }
       questionJSON = `
-                "${decisionType}": {
+                "${decisionPremise}": {
                     "type": "choice",
                     "instructions": "${instruction}",
                     "criteria": {${options.map((option, index) => {
@@ -41,12 +40,13 @@ export const setupQuestion = ({
       break;
     case "noul":
       questionJSON = `
-            "${decisionType}": {
+            "${decisionPremise}": {
                     "type": "noul",
                     "instructions": "${instruction}"
                 }
             `;
       break;
+
     case "score":
       if (!options) {
         throw new GraphQLError("missing options for score", {
@@ -54,7 +54,7 @@ export const setupQuestion = ({
         });
       }
       questionJSON = `
-            "${decisionType}": {
+            "${decisionPremise}": {
                 "type": "score",
                 "instructions": "${instruction}",
                 "criteria": [${options.map((option) => {

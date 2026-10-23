@@ -4,6 +4,7 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
+    "codegen": "turbo run codegen",
     "api": "turbo run api --summarize",
     "lint": "turbo run lint",
     "check-types": "turbo run check-types",

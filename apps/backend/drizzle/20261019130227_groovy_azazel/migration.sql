@@ -1,1 +1,0 @@
-ALTER TABLE "todos" ALTER COLUMN "done" SET NOT NULL;

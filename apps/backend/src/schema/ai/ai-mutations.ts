@@ -2,13 +2,9 @@ import { eq } from "drizzle-orm";
 import { decisions } from "../../db";
 import { builder, db } from "../builder";
 import { GraphQLError } from "graphql/error";
-import { Model, Progress, SystemOnePrompt, SystemOneResponse } from "./ai";
+import { DecisionType, SystemOnePrompt, SystemOneResponse } from "./ai";
 import { setupQuestions } from "./ai-service";
 import { ollama } from "../../ai/Ollama";
-
-const DecisionType = builder.enumType("DecisionType", {
-  values: ["choice", "noul", "score"],
-});
 
 builder.mutationType({
   fields: (t) => ({
@@ -17,7 +13,7 @@ builder.mutationType({
       args: {
         name: t.arg.string({ required: true }),
         type: t.arg({ type: DecisionType, required: true }),
-        decisionType: t.arg.string({ required: true }),
+        decisionPremise: t.arg.string({ required: true }),
         instruction: t.arg.string({ required: true }),
         options: t.arg.stringList({ required: false }),
         optionDescriptions: t.arg.stringList({ required: false }),
@@ -25,7 +21,14 @@ builder.mutationType({
       resolve: async (
         _query,
         _root,
-        { name, type, decisionType, instruction, options, optionDescriptions },
+        {
+          name,
+          type,
+          decisionPremise,
+          instruction,
+          options,
+          optionDescriptions,
+        },
         ctx,
       ) => {
         const author_id = (ctx as any).user.id;
@@ -66,7 +69,7 @@ builder.mutationType({
         const decision = {
           name,
           type,
-          decisionType,
+          decisionPremise,
           instruction,
           options,
           optionDescriptions,
@@ -87,7 +90,7 @@ builder.mutationType({
         id: t.arg.int({ required: true }),
         name: t.arg.string({ required: false }),
         type: t.arg({ type: DecisionType, required: false }),
-        decisionType: t.arg.string({ required: false }),
+        decisionPremise: t.arg.string({ required: false }),
         instruction: t.arg.string({ required: false }),
         options: t.arg.stringList({ required: false }),
         optionDescriptions: t.arg.stringList({ required: false }),
@@ -99,7 +102,7 @@ builder.mutationType({
           id,
           name,
           type,
-          decisionType,
+          decisionPremise,
           instruction,
           options,
           optionDescriptions,
@@ -142,7 +145,7 @@ builder.mutationType({
         const decisionDto = {
           name: name ?? decision.name,
           type: type ?? decision.type,
-          decisionType: decisionType ?? decision.decisionType,
+          decisionPremise: decisionPremise ?? decision.decisionPremise,
           instruction: instruction ?? decision.instruction,
           options: options ?? decision.options,
           optionDescriptions: optionDescriptions ?? decision.optionDescriptions,
@@ -178,7 +181,7 @@ builder.mutationType({
           {
             type: decision.type,
             instruction: decision.instruction,
-            decisionType: decision.decisionType,
+            decisionPremise: decision.decisionPremise,
             options: decision.options ?? undefined,
             optionDescriptions: decision.optionDescriptions ?? undefined,
           },
@@ -208,26 +211,6 @@ builder.mutationType({
         }
 
         return "successfully deleted decision";
-      },
-    }),
-
-    installModel: t.field({
-      type: Progress,
-      args: {
-        name: t.arg.string({ required: true }),
-      },
-      resolve: async (_query, { name }, ctx) => {
-        if (!(ctx as any).user) {
-          throw new GraphQLError(
-            "Not logged in. try logging in and try again",
-            {
-              extensions: { code: "BAD_USER_INPUT" },
-            },
-          );
-        }
-
-        const response = await ollama.pull({ model: name });
-        return response;
       },
     }),
   }),
