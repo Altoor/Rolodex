@@ -170,7 +170,7 @@ builder.mutationType({
       },
       resolve: async (_query, { id, state }, ctx) => {
         const decision = await db.query.decisions.findFirst({
-          where: { AND: [{ authorId: (ctx as any).user.id }, { id: id }] },
+          where: { id: id },
         });
 
         if (!decision) {

@@ -14,7 +14,7 @@ services:
     container_name: ollama
     ports: ["11434:11434"]
     volumes:
-      - model_files:/var/lib/models # Mount the directory with the trained mode
+      - model_files:/var/lib/models # Mount the directory with the trained models
     pull_policy: always
     tty: true
     restart: unless-stopped

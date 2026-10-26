@@ -1,6 +1,6 @@
 import { GraphQLError } from "graphql";
-import { builder } from "../builder";
-import { DecisionType, SystemOneResponse } from "./ai";
+import { builder, db } from "../builder";
+import { DecisionType, SystemOnePrompt, SystemOneResponse } from "./ai";
 import { ollama } from "../../ai/Ollama";
 import { setupQuestions } from "./ai-service";
 
@@ -71,6 +71,23 @@ builder.queryType({
           questions,
         });
         return response;
+      },
+    }),
+
+    decicions: t.drizzleField({
+      type: [SystemOnePrompt],
+      resolve: (_query, _root, _args, ctx) => {
+        const user = (ctx as any).user;
+
+        if (!user) {
+          throw new GraphQLError("Not logged in", {
+            extensions: {
+              code: "BAD_USER_INPUT",
+            },
+          });
+        }
+
+        return db.query.decisions.findMany();
       },
     }),
   }),

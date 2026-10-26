@@ -2,60 +2,64 @@
 
 import { Button } from "#components/ui/button";
 
-import {
-  Field,
-  FieldError,
-  FieldGroup,
-  FieldLabel,
-} from "#components/ui/field";
-import { SubmitHandler, useForm } from "react-hook-form";
+import { Field, FieldGroup, FieldLabel } from "#components/ui/field";
+import { useForm } from "react-hook-form";
 import { Input } from "#components/ui/input";
-import { Spinner } from "#components/ui/spinner";
-import { ErrorLike } from "@apollo/client";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import ChoiceOption from "./choiceOption";
 import { Plus } from "lucide-react";
+import { debounce } from "#lib/debounce";
 
 type Inputs = {
   instruction: string;
-  state: string;
+
   decisionPremise: string;
 };
 
 interface choiceDecisionFormProps {
-  promptSubmit: (variables: {
+  setValues: (variables: {
     instruction: string;
-    state: string;
     decisionPremise: string;
     options: { name: string; description: string }[];
   }) => void;
-  loading: boolean;
-  error: ErrorLike | undefined;
 }
 
-const ChoiceDecisionForm = ({
-  promptSubmit,
-  loading,
-  error,
-}: choiceDecisionFormProps) => {
-  const { register, handleSubmit, getValues } = useForm<Inputs>();
+const ChoiceDecisionForm = ({ setValues }: choiceDecisionFormProps) => {
+  const { register, watch } = useForm<Inputs>();
   const [options, setOptions] = useState(
     new Map<number, { name: string; description: string }>(),
   );
 
-  const onSubmit: SubmitHandler<Inputs> = async (inputs) => {
-    promptSubmit({
-      instruction: inputs.instruction,
-      state: inputs.state,
-      decisionPremise: inputs.decisionPremise,
-      options: Array.from(options.entries()).map(([index, item]) => {
-        return { name: item.name, description: item.description };
-      }),
-    });
-  };
+  const debouncedSetValues = useCallback(
+    (variables: {
+      instruction: string;
+      decisionPremise: string;
+      options: { name: string; description: string }[];
+    }) => {
+      debounce(() => {
+        setValues(variables);
+      }, 500)();
+    },
+    [watch("instruction"), watch("decisionPremise"), options],
+  );
+
+  useEffect(() => {
+    const currentValues = {
+      instruction: watch("instruction"),
+      decisionPremise: watch("decisionPremise"),
+      options: Array.from(options.entries()).map(([_, item]) => ({
+        name: item.name,
+        description: item.description,
+      })),
+    };
+    console.log(options);
+    debouncedSetValues(currentValues);
+  }, [watch, options, debouncedSetValues]);
+
+  const debounceOptions = debounce;
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)}>
+    <form>
       <FieldGroup>
         <Field>
           <FieldLabel htmlFor="instruction">
@@ -69,25 +73,24 @@ const ChoiceDecisionForm = ({
           </FieldLabel>
           <Input {...register("decisionPremise", { required: true })} />
         </Field>
-        <Field>
-          <FieldLabel htmlFor="state">What is your current state</FieldLabel>
-          <Input {...register("state", { required: true })} />
-        </Field>
         <div className="flex flex-row flex-wrap gap-2">
           {Array.from(options.entries()).map(([index, option]) => (
             <ChoiceOption
               defaultValues={option}
               setValues={(values) => {
-                const changedOption = options.get(index);
+                const newOptions = new Map(options);
+
+                const changedOption = newOptions.get(index);
 
                 if (changedOption) {
                   changedOption.name = values.name;
-
                   changedOption.description = values.description;
-                  options.set(index, changedOption);
+                  newOptions.set(index, changedOption);
                 }
 
-                setOptions(options);
+                debounceOptions(() => {
+                  setOptions(newOptions);
+                }, 500)();
               }}
 
               key={index}
@@ -107,10 +110,6 @@ const ChoiceDecisionForm = ({
         >
           <Plus></Plus>
         </Button>
-        <Field>
-          <FieldError errors={[error]}></FieldError>
-          <Button type="submit">{loading ? <Spinner /> : "Submit"}</Button>
-        </Field>
       </FieldGroup>
     </form>
   );
