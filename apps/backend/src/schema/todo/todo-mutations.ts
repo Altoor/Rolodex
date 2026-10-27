@@ -127,7 +127,7 @@ builder.mutationType({
       args: {
         id: t.arg.int({ required: true }),
       },
-      resolve: async (_root, { id }, _ctx) => {
+      resolve: async (_root, { id }, ctx) => {
         const todo = await db.query.todos.findFirst({
           where: {
             AND: [
@@ -146,6 +146,8 @@ builder.mutationType({
         if (!todo) {
           throw new GraphQLError("no todo found");
         }
+
+        await db.delete(todos).where(eq(todos.id, id));
 
         return "successfully deleted todo";
       },

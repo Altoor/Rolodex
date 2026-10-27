@@ -24,7 +24,8 @@ import NoulResult from "../noul/noulResult";
 import ChoiceResult from "../choice/choiceResult";
 import { useLazyQuery } from "@apollo/client/react";
 import { SYSTEM_ONE_PROMPT } from "@repo/queries/decisions/decision-queries";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { DecisionType } from "@repo/queries/__generated__/graphql";
 
 type Inputs = {
   state: string;
@@ -37,7 +38,7 @@ interface StateCardProps {
     options?: Array<string> | string | null | undefined;
     optionDescriptions?: Array<string> | string | null | undefined;
   };
-  type: "noul" | "choice" | "score";
+  type: DecisionType;
 }
 
 const StateCard = ({ variables, type }: StateCardProps) => {

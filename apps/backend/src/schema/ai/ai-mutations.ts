@@ -210,6 +210,8 @@ builder.mutationType({
           throw new GraphQLError("no decision found");
         }
 
+        await db.delete(decisions).where(eq(decisions.id, id));
+
         return "successfully deleted decision";
       },
     }),

@@ -9,9 +9,10 @@ import {
   ItemTitle,
 } from "#components/ui/item";
 import { Spinner } from "#components/ui/spinner";
-import { useQuery } from "@apollo/client/react";
+import { useMutation, useQuery } from "@apollo/client/react";
+import { DELETE_SYSTEM_ONE_PROMPT } from "@repo/queries/decisions/decision-mutations";
 import { DECISIONS } from "@repo/queries/decisions/decision-queries";
-import { Pencil, X } from "lucide-react";
+import { Pencil, Plus, X } from "lucide-react";
 
 interface DecisionListProps {
   setSelectedDecisionId: (id: number | undefined) => void;
@@ -23,9 +24,10 @@ const DecisionList = ({
   setSelectedDecisionId,
 }: DecisionListProps) => {
   const { loading, error, data } = useQuery(DECISIONS);
+  const [deleteDecision, { client }] = useMutation(DELETE_SYSTEM_ONE_PROMPT);
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col gap-2">
       {loading ? (
         <Spinner />
       ) : (
@@ -40,11 +42,16 @@ const DecisionList = ({
             </ItemContent>
             <ItemActions>
               <Button
-                onClick={() =>
-                  decision.id !== selectedDecisionId
-                    ? setSelectedDecisionId(decision.id ?? undefined)
-                    : setSelectedDecisionId(undefined)
-                }
+                onClick={() => {
+                  if (decision.id !== selectedDecisionId) {
+                    setSelectedDecisionId(decision.id ?? undefined);
+                  } else {
+                    deleteDecision({ variables: { id: selectedDecisionId } });
+                    client.refetchQueries({
+                      include: [DECISIONS],
+                    });
+                  }
+                }}
               >
                 {decision.id === selectedDecisionId ? (
                   <X className="text-red-400" />
@@ -56,6 +63,13 @@ const DecisionList = ({
           </Item>
         ))
       )}
+      <Button
+        onClick={() => {
+          setSelectedDecisionId(undefined);
+        }}
+      >
+        Create new decision <Plus />
+      </Button>
     </div>
   );
 };

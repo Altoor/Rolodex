@@ -18,9 +18,10 @@ type Inputs = {
 interface choiceDecisionFormProps {
   values:
     | {
-        instruction: string;
         decisionPremise: string;
-        options: { name: string; description: string }[] | null;
+        instruction: string;
+        options?: Array<string> | string | null | undefined;
+        optionDescriptions?: Array<string> | string | null | undefined;
       }
     | undefined;
   setValues: (variables: {
@@ -31,10 +32,31 @@ interface choiceDecisionFormProps {
 }
 
 const ChoiceDecisionForm = ({ values, setValues }: choiceDecisionFormProps) => {
-  const { register, watch } = useForm<Inputs>();
+  const { register, watch, reset } = useForm<Inputs>();
   const [options, setOptions] = useState(
     new Map<number, { name: string; description: string }>(),
   );
+
+  useEffect(() => {
+    if (values) {
+      reset({
+        instruction: values.instruction,
+        decisionPremise: values.decisionPremise,
+      });
+
+      // Load options state
+      const optionsMap = new Map();
+      if (values.options && values.optionDescriptions) {
+        (values.options as string[]).forEach((option, index) =>
+          optionsMap.set(index, {
+            name: option,
+            description: (values.optionDescriptions as string[])[index],
+          }),
+        );
+      }
+      setOptions(optionsMap);
+    }
+  }, [values, reset]);
 
   const debouncedSetValues = useCallback(
     (variables: {
@@ -50,7 +72,7 @@ const ChoiceDecisionForm = ({ values, setValues }: choiceDecisionFormProps) => {
   );
 
   useEffect(() => {
-    watch(({ instruction, decisionPremise }) => {
+    const { unsubscribe } = watch(({ instruction, decisionPremise }) => {
       const currentValues = {
         instruction: instruction ?? "",
         decisionPremise: decisionPremise ?? "",
@@ -62,33 +84,8 @@ const ChoiceDecisionForm = ({ values, setValues }: choiceDecisionFormProps) => {
 
       debouncedSetValues(currentValues);
     });
+    return () => unsubscribe();
   }, [watch, debouncedSetValues, options]);
-
-  useEffect(() => {
-    if (values) {
-      setFormValues(
-        {
-          instruction: values.instruction,
-          decisionPremise: values.decisionPremise,
-        },
-        {
-          shouldDirty: false,
-          shouldValidate: false,
-        },
-      );
-
-      const optionsMap = new Map();
-      if (values.options) {
-        values.options.forEach((option, index) =>
-          optionsMap.set(index, {
-            name: option.name,
-            description: option.description,
-          }),
-        );
-      }
-      setOptions(optionsMap);
-    }
-  }, [setFormValues, values]);
 
   return (
     <form>

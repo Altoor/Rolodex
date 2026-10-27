@@ -6,6 +6,7 @@ import {
   CardTitle,
   CardDescription,
   CardContent,
+  CardAction,
 } from "#components/ui/card";
 import {
   Select,
@@ -18,24 +19,38 @@ import {
 import NoulDecisionForm from "./noul/noulDecision";
 import ChoiceDecisionForm from "./choice/choiceDecision";
 import ScoreDecisionForm from "./score/scoreDecision";
+import { Field, FieldGroup, FieldLabel } from "#components/ui/field";
+import { Input } from "#components/ui/input";
+import { useForm } from "react-hook-form";
+import { useEffect } from "react";
+import { Button } from "#components/ui/button";
+import { Save } from "lucide-react";
+import { DecisionType } from "@repo/queries/__generated__/graphql";
+
+type Inputs = {
+  name: string;
+};
 
 interface DecisionCardProps {
   values:
     | {
         decisionPremise: string;
         instruction: string;
-        options?: Array<string> | string | null | undefined;
-        optionDescriptions?: Array<string> | string | null | undefined;
+        options?: Array<string>;
+        optionDescriptions?: Array<string>;
+        name: string;
       }
     | undefined;
+  save: () => void;
   setValues: (variables: {
     decisionPremise: string;
     instruction: string;
-    options?: Array<string> | string | null | undefined;
-    optionDescriptions?: Array<string> | string | null | undefined;
+    options?: Array<string>;
+    optionDescriptions?: Array<string>;
+    name: string;
   }) => void;
-  setType: (type: "noul" | "choice" | "score") => void;
-  type: "noul" | "choice" | "score";
+  setType: (type: DecisionType) => void;
+  type: DecisionType;
 }
 
 const DecisionCard = ({
@@ -43,7 +58,14 @@ const DecisionCard = ({
   setValues,
   setType,
   type,
+  save,
 }: DecisionCardProps) => {
+  const { register, getValues, reset } = useForm<Inputs>();
+
+  useEffect(() => {
+    reset(values);
+  }, [values, reset]);
+
   const typeOfChoice = [
     { label: "Noul", value: "noul" },
     { label: "Choice", value: "choice" },
@@ -52,53 +74,69 @@ const DecisionCard = ({
 
   return (
     <Card className="w-full">
-      <CardHeader>
-        <CardTitle>Decision</CardTitle>
-        <CardDescription>Setup a decision</CardDescription>
+      <CardHeader className="flex flex-row">
+        <CardContent>
+          <CardTitle>Decision</CardTitle>
+          <CardDescription>Setup a decision</CardDescription>
+          <Select
+            items={typeOfChoice}
+            defaultValue={"noul"}
+            value={type}
+            onValueChange={(value) => setType(value as DecisionType)}
+          >
+            <SelectTrigger className="w-[180px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                {typeOfChoice.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </CardContent>
+        <CardContent className="w-full">
+          <form>
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="name">Name</FieldLabel>
+                <Input {...register("name", { required: true })} />
+              </Field>
+            </FieldGroup>
+          </form>
+        </CardContent>
+        <CardAction>
+          <Button onClick={() => save()}>
+            <Save></Save>
+          </Button>
+        </CardAction>
       </CardHeader>
       <CardContent className="min-h-32">
-        <Select
-          items={typeOfChoice}
-          defaultValue={"noul"}
-          value={type}
-          onValueChange={(value) =>
-            setType(value as "noul" | "choice" | "score")
-          }
-        >
-          <SelectTrigger className="w-[180px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              {typeOfChoice.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
-                  {item.label}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-
         {type === "noul" && (
           <NoulDecisionForm
             values={values}
-            setValues={(values) =>
+            setValues={(formValues) => {
               setValues({
-                ...values,
-                options: null,
-              })
-            }
+                ...formValues,
+                name: getValues().name,
+                options: undefined,
+              });
+            }}
           ></NoulDecisionForm>
         )}
 
         {type === "choice" && (
           <ChoiceDecisionForm
             values={values}
-            setValues={(values) =>
+            setValues={(formValues) =>
               setValues({
-                ...values,
-                options: values.options.map((option) => option.name),
-                optionDescriptions: values.options.map(
+                ...formValues,
+                name: getValues().name,
+                options: formValues.options.map((option) => option.name),
+                optionDescriptions: formValues.options.map(
                   (option) => option.description,
                 ),
               })
@@ -109,10 +147,11 @@ const DecisionCard = ({
         {type === "score" && (
           <ScoreDecisionForm
             values={values}
-            setValues={(values) =>
+            setValues={(formValues) =>
               setValues({
-                ...values,
-                options: values.options.map((option) => option.name),
+                ...formValues,
+                name: getValues().name,
+                options: formValues.options.map((option) => option.name),
               })
             }
           ></ScoreDecisionForm>
