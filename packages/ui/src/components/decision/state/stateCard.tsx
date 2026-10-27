@@ -54,10 +54,6 @@ const StateCard = ({ variables, type }: StateCardProps) => {
     }
   };
 
-  useEffect(() => {
-    console.log(data);
-  }, [data]);
-
   return (
     <Card className="min-w-1/3">
       <CardHeader>

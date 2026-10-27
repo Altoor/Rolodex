@@ -1,31 +1,24 @@
 "use client";
-import DecisionCard from "#components/decision/decisionCard";
-import StateCard from "#components/decision/state/stateCard";
+import DecisionBuilder from "#components/decision/decisionBuilder";
+import DecisionList from "#components/decision/decisionList/decisionList";
 import { useState } from "react";
 
-export default function LandingPage() {
-  const [values, setValues] = useState<
-    | {
-        decisionPremise: string;
-        instruction: string;
-        options?: Array<string> | string | null | undefined;
-        optionDescriptions?: Array<string> | string | null | undefined;
-      }
-    | undefined
+export default function DecisionPage() {
+  const [selectedDecisionId, setSelectedDecisionId] = useState<
+    number | undefined
   >(undefined);
-  const [type, setType] = useState<"noul" | "choice" | "score">("noul");
 
   return (
-    <div className="flex flex-row">
-      <DecisionCard
-        type={type}
-        setValues={(values) => setValues(values)}
-        setType={(type) => {
-          setValues(undefined);
-          setType(type);
-        }}
-      ></DecisionCard>
-      <StateCard variables={values} type={type}></StateCard>
+    <div className="flex flex-row gap-4 m-4">
+      <div className="flex flex-col w-full ">
+        <DecisionList
+          setSelectedDecisionId={(decision) => setSelectedDecisionId(decision)}
+          selectedDecisionId={selectedDecisionId}
+        />
+      </div>
+      <div className="flex flex-col w-full">
+        <DecisionBuilder selectedDecisionId={selectedDecisionId} />
+      </div>
     </div>
   );
 }

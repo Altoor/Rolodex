@@ -74,7 +74,7 @@ builder.queryType({
       },
     }),
 
-    decicions: t.drizzleField({
+    decisions: t.drizzleField({
       type: [SystemOnePrompt],
       resolve: (_query, _root, _args, ctx) => {
         const user = (ctx as any).user;
@@ -88,6 +88,36 @@ builder.queryType({
         }
 
         return db.query.decisions.findMany();
+      },
+    }),
+
+    getDecision: t.drizzleField({
+      type: SystemOnePrompt,
+      args: {
+        id: t.arg.int({ required: true }),
+      },
+      resolve: (_query, _root, { id }, ctx) => {
+        const user = (ctx as any).user;
+
+        if (!user) {
+          throw new GraphQLError("Not logged in", {
+            extensions: {
+              code: "BAD_USER_INPUT",
+            },
+          });
+        }
+
+        const decision = db.query.decisions.findFirst({ where: { id: id } });
+
+        if (!decision) {
+          throw new GraphQLError("Decision not found", {
+            extensions: {
+              code: "BAD_USER_INPUT",
+            },
+          });
+        }
+
+        return decision;
       },
     }),
   }),

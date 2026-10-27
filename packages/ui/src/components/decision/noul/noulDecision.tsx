@@ -12,13 +12,19 @@ type Inputs = {
 };
 
 interface NoulDecisionFormProps {
+  values:
+    | {
+        instruction: string;
+        decisionPremise: string;
+      }
+    | undefined;
   setValues: (variables: {
     instruction: string;
     decisionPremise: string;
   }) => void;
 }
 
-const NoulDecisionForm = ({ setValues }: NoulDecisionFormProps) => {
+const NoulDecisionForm = ({ values, setValues }: NoulDecisionFormProps) => {
   const { register, watch } = useForm<Inputs>();
 
   const debouncedSetValues = useCallback(
@@ -27,16 +33,20 @@ const NoulDecisionForm = ({ setValues }: NoulDecisionFormProps) => {
         setValues(variables);
       }, 500)();
     },
-    [watch("instruction"), watch("decisionPremise")],
+    [],
   );
 
   useEffect(() => {
-    const currentValues = {
-      instruction: watch("instruction"),
-      decisionPremise: watch("decisionPremise"),
-    };
-    debouncedSetValues(currentValues);
-  }, [watch("instruction"), watch("decisionPremise"), debouncedSetValues]);
+    watch(({ instruction, decisionPremise }) => {
+      console.log(values);
+      const currentValues = {
+        instruction: instruction ?? values?.instruction ?? "",
+        decisionPremise: decisionPremise ?? values?.decisionPremise ?? "",
+      };
+
+      debouncedSetValues(currentValues);
+    });
+  }, [watch, debouncedSetValues, values]);
 
   return (
     <form>
@@ -45,13 +55,19 @@ const NoulDecisionForm = ({ setValues }: NoulDecisionFormProps) => {
           <FieldLabel htmlFor="instruction">
             What is your current instruction
           </FieldLabel>
-          <Input {...register("instruction", { required: true })} />
+          <Input
+            defaultValue={values?.instruction}
+            {...register("instruction", { required: true })}
+          />
         </Field>
         <Field>
           <FieldLabel htmlFor="decisionPremise">
             What is the premise of the decision
           </FieldLabel>
-          <Input {...register("decisionPremise", { required: true })} />
+          <Input
+            defaultValue={values?.decisionPremise}
+            {...register("decisionPremise", { required: true })}
+          />
         </Field>
       </FieldGroup>
     </form>

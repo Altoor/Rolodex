@@ -16,6 +16,13 @@ type Inputs = {
 };
 
 interface scoreDecisionFormProps {
+  values: {
+    variables: {
+      instruction: string;
+      decisionPremise: string;
+      options: { name: string }[];
+    };
+  };
   setValues: (variables: {
     instruction: string;
     decisionPremise: string;
@@ -23,7 +30,7 @@ interface scoreDecisionFormProps {
   }) => void;
 }
 
-const ScoreDecisionForm = ({ setValues }: scoreDecisionFormProps) => {
+const ScoreDecisionForm = ({ values, setValues }: scoreDecisionFormProps) => {
   const { register, watch } = useForm<Inputs>();
   const [options, setOptions] = useState(new Map<number, { name: string }>());
 

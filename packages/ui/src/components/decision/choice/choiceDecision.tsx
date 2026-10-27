@@ -12,11 +12,17 @@ import { debounce } from "#lib/debounce";
 
 type Inputs = {
   instruction: string;
-
   decisionPremise: string;
 };
 
 interface choiceDecisionFormProps {
+  values:
+    | {
+        instruction: string;
+        decisionPremise: string;
+        options: { name: string; description: string }[] | null;
+      }
+    | undefined;
   setValues: (variables: {
     instruction: string;
     decisionPremise: string;
@@ -24,7 +30,7 @@ interface choiceDecisionFormProps {
   }) => void;
 }
 
-const ChoiceDecisionForm = ({ setValues }: choiceDecisionFormProps) => {
+const ChoiceDecisionForm = ({ values, setValues }: choiceDecisionFormProps) => {
   const { register, watch } = useForm<Inputs>();
   const [options, setOptions] = useState(
     new Map<number, { name: string; description: string }>(),
@@ -40,23 +46,49 @@ const ChoiceDecisionForm = ({ setValues }: choiceDecisionFormProps) => {
         setValues(variables);
       }, 500)();
     },
-    [watch("instruction"), watch("decisionPremise"), options],
+    [setValues],
   );
 
   useEffect(() => {
-    const currentValues = {
-      instruction: watch("instruction"),
-      decisionPremise: watch("decisionPremise"),
-      options: Array.from(options.entries()).map(([_, item]) => ({
-        name: item.name,
-        description: item.description,
-      })),
-    };
-    console.log(options);
-    debouncedSetValues(currentValues);
-  }, [watch, options, debouncedSetValues]);
+    watch(({ instruction, decisionPremise }) => {
+      const currentValues = {
+        instruction: instruction ?? "",
+        decisionPremise: decisionPremise ?? "",
+        options: Array.from(options.entries()).map(([_, item]) => ({
+          name: item.name,
+          description: item.description,
+        })),
+      };
 
-  const debounceOptions = debounce;
+      debouncedSetValues(currentValues);
+    });
+  }, [watch, debouncedSetValues, options]);
+
+  useEffect(() => {
+    if (values) {
+      setFormValues(
+        {
+          instruction: values.instruction,
+          decisionPremise: values.decisionPremise,
+        },
+        {
+          shouldDirty: false,
+          shouldValidate: false,
+        },
+      );
+
+      const optionsMap = new Map();
+      if (values.options) {
+        values.options.forEach((option, index) =>
+          optionsMap.set(index, {
+            name: option.name,
+            description: option.description,
+          }),
+        );
+      }
+      setOptions(optionsMap);
+    }
+  }, [setFormValues, values]);
 
   return (
     <form>
@@ -88,7 +120,7 @@ const ChoiceDecisionForm = ({ setValues }: choiceDecisionFormProps) => {
                   newOptions.set(index, changedOption);
                 }
 
-                debounceOptions(() => {
+                debounce(() => {
                   setOptions(newOptions);
                 }, 500)();
               }}

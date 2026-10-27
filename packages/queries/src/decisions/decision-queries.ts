@@ -22,3 +22,29 @@ export const SYSTEM_ONE_PROMPT = gql(/* GraphQL */ `
     }
   }
 `);
+
+export const DECISIONS = gql(/* GraphQL */ `
+  query Decisions {
+    decisions {
+      type
+      name
+      instruction
+      id
+      decisionPremise
+    }
+  }
+`);
+
+export const GET_DECISION = gql(/* GraphQL */ `
+  query Decision($id: Int!) {
+    getDecision(id: $id) {
+      type
+      options
+      optionDescriptions
+      name
+      instruction
+      id
+      decisionPremise
+    }
+  }
+`);

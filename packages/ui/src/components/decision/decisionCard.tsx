@@ -20,18 +20,30 @@ import ChoiceDecisionForm from "./choice/choiceDecision";
 import ScoreDecisionForm from "./score/scoreDecision";
 
 interface DecisionCardProps {
+  values:
+    | {
+        decisionPremise: string;
+        instruction: string;
+        options?: Array<string> | string | null | undefined;
+        optionDescriptions?: Array<string> | string | null | undefined;
+      }
+    | undefined;
   setValues: (variables: {
     decisionPremise: string;
     instruction: string;
     options?: Array<string> | string | null | undefined;
     optionDescriptions?: Array<string> | string | null | undefined;
   }) => void;
-
   setType: (type: "noul" | "choice" | "score") => void;
   type: "noul" | "choice" | "score";
 }
 
-const DecisionCard = ({ setValues, setType, type }: DecisionCardProps) => {
+const DecisionCard = ({
+  values,
+  setValues,
+  setType,
+  type,
+}: DecisionCardProps) => {
   const typeOfChoice = [
     { label: "Noul", value: "noul" },
     { label: "Choice", value: "choice" },
@@ -39,7 +51,7 @@ const DecisionCard = ({ setValues, setType, type }: DecisionCardProps) => {
   ];
 
   return (
-    <Card className="min-w-1/3">
+    <Card className="w-full">
       <CardHeader>
         <CardTitle>Decision</CardTitle>
         <CardDescription>Setup a decision</CardDescription>
@@ -69,6 +81,7 @@ const DecisionCard = ({ setValues, setType, type }: DecisionCardProps) => {
 
         {type === "noul" && (
           <NoulDecisionForm
+            values={values}
             setValues={(values) =>
               setValues({
                 ...values,
@@ -80,6 +93,7 @@ const DecisionCard = ({ setValues, setType, type }: DecisionCardProps) => {
 
         {type === "choice" && (
           <ChoiceDecisionForm
+            values={values}
             setValues={(values) =>
               setValues({
                 ...values,
@@ -94,6 +108,7 @@ const DecisionCard = ({ setValues, setType, type }: DecisionCardProps) => {
 
         {type === "score" && (
           <ScoreDecisionForm
+            values={values}
             setValues={(values) =>
               setValues({
                 ...values,
