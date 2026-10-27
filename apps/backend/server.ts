@@ -3,9 +3,6 @@ import { createYoga } from "graphql-yoga";
 import { createServer } from "node:http";
 import { schema } from "./src/schema/index.ts";
 import jwt from "jsonwebtoken";
-import { db } from "./src/schema/builder.ts";
-import { users } from "./src/db/schema.ts";
-import { eq } from "drizzle-orm";
 import { getUser } from "./src/schema/user/user-service.ts";
 
 const yoga = createYoga({

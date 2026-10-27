@@ -1,23 +1,80 @@
 "use client";
-import { ApolloClient, HttpLink, InMemoryCache } from "@apollo/client";
-import { SetContextLink } from "@apollo/client/link/context";
+import {
+  ApolloClient,
+  ApolloLink,
+  InMemoryCache,
+  Observable,
+} from "@apollo/client/core";
 import { ApolloProvider } from "@apollo/client/react";
+import { print } from "graphql";
+import {
+  createClient,
+  ClientOptions,
+  Client,
+  RequestParams,
+} from "graphql-sse";
 
-const authLink = new SetContextLink((prevContext, operation) => {
-  const token = localStorage.getItem("auth_token");
-  return {
-    headers: {
-      ...prevContext.headers,
-      authorization: token ? `Bearer ${token}` : "",
-    },
-  };
+class SSELink extends ApolloLink {
+  private client: Client;
+  private readonly operationsByRequest = new WeakMap<
+    RequestParams,
+    ApolloLink.Operation
+  >();
+  // Feel free to adjust the options type here to be what you need to be dynamic
+  constructor(options: ClientOptions) {
+    super();
+    this.client = createClient({
+      ...options,
+      // Merge headers from each operation's context
+      headers: async (request) => {
+        const operation: ApolloLink.Operation =
+          this.operationsByRequest.get(request)!;
+        return {
+          // This can be omitted if your created link's options don't include headers
+          ...(typeof options.headers === "function"
+            ? await options.headers(request)
+            : options.headers),
+          ...operation.getContext().headers,
+        };
+      },
+    });
+  }
+  public request(
+    operation: ApolloLink.Operation,
+  ): Observable<ApolloLink.Result> {
+    const request: RequestParams = {
+      // This supports the persisted queries link to avoid sending printed query when cached
+      variables: operation.variables,
+      extensions: operation.extensions,
+      operationName: operation.operationName,
+      query:
+        (operation.getContext().http?.includeQuery ?? true)
+          ? print(operation.query)
+          : undefined!,
+    };
+    this.operationsByRequest.set(request, operation);
+    return new Observable((sink) => {
+      return this.client.subscribe<ApolloLink.Result>(request, {
+        next: (payload: any) => sink.next(payload as ApolloLink.Result),
+        complete: sink.complete.bind(sink),
+        error: sink.error.bind(sink),
+      });
+    });
+  }
+}
+export const link = new SSELink({
+  url: "http://localhost:4000/graphql",
+  headers: () => {
+    const token = localStorage.getItem("auth_token");
+    return {
+      Authorization: token ? `Bearer ${token}` : "",
+    };
+  },
 });
 
 const client = new ApolloClient({
   ssrMode: true,
-  link: authLink.concat(
-    new HttpLink({ uri: "http://localhost:4000/graphql", headers: {} }),
-  ), // Authorization: `Bearer ${localStorage.getItem("token")}`
+  link: link,
   cache: new InMemoryCache(),
 });
 

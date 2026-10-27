@@ -15,6 +15,13 @@ export const relations = defineRelations(schema, (r) => ({
     }),
   },
 
+  decisions: {
+    author: r.one.users({
+      from: r.decisions.authorId,
+      to: r.users.id,
+    }),
+  },
+
   todos_todo: {
     actor: r.one.users({
       from: r.todos.actorId,

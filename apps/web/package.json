@@ -4,9 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 3001 & pnpm run sleep3s && pnpm run codegen",
-    "sleep3s": "node -e \"setTimeout(() => process.exit(0), 3000)\"",
-    "codegen": "graphql-codegen --config codegen.ts --watch",
+    "dev": "next dev --port 3001",
     "build": "next build",
     "start": "next start",
     "lint": "eslint --max-warnings 0",
@@ -18,6 +16,7 @@
     "@repo/ui": "workspace:*",
     "geist": "1.7.2",
     "graphql": "^16.14.2",
+    "graphql-sse": "^2.6.3",
     "next": "16.3.8",
     "react": "19.3.0",
     "react-dom": "19.3.0",
