@@ -52,9 +52,9 @@ builder.mutationType({
       type: Task,
       args: {
         id: t.arg.int({ required: true }),
-        name: t.arg.string({ required: true }),
-        decisionId: t.arg.int({ required: true }),
-        type: t.arg({ type: TaskType, required: true }),
+        name: t.arg.string(),
+        decisionId: t.arg.int(),
+        type: t.arg({ type: TaskType }),
       },
       resolve: async (_query, _root, { id, name, type, decisionId }, ctx) => {
         const author_id = (ctx as any).user.id;
@@ -90,7 +90,6 @@ builder.mutationType({
         }
 
         const taskDto = {
-          id: id,
           name: name ?? task.name,
           type: type ?? task.type,
           decisionId: decisionId ?? task.decisionId,
@@ -195,12 +194,12 @@ builder.mutationType({
       type: TaskResult,
       args: {
         id: t.arg.int({ required: true }),
-        taskId: t.arg.int({ required: true }),
-        type: t.arg({ type: DecisionType, required: true }),
+        taskId: t.arg.int(),
+        type: t.arg({ type: DecisionType }),
         option: t.arg.string(),
         scoreThreshold: t.arg.float(),
         probabilityThreshold: t.arg.float(),
-        confidenceThreshold: t.arg.float({ required: true }),
+        confidenceThreshold: t.arg.float(),
         resultTaskId: t.arg.int(),
       },
       resolve: async (
@@ -241,7 +240,6 @@ builder.mutationType({
         }
 
         const taskResultDto = {
-          id: id,
           taskId: taskId ?? taskResult.taskId,
           type: type ?? taskResult.type,
           option: option ?? taskResult.option,

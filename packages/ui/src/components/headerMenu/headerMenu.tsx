@@ -32,6 +32,11 @@ export default function HeaderMenu() {
             <NavigationMenuLink href="/decisions">Decisions</NavigationMenuLink>
           </NavigationMenuItem>
           <NavigationMenuItem>
+            <NavigationMenuLink className="text-nowrap" href="/task-queue">
+              Task queue
+            </NavigationMenuLink>
+          </NavigationMenuItem>
+          <NavigationMenuItem>
             <NavigationMenuLink href="/models">Models</NavigationMenuLink>
           </NavigationMenuItem>
         </NavigationMenuList>

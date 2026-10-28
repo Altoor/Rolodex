@@ -1,6 +1,6 @@
 import { builder } from "../builder";
 
-export const TaskType = builder.enumType("taskType", {
+export const TaskType = builder.enumType("TaskType", {
   values: ["decision", "textPrompt", "tool"],
 });
 

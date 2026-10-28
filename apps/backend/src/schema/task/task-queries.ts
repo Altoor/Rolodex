@@ -4,7 +4,7 @@ import { Task, TaskResult } from "./";
 
 builder.queryType({
   fields: (t) => ({
-    Tasks: t.drizzleField({
+    tasks: t.drizzleField({
       type: [Task],
       resolve: (_query, _root, _args, ctx) => {
         const user = (ctx as any).user;
@@ -21,7 +21,7 @@ builder.queryType({
       },
     }),
 
-    GetTask: t.drizzleField({
+    getTask: t.drizzleField({
       type: Task,
       args: {
         id: t.arg.int({ required: true }),
@@ -51,7 +51,7 @@ builder.queryType({
       },
     }),
 
-    TaskResults: t.drizzleField({
+    taskResults: t.drizzleField({
       type: [TaskResult],
       resolve: (_query, _root, _args, ctx) => {
         const user = (ctx as any).user;
@@ -68,7 +68,7 @@ builder.queryType({
       },
     }),
 
-    GetTaskResults: t.drizzleField({
+    getTaskResults: t.drizzleField({
       type: TaskResult,
       args: {
         id: t.arg.int({ required: true }),

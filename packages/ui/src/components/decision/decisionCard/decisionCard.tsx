@@ -16,9 +16,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "#components/ui/select";
-import NoulDecisionForm from "./noul/noulDecision";
-import ChoiceDecisionForm from "./choice/choiceDecision";
-import ScoreDecisionForm from "./score/scoreDecision";
+import NoulDecisionForm from "../noul/noulDecision";
+import ChoiceDecisionForm from "../choice/choiceDecision";
+import ScoreDecisionForm from "../score/scoreDecision";
 import { Field, FieldGroup, FieldLabel } from "#components/ui/field";
 import { Input } from "#components/ui/input";
 import { useForm } from "react-hook-form";

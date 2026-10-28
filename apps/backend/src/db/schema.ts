@@ -50,12 +50,12 @@ export const taskResults = pgTable("taskResults", {
   resultTaskId: integer("resultTaskId"),
 });
 
-export const taskType = pgEnum("taskType", ["decision", "textPrompt", "tool"]);
+export const TaskType = pgEnum("TaskType", ["decision", "textPrompt", "tool"]);
 
 export const tasks = pgTable("tasks", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   name: text("name").notNull(),
-  type: taskType().default("decision").notNull(),
+  type: TaskType().default("decision").notNull(),
   decisionId: integer("decisionId"),
 });
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import DecisionCard from "./decisionCard";
+import DecisionCard from "./decisionCard/decisionCard";
 import StateCard from "./state/stateCard";
 import {
   DECISIONS,
@@ -71,8 +71,6 @@ const DecisionBuilder = ({ selectedDecisionId }: DecisionBuilderProps) => {
           });
 
           setType((decision.data.getDecision.type as DecisionType) ?? "noul");
-        } else {
-          console.error("something happened");
         }
       };
 
@@ -117,7 +115,6 @@ const DecisionBuilder = ({ selectedDecisionId }: DecisionBuilderProps) => {
           <DecisionCard
             type={type}
             setValues={(values) => {
-              console.log(values);
               setFormValues(values);
             }}
             setType={(type) => {
