@@ -1,0 +1,1 @@
+ALTER TABLE "queuedTask" RENAME TO "queuedTasks";

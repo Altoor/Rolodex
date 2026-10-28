@@ -7,6 +7,7 @@ import {
   date,
   bigint,
   json,
+  real,
 } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
@@ -25,17 +26,46 @@ export const todos = pgTable("todos", {
   actorId: integer("actor_id").notNull(),
 });
 
-export const decisionTypesEnum = pgEnum("type", ["choice", "noul", "score"]);
+export const decisionType = pgEnum("decisionType", ["choice", "noul", "score"]);
 
 export const decisions = pgTable("decisions", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   name: text("name").notNull(),
-  type: decisionTypesEnum().default("choice").notNull(),
+  type: decisionType().default("choice").notNull(),
   decisionPremise: text("decisionPremise").notNull(),
   instruction: text("instruction").notNull(),
   options: text("options").array(),
   optionDescriptions: text("optionDescriptions").array(),
   authorId: integer("authorId").notNull(),
+});
+
+export const taskResults = pgTable("taskResults", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  taskId: integer("taskId").notNull(),
+  type: decisionType().default("choice").notNull(),
+  option: text("option"),
+  scoreThreshold: real("scoreThreshold"),
+  probabilityThreshold: real("probabilityThreshold"),
+  confidenceThreshold: real("confidenceThreshold").notNull(),
+  resultTaskId: integer("resultTaskId"),
+});
+
+export const taskType = pgEnum("taskType", ["decision", "textPrompt", "tool"]);
+
+export const tasks = pgTable("tasks", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  name: text("name").notNull(),
+  type: taskType().default("decision").notNull(),
+  decisionId: integer("decisionId"),
+});
+
+export const queuedTasks = pgTable("queuedTasks", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  taskId: integer("taskId").notNull(),
+  state: text("state").notNull(),
+  completed: boolean("completed").default(false).notNull(),
+  queued_at: date("queued_at").notNull(),
+  queued_by: integer("queued_by").notNull(),
 });
 
 export const models = pgTable("models", {

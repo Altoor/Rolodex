@@ -22,6 +22,35 @@ export const relations = defineRelations(schema, (r) => ({
     }),
   },
 
+  queue: {
+    queued_by: r.one.users({
+      from: r.queuedTasks.queued_by,
+      to: r.users.id,
+    }),
+
+    queuedTask: r.one.tasks({
+      from: r.queuedTasks.taskId,
+      to: r.tasks.id,
+    }),
+  },
+
+  tasks: {
+    taskResults: r.many.taskResults(),
+  },
+
+  taskResults: {
+    task: r.one.tasks({
+      from: r.taskResults.taskId,
+      to: r.tasks.id,
+    }),
+
+    resultTask: r.one.tasks({
+      from: r.taskResults.resultTaskId,
+      to: r.tasks.id,
+      alias: "resultTask",
+    }),
+  },
+
   todos_todo: {
     actor: r.one.users({
       from: r.todos.actorId,
