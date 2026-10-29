@@ -10,7 +10,7 @@ import {
 } from "#components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "#components/ui/field";
 import { Input } from "#components/ui/input";
-import { useForm } from "react-hook-form";
+import { useForm, type Control } from "react-hook-form";
 import { useCallback, useEffect } from "react";
 import { Button } from "#components/ui/button";
 import { Save } from "lucide-react";
@@ -18,6 +18,7 @@ import { debounce } from "#lib/debounce";
 import {
   Select,
   SelectContent,
+  SelectController,
   SelectGroup,
   SelectItem,
   SelectTrigger,
@@ -42,7 +43,9 @@ interface TaskCardProps {
 }
 
 const TaskCard = ({ values, save, setValues }: TaskCardProps) => {
-  const { register, reset, watch } = useForm<Inputs>();
+  const { register, reset, watch, control } = useForm<Inputs>({
+    defaultValues: { name: "", type: "decision" as TaskType },
+  });
 
   useEffect(() => {
     reset({ name: values?.name, type: values?.type });
@@ -63,7 +66,7 @@ const TaskCard = ({ values, save, setValues }: TaskCardProps) => {
     const { unsubscribe } = watch(({ name, type }) => {
       const currentValues = {
         name: name ?? "",
-        type: type ?? "decision",
+        type: type ?? ("decision" as TaskType),
       };
 
       debouncedSetValues(currentValues);
@@ -72,53 +75,58 @@ const TaskCard = ({ values, save, setValues }: TaskCardProps) => {
   }, [watch, debouncedSetValues]);
 
   const typeOfChoice = [
-    { label: "Decision", value: "decision" },
-    { label: "TextPrompt", value: "textPrompt" },
-    { label: "Tool", value: "tool" },
+    { label: "Decision", value: "decision" as TaskType },
+    { label: "TextPrompt", value: "textPrompt" as TaskType },
+    { label: "Tool", value: "tool" as TaskType },
   ];
+
   return (
     <Card className="w-full">
-      <form {...form}>
-        <CardHeader className="w-full flex flex-row">
-          <CardContent>
-            <CardTitle>Task</CardTitle>
-            <CardDescription>Setup a Task</CardDescription>
+      <CardHeader className="w-full flex flex-row">
+        <CardContent>
+          <CardTitle>Task</CardTitle>
+          <CardDescription>Setup a Task</CardDescription>
+          <Field>
+            <SelectController
+              name="type"
+              control={control}
+              defaultValue="decision"
+            >
+              {(value, onChange) => (
+                <>
+                  <Select value={value} onValueChange={onChange}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {typeOfChoice.map((item) => (
+                          <SelectItem key={item.value} value={item.value}>
+                            {item.label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </>
+              )}
+            </SelectController>
+          </Field>
+        </CardContent>
+        <CardContent className="w-full">
+          <FieldGroup>
             <Field>
-              <Select
-                items={typeOfChoice}
-                defaultValue={"decision"}
-                {...register("type", { required: true })}
-              >
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {typeOfChoice.map((item) => (
-                      <SelectItem key={item.value} value={item.value}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
+              <FieldLabel htmlFor="name">Name</FieldLabel>
+              <Input {...register("name", { required: true })} />
             </Field>
-          </CardContent>
-          <CardContent className="w-full">
-            <FieldGroup>
-              <Field>
-                <FieldLabel htmlFor="name">Name</FieldLabel>
-                <Input {...register("name", { required: true })} />
-              </Field>
-            </FieldGroup>
-          </CardContent>
-          <CardAction>
-            <Button onClick={() => save()}>
-              <Save></Save>
-            </Button>
-          </CardAction>
-        </CardHeader>
-      </form>
+          </FieldGroup>
+        </CardContent>
+        <CardAction>
+          <Button onClick={() => save()}>
+            <Save></Save>
+          </Button>
+        </CardAction>
+      </CardHeader>
     </Card>
   );
 };

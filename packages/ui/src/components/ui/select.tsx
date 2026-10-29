@@ -2,6 +2,7 @@ import * as React from "react"
 import { Select as SelectPrimitive } from "@base-ui/react/select"
 import { cn } from "cn"
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
+import { Controller, type ControllerProps, type FieldPath, type FieldValues, type Control } from "react-hook-form"
 
 const Select = SelectPrimitive.Root
 
@@ -184,11 +185,69 @@ function SelectScrollDownButton({
   )
 }
 
+interface SelectItemComponent {
+  value: string
+  children: React.ReactNode
+  className?: string
+}
+
+const SelectItemComponent: React.FC<SelectItemComponent> = ({
+  value,
+  children,
+  className,
+  ...props
+}) => (
+  <SelectItem value={value} className={className} {...props}>
+    {children}
+  </SelectItem>
+)
+
+interface SelectControllerProps<
+  TFieldValues extends FieldValues,
+  TName extends FieldPath<TFieldValues>,
+> extends Omit<ControllerProps<TFieldValues, TName>, "render"> {
+  children: (
+    value: string | undefined,
+    onChange: (value: string | null) => void,
+  ) => React.JSX.Element
+}
+
+function SelectController<
+  TFieldValues extends FieldValues,
+  TName extends FieldPath<TFieldValues>,
+>({
+  name,
+  control,
+  defaultValue,
+  rules,
+  shouldUnregister,
+  children,
+}: SelectControllerProps<TFieldValues, TName>) {
+  return (
+    <Controller
+      name={name}
+      control={control}
+      defaultValue={defaultValue}
+      rules={rules}
+      shouldUnregister={shouldUnregister}
+      render={({ field }) =>
+        children(
+          field.value ?? undefined,
+          (value: string | null) => field.onChange(value ?? undefined),
+        ) as React.JSX.Element
+      }
+    />
+  )
+}
+
 export {
   Select,
   SelectContent,
+  SelectController,
+  type SelectControllerProps,
   SelectGroup,
   SelectItem,
+  SelectItemComponent,
   SelectLabel,
   SelectScrollDownButton,
   SelectScrollUpButton,

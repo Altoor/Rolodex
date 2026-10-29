@@ -37,6 +37,7 @@ const DecisionBuilder = ({ selectedDecisionId }: DecisionBuilderProps) => {
         options?: Array<string>;
         optionDescriptions?: Array<string>;
         name: string;
+        type: DecisionType;
       }
     | undefined
   >(undefined);
@@ -48,10 +49,10 @@ const DecisionBuilder = ({ selectedDecisionId }: DecisionBuilderProps) => {
         options?: Array<string>;
         optionDescriptions?: Array<string>;
         name: string;
+        type: DecisionType;
       }
     | undefined
   >(undefined);
-  const [type, setType] = useState<DecisionType>("noul");
 
   useEffect(() => {
     if (selectedDecisionId !== undefined) {
@@ -68,9 +69,8 @@ const DecisionBuilder = ({ selectedDecisionId }: DecisionBuilderProps) => {
             optionDescriptions: decision.data?.getDecision
               .optionDescriptions as string[] | undefined,
             name: decision.data?.getDecision.name ?? "",
+            type: (decision.data.getDecision.type as DecisionType) ?? "noul",
           });
-
-          setType((decision.data.getDecision.type as DecisionType) ?? "noul");
         }
       };
 
@@ -82,28 +82,24 @@ const DecisionBuilder = ({ selectedDecisionId }: DecisionBuilderProps) => {
         decisionPremise: "",
         options: undefined,
         optionDescriptions: undefined,
+        type: "noul" as DecisionType,
       });
-      setType("noul");
     }
   }, [getDecision, selectedDecisionId]);
 
-  const saveDecision = (value: {
-    decisionPremise: string;
-    instruction: string;
-    type: DecisionType;
-    name: string;
-    options?: Array<string>;
-    optionDescriptions?: Array<string>;
-  }) => {
-    if (selectedDecisionId) {
-      updateDecision({ variables: { ...value, id: selectedDecisionId } });
-    } else {
-      createDecision({ variables: { ...value } });
+  const saveDecision = () => {
+    if (formValues) {
+      if (selectedDecisionId) {
+        updateDecision({
+          variables: { ...formValues, id: selectedDecisionId },
+        });
+      } else {
+        createDecision({ variables: { ...formValues } });
+      }
+      client.refetchQueries({
+        include: [DECISIONS],
+      });
     }
-
-    client.refetchQueries({
-      include: [DECISIONS],
-    });
   };
 
   return (
@@ -113,22 +109,20 @@ const DecisionBuilder = ({ selectedDecisionId }: DecisionBuilderProps) => {
       ) : (
         <>
           <DecisionCard
-            type={type}
             setValues={(values) => {
-              setFormValues(values);
-            }}
-            setType={(type) => {
-              setFormValues(undefined);
-              setType(type);
+              if (values) {
+                setFormValues(values);
+              }
             }}
             values={loadedValues}
             save={() => {
-              if (formValues) {
-                saveDecision({ ...formValues, type: type });
-              }
+              saveDecision();
             }}
           ></DecisionCard>
-          <StateCard variables={formValues} type={type}></StateCard>
+          <StateCard
+            variables={formValues}
+            type={formValues?.type ?? "noul"}
+          ></StateCard>
         </>
       )}
     </div>
