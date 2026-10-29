@@ -22,12 +22,10 @@ import ChoiceDecisionForm from "../choice/choiceDecision";
 import ScoreDecisionForm from "../score/scoreDecision";
 import { Field, FieldGroup, FieldLabel } from "#components/ui/field";
 import { Input } from "#components/ui/input";
-import { useForm } from "react-hook-form";
-import { useCallback, useEffect } from "react";
 import { Button } from "#components/ui/button";
 import { Save } from "lucide-react";
-import { debounce } from "#lib/debounce";
 import { DecisionType } from "@repo/queries/__generated__/graphql";
+import { useDebouncedFormState } from "#hooks/useDebouncedFormState";
 
 type Inputs = {
   name: string;
@@ -57,49 +55,25 @@ interface DecisionCardProps {
 }
 
 const DecisionCard = ({ values, setValues, save }: DecisionCardProps) => {
-  const { register, getValues, reset, control, watch } = useForm<Inputs>({
-    defaultValues: { name: "", type: "noul" as DecisionType },
+  const { register, control, getValues } = useDebouncedFormState<Inputs>({
+    fieldsToWatch: ["name", "type"],
+    valuesFromFields: (watched) => ({
+      name: watched["name"] as string ?? "",
+      type: watched["type"] as DecisionType ?? ("noul" as DecisionType),
+      decisionPremise: "",
+      instruction: "",
+      options: undefined,
+      optionDescriptions: undefined,
+    }),
+    values,
+    setValues,
   });
-
-  useEffect(() => {
-    reset({ name: values?.name ?? "", type: values?.type });
-  }, [values, reset]);
 
   const typeOfChoice = [
     { label: "Noul", value: "noul" },
     { label: "Choice", value: "choice" },
     { label: "Score", value: "score" },
   ];
-
-  const debouncedSetValues = useCallback(
-    (variables: {
-      decisionPremise: string;
-      instruction: string;
-      options?: Array<string>;
-      optionDescriptions?: Array<string>;
-      name: string;
-      type: DecisionType;
-    }) => {
-      debounce(() => {
-        setValues({ ...variables });
-      }, 500)();
-    },
-    [getValues],
-  );
-
-  useEffect(() => {
-    const { unsubscribe } = watch(({ name, type }) => {
-      debouncedSetValues({
-        name: name ?? "",
-        type: type ?? ("noul" as DecisionType),
-        decisionPremise: "",
-        instruction: "",
-        options: undefined,
-        optionDescriptions: undefined,
-      });
-    });
-    return () => unsubscribe();
-  }, [watch, debouncedSetValues]);
 
   return (
     <Card className="w-full">

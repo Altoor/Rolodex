@@ -11,7 +11,7 @@ builder.mutationType({
       type: Task,
       args: {
         name: t.arg.string({ required: true }),
-        decisionId: t.arg.int({ required: true }),
+        decisionId: t.arg.int(),
         type: t.arg({ type: TaskType, required: true }),
       },
       resolve: async (_query, _root, { name, decisionId, type }, ctx) => {

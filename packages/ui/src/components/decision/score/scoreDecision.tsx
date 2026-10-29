@@ -1,19 +1,17 @@
 import { Button } from "#components/ui/button";
-
 import { Field, FieldGroup, FieldLabel } from "#components/ui/field";
-import { useForm } from "react-hook-form";
 import { Input } from "#components/ui/input";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import ScoreOption from "./scoreOption";
 import { Plus } from "lucide-react";
-import { debounce } from "#lib/debounce";
+import { useDebouncedFormState } from "#hooks/useDebouncedFormState";
 
 type Inputs = {
   instruction: string;
   decisionPremise: string;
 };
 
-interface scoreDecisionFormProps {
+interface ScoreDecisionFormProps {
   values:
     | {
         decisionPremise: string;
@@ -29,31 +27,24 @@ interface scoreDecisionFormProps {
   }) => void;
 }
 
-const ScoreDecisionForm = ({ values, setValues }: scoreDecisionFormProps) => {
-  const { register, watch, reset } = useForm<Inputs>();
+const ScoreDecisionForm = ({ values, setValues }: ScoreDecisionFormProps) => {
+  const { register } = useDebouncedFormState<Inputs>({
+    fieldsToWatch: ["instruction", "decisionPremise"],
+    valuesFromFields: (watched) => ({
+      instruction: watched["instruction"] as string ?? "",
+      decisionPremise: watched["decisionPremise"] as string ?? "",
+      options: Array.from(options.entries()).map(([_, item]) => ({
+        name: item.name,
+      })),
+    }),
+    values,
+    setValues,
+  });
   const [options, setOptions] = useState(new Map<number, { name: string }>());
 
-  const debouncedSetValues = useCallback(
-    (variables: {
-      instruction: string;
-      decisionPremise: string;
-      options: { name: string }[];
-    }) => {
-      debounce(() => {
-        setValues(variables);
-      }, 500)();
-    },
-    [watch],
-  );
-
+  // Load options from parent values when they change
   useEffect(() => {
     if (values) {
-      reset({
-        instruction: values.instruction,
-        decisionPremise: values.decisionPremise,
-      });
-
-      // Load options state
       const optionsMap = new Map();
       if (values.options) {
         (values.options as string[]).forEach((option, index) =>
@@ -62,22 +53,7 @@ const ScoreDecisionForm = ({ values, setValues }: scoreDecisionFormProps) => {
       }
       setOptions(optionsMap);
     }
-  }, [values, reset]);
-
-  useEffect(() => {
-    const { unsubscribe } = watch(({ instruction, decisionPremise }) => {
-      const currentValues = {
-        instruction: instruction ?? "",
-        decisionPremise: decisionPremise ?? "",
-        options: Array.from(options.entries()).map(([_, item]) => ({
-          name: item.name,
-        })),
-      };
-
-      debouncedSetValues(currentValues);
-    });
-    return () => unsubscribe();
-  }, [watch, options, debouncedSetValues]);
+  }, [values]);
 
   return (
     <form>
@@ -109,9 +85,7 @@ const ScoreDecisionForm = ({ values, setValues }: scoreDecisionFormProps) => {
                   newOptions.set(index, changedOption);
                 }
 
-                debounce(() => {
-                  setOptions(newOptions);
-                }, 500)();
+                setOptions(newOptions);
               }}
               key={index}
             />

@@ -36,6 +36,10 @@ export const relations = defineRelations(schema, (r) => ({
 
   tasks: {
     taskResults: r.many.taskResults(),
+    decision: r.one.decisions({
+      from: r.tasks.decisionId,
+      to: r.decisions.id,
+    }),
   },
 
   taskResults: {

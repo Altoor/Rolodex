@@ -1,12 +1,15 @@
 import { gql } from "../__generated__";
 
 export const CREATE_TASK = gql(/* GraphQL */ `
-  mutation CreateTask($name: String!, $type: TaskType!, $decisionId: Int!) {
+  mutation CreateTask($name: String!, $type: TaskType!, $decisionId: Int) {
     createTask(name: $name, type: $type, decisionId: $decisionId) {
-      decisionId
       id
       name
-      type
+      decision {
+        id
+        options
+        type
+      }
     }
   }
 `);
@@ -19,10 +22,14 @@ export const UPDATE_TASK = gql(/* GraphQL */ `
     $decisionId: Int
   ) {
     updateTask(id: $id, name: $name, type: $type, decisionId: $decisionId) {
-      decisionId
       id
       name
       type
+      decision {
+        id
+        options
+        type
+      }
     }
   }
 `);
@@ -40,8 +47,8 @@ export const CREATE_TASKRESULT = gql(/* GraphQL */ `
     $confidenceThreshold: Float!
     $probabilityThreshold: Float
     $scoreThreshold: Float
-    $resultTaskId: Int!
-    $option: String!
+    $resultTaskId: Int
+    $option: String
   ) {
     createTaskResult(
       type: $type

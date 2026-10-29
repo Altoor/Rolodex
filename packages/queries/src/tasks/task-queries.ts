@@ -3,7 +3,6 @@ import { gql } from "../__generated__";
 export const TASKS = gql(/* GraphQL */ `
   query GetTasks {
     tasks {
-      decisionId
       id
       name
       type
@@ -17,6 +16,11 @@ export const TASKS = gql(/* GraphQL */ `
         type
         taskId
       }
+      decision {
+        id
+        options
+        type
+      }
     }
   }
 `);
@@ -24,7 +28,6 @@ export const TASKS = gql(/* GraphQL */ `
 export const GET_TASK = gql(/* GraphQL */ `
   query GetTask($id: Int!) {
     getTask(id: $id) {
-      decisionId
       id
       name
       type
@@ -37,6 +40,11 @@ export const GET_TASK = gql(/* GraphQL */ `
         id
         option
         probabilityThreshold
+      }
+      decision {
+        id
+        options
+        type
       }
     }
   }

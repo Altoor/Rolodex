@@ -10,7 +10,7 @@ export const Task = builder.drizzleObject("tasks", {
     id: t.exposeInt("id"),
     name: t.exposeString("name"),
     type: t.exposeString("type"),
-    decisionId: t.exposeInt("decisionId"),
+    decision: t.relation("decision"),
     taskResults: t.relation("taskResults"),
   }),
 });

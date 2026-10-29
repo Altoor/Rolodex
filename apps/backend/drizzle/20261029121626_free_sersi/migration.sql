@@ -1,0 +1,1 @@
+ALTER TYPE "taskType" RENAME TO "TaskType";

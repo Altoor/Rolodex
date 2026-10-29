@@ -2,19 +2,16 @@
 
 import {
   Card,
+  CardHeader,
   CardTitle,
   CardDescription,
   CardContent,
   CardAction,
-  CardHeader,
 } from "#components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "#components/ui/field";
 import { Input } from "#components/ui/input";
-import { useForm, type Control } from "react-hook-form";
-import { useCallback, useEffect } from "react";
 import { Button } from "#components/ui/button";
-import { Save } from "lucide-react";
-import { debounce } from "#lib/debounce";
+import { Plus, Save } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -24,7 +21,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "#components/ui/select";
-import { TaskType } from "@repo/queries/__generated__/graphql";
+import { DecisionType, TaskType } from "@repo/queries/__generated__/graphql";
+import TaskResultOption from "../taskResultOption/taskResultOption";
+import { useDebouncedFormState } from "#hooks/useDebouncedFormState";
+import { useState } from "react";
 
 type Inputs = {
   name: string;
@@ -32,47 +32,43 @@ type Inputs = {
 };
 
 interface TaskCardProps {
+  id?: number;
   values:
     | {
         name: string;
         type: TaskType;
+        taskResults?: {
+          type: DecisionType;
+          taskId: number | null;
+          scoreThreshold: number | null;
+          resultTaskId: number | null;
+          confidenceThreshold: number | null;
+          id: number | null;
+          option: string | null;
+          probabilityThreshold: number | null;
+        }[];
+        decision?: {
+          id: number | null;
+          options: string[] | null;
+          type: string | null;
+        };
       }
     | undefined;
   save: () => void;
   setValues: (variables: { name: string; type: TaskType }) => void;
 }
 
-const TaskCard = ({ values, save, setValues }: TaskCardProps) => {
-  const { register, reset, watch, control } = useForm<Inputs>({
-    defaultValues: { name: "", type: "decision" as TaskType },
+const TaskCard = ({ id, values, save, setValues }: TaskCardProps) => {
+  const [taskResults, setTaskResults] = useState(values?.taskResults ?? []);
+  const { register, control } = useDebouncedFormState<Inputs>({
+    fieldsToWatch: ["name", "type"],
+    valuesFromFields: (watched) => ({
+      name: (watched["name"] as string) ?? "",
+      type: (watched["type"] as TaskType) ?? ("decision" as TaskType),
+    }),
+    values,
+    setValues,
   });
-
-  useEffect(() => {
-    reset({ name: values?.name, type: values?.type });
-    console.log(values);
-  }, [values, reset]);
-
-  const debouncedSetValues = useCallback(
-    (variables: { name: string; type: TaskType }) => {
-      debounce(() => {
-        setValues({ ...variables });
-        console.log(variables);
-      }, 500)();
-    },
-    [watch],
-  );
-
-  useEffect(() => {
-    const { unsubscribe } = watch(({ name, type }) => {
-      const currentValues = {
-        name: name ?? "",
-        type: type ?? ("decision" as TaskType),
-      };
-
-      debouncedSetValues(currentValues);
-    });
-    return () => unsubscribe();
-  }, [watch, debouncedSetValues]);
 
   const typeOfChoice = [
     { label: "Decision", value: "decision" as TaskType },
@@ -127,6 +123,45 @@ const TaskCard = ({ values, save, setValues }: TaskCardProps) => {
           </Button>
         </CardAction>
       </CardHeader>
+
+      <CardContent>
+        {values?.type == ("decision" as TaskType) && (
+          <>
+            <CardTitle>Options</CardTitle>
+
+            <div className="flex flex-row flex-wrap gap-2">
+              {taskResults != undefined &&
+                Array.from(
+                  taskResults.map((taskResult) => (
+                    <TaskResultOption
+                      values={taskResult}
+                      key={taskResult.id}
+                      options={values?.decision?.options ?? []}
+                    ></TaskResultOption>
+                  )),
+                )}
+              <Button
+                className="w-min"
+                onClick={() => {
+                  const newOption = {
+                    type: values?.decision?.type as DecisionType,
+                    taskId: id ?? null,
+                    scoreThreshold: null,
+                    resultTaskId: null,
+                    confidenceThreshold: null,
+                    id: null,
+                    option: null,
+                    probabilityThreshold: null,
+                  };
+                  setTaskResults(taskResults?.concat(newOption));
+                }}
+              >
+                <Plus></Plus>
+              </Button>
+            </div>
+          </>
+        )}
+      </CardContent>
     </Card>
   );
 };

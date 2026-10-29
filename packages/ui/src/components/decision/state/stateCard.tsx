@@ -11,7 +11,6 @@ import {
 import { SubmitHandler, useForm } from "react-hook-form";
 import { Input } from "#components/ui/input";
 import { Spinner } from "#components/ui/spinner";
-import { ErrorLike } from "@apollo/client";
 import {
   Card,
   CardContent,

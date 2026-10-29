@@ -1,8 +1,6 @@
 import { Field, FieldGroup, FieldLabel } from "#components/ui/field";
-import { useForm } from "react-hook-form";
 import { Input } from "#components/ui/input";
-import { useCallback, useEffect } from "react";
-import { debounce } from "#lib/debounce";
+import { useDebouncedFormState } from "#hooks/useDebouncedFormState";
 
 type Inputs = {
   instruction: string;
@@ -23,33 +21,15 @@ interface NoulDecisionFormProps {
 }
 
 const NoulDecisionForm = ({ values, setValues }: NoulDecisionFormProps) => {
-  const { register, watch, reset } = useForm<Inputs>();
-
-  useEffect(() => {
-    if (values) {
-      reset(values);
-    }
-  }, [values]);
-
-  const debouncedSetValues = useCallback(
-    debounce((variables: { instruction: string; decisionPremise: string }) => {
-      setValues(variables);
-    }, 500),
-    [watch],
-  );
-
-  useEffect(() => {
-    const { unsubscribe } = watch(({ instruction, decisionPremise }) => {
-      const currentValues = {
-        instruction: instruction ?? "",
-        decisionPremise: decisionPremise ?? "",
-      };
-
-      debouncedSetValues(currentValues);
-    });
-
-    return () => unsubscribe();
-  }, [watch, debouncedSetValues]);
+  const { register } = useDebouncedFormState<Inputs>({
+    fieldsToWatch: ["instruction", "decisionPremise"],
+    valuesFromFields: (watched) => ({
+      instruction: watched["instruction"] as string ?? "",
+      decisionPremise: watched["decisionPremise"] as string ?? "",
+    }),
+    values,
+    setValues,
+  });
 
   return (
     <form>

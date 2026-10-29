@@ -9,7 +9,7 @@ import { GET_TASK, TASKS } from "@repo/queries/tasks/task-queries";
 import { Pencil } from "lucide-react";
 import { useEffect, useState } from "react";
 import TaskCard from "./taskCard/taskCard";
-import { TaskType } from "@repo/queries/__generated__/graphql";
+import { DecisionType, TaskType } from "@repo/queries/__generated__/graphql";
 
 interface TaskBuilderProps {
   selectedTaskId: number | undefined;
@@ -35,6 +35,21 @@ const TaskBuilder = ({ selectedTaskId }: TaskBuilderProps) => {
     | {
         name: string;
         type: TaskType;
+        taskResults?: {
+          type: DecisionType;
+          taskId: number | null;
+          scoreThreshold: number | null;
+          resultTaskId: number | null;
+          confidenceThreshold: number | null;
+          id: number | null;
+          option: string | null;
+          probabilityThreshold: number | null;
+        }[];
+        decision?: {
+          id: number | null;
+          options: string[] | null;
+          type: string | null;
+        };
       }
     | undefined
   >(undefined);
@@ -50,8 +65,20 @@ const TaskBuilder = ({ selectedTaskId }: TaskBuilderProps) => {
           setLoadedValues({
             name: task.data?.getTask.name ?? "",
             type: task.data?.getTask.type as TaskType,
+            taskResults:
+              (task.data?.getTask.taskResults as {
+                type: DecisionType;
+                taskId: number | null;
+                scoreThreshold: number | null;
+                resultTaskId: number | null;
+                confidenceThreshold: number | null;
+                id: number | null;
+                option: string | null;
+                probabilityThreshold: number | null;
+              }[]) ?? [],
+            decision: task.data?.getTask?.decision ?? undefined,
           });
-          setSelectedDecisionId(task.data?.getTask.decisionId ?? undefined);
+          setSelectedDecisionId(task.data?.getTask?.decision?.id ?? undefined);
         }
       };
 
@@ -60,6 +87,7 @@ const TaskBuilder = ({ selectedTaskId }: TaskBuilderProps) => {
       setLoadedValues({
         name: "",
         type: "decision",
+        taskResults: [],
       });
     }
   }, [getTask, selectedTaskId]);
@@ -92,6 +120,7 @@ const TaskBuilder = ({ selectedTaskId }: TaskBuilderProps) => {
   return (
     <div className="flex flex-col gap-2">
       <TaskCard
+        id={selectedTaskId}
         values={loadedValues}
         save={() => {
           if (formValues) {
