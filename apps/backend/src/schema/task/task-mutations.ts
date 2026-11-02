@@ -131,6 +131,7 @@ builder.mutationType({
           });
         }
 
+        await db.delete(taskResults).where(eq(taskResults.taskId, id));
         await db.delete(tasks).where(eq(tasks.id, id));
 
         return "successfully deleted task";

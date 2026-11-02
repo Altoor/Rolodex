@@ -1,6 +1,6 @@
 "use client";
 import TaskBuilder from "#components/task/taskBuilder";
-import TaskList from "#components/task/taskList/taskList";
+import TaskFlow from "#components/task/taskFlow/taskFlow";
 import { useState } from "react";
 
 export default function TaskQueuePage() {
@@ -8,22 +8,13 @@ export default function TaskQueuePage() {
     undefined,
   );
 
-  /**
-   * <TaskQueue
-          setSelectedDecisionId={(decision) => setSelectedTaskId(decision)}
-          selectedDecisionId={selectedTaskId}
-        />
-
-    <TaskBuilder selectedDecisionId={selectedTaskId} />
-   */
-
   return (
-    <div className="flex flex-row gap-4 m-4">
-      <div className="flex flex-col w-full ">
-        <TaskList
-          setSelectedTaskId={(decision) => setSelectedTaskId(decision)}
+    <div className="flex flex-col gap-4 m-4">
+      <div className="flex h-[520px] flex-col">
+        <TaskFlow
           selectedTaskId={selectedTaskId}
-        ></TaskList>
+          onSelectTaskId={setSelectedTaskId}
+        ></TaskFlow>
       </div>
       <div className="flex flex-col w-full">
         <TaskBuilder selectedTaskId={selectedTaskId}></TaskBuilder>
