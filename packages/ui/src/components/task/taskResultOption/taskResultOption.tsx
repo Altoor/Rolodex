@@ -36,6 +36,7 @@ type Inputs = {
 interface TaskResultOptionProps {
   values: {
     type: DecisionType;
+    taskId: number;
     scoreThreshold: number | null;
     resultTaskId: number | null;
     confidenceThreshold: number | null;

@@ -131,10 +131,11 @@ const TaskCard = ({ id, values, save, setValues }: TaskCardProps) => {
 
             <div className="flex flex-row flex-wrap gap-2">
               {taskResults != undefined &&
+                id &&
                 Array.from(
                   taskResults.map((taskResult) => (
                     <TaskResultOption
-                      values={taskResult}
+                      values={{ ...taskResult, taskId: id }}
                       key={taskResult.id}
                       options={values?.decision?.options ?? []}
                     ></TaskResultOption>
