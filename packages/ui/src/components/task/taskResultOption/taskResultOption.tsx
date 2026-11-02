@@ -13,15 +13,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "#components/ui/select";
-import { Textarea } from "#components/ui/textarea";
 import { useDebouncedFormState } from "#hooks/useDebouncedFormState";
 import { useMutation } from "@apollo/client/react";
 import { DecisionType } from "@repo/queries/__generated__/graphql";
 import {
   CREATE_TASKRESULT,
+  DELETE_TASKRESULT,
   UPDATE_TASKRESULT,
 } from "@repo/queries/tasks/task-mutations";
-import { Save } from "lucide-react";
+import { TASKS } from "@repo/queries/tasks/task-queries";
+import { Save, X } from "lucide-react";
 import { useState } from "react";
 
 type Inputs = {
@@ -35,6 +36,7 @@ type Inputs = {
 
 interface TaskResultOptionProps {
   values: {
+    id: number | null;
     type: DecisionType;
     taskId: number;
     scoreThreshold: number | null;
@@ -44,10 +46,12 @@ interface TaskResultOptionProps {
     probabilityThreshold: number | null;
   };
   options: string[];
+  onDelete: () => void;
 }
 
-const TaskResultOption = ({ values, options }: TaskResultOptionProps) => {
-  const [createTaskResult] = useMutation(CREATE_TASKRESULT);
+const TaskResultOption = ({ values, options, onDelete }: TaskResultOptionProps) => {
+  const [createTaskResult, { client }] = useMutation(CREATE_TASKRESULT);
+  const [deleteTaskResult] = useMutation(DELETE_TASKRESULT);
   const [updateTaskResult] = useMutation(UPDATE_TASKRESULT);
 
   const [formValues, setFormValues] = useState(values);
@@ -55,25 +59,56 @@ const TaskResultOption = ({ values, options }: TaskResultOptionProps) => {
   const { register, control } = useDebouncedFormState<Inputs>({
     fieldsToWatch: ["confidenceThreshold", "option"],
     valuesFromFields: (watched) => ({
-      confidenceThreshold: watched["confidenceThreshold"] as number,
-      option: (watched["option"] as string) ?? "",
+      confidenceThreshold:
+        parseFloat(watched["confidenceThreshold"] as string) || 0,
+      option: (watched["option"] as string) ?? options[0],
     }),
     values,
     setValues: setFormValues,
-    delay: 1500,
+    delay: 500,
   });
 
+  client.refetchQueries({ include: [TASKS] });
+
   const save = () => {
-    createTaskResult({
-      variables: {
-        ...formValues,
-        confidenceThreshold: formValues.confidenceThreshold ?? 0,
-      },
-    });
+    const { id, ...restValues } = values;
+    const variables = {
+      ...restValues,
+      ...formValues,
+      confidenceThreshold: formValues.confidenceThreshold ?? 0,
+    };
+
+    if (id != null) {
+      updateTaskResult({
+        variables: {
+          ...variables,
+          id,
+        },
+      });
+    } else {
+      createTaskResult({
+        variables,
+      });
+    }
   };
 
   return (
-    <Item variant={"outline"} className="max-w-60">
+    <Item variant={"outline"} className="relative max-w-60">
+      <button
+        className="absolute right-2 top-2 text-muted-foreground hover:text-destructive"
+        onClick={() => {
+          if (values.id != null) {
+            deleteTaskResult({
+              variables: {
+                id: values.id,
+              },
+            });
+          }
+          onDelete();
+        }}
+      >
+        <X className="size-4" />
+      </button>
       <ItemContent>
         <ItemActions>
           <Button onClick={() => save()}>
@@ -86,14 +121,17 @@ const TaskResultOption = ({ values, options }: TaskResultOptionProps) => {
           <FieldLabel htmlFor="confidenceThreshold">
             ConfidenceThreshold
           </FieldLabel>
-          <Input {...register("confidenceThreshold", { required: true })} />
+          <Input
+            type="number"
+            {...register("confidenceThreshold", { required: true })}
+          />
         </Field>
         {values.type === "choice" && (
           <Field>
             <SelectController
-              name="type"
+              name="option"
               control={control}
-              defaultValue={"decision" as DecisionType}
+              defaultValue={options[0]}
             >
               {(value, onChange) => (
                 <>

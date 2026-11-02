@@ -50,10 +50,19 @@ export function useDebouncedFormState<T extends FieldValues>(
   setValuesRef.current = setValues;
   valuesFromFieldsRef.current = valuesFromFields;
 
-  // Reset form when parent values change
+  // Reset form when parent values change (skip if content is unchanged)
+  const lastResetValues = useRef<Record<string, unknown>>();
   useEffect(() => {
     if (values !== undefined) {
-      reset(values as T);
+      const hasChanged =
+        !lastResetValues.current ||
+        Object.keys(values).some(
+          (key) => values[key] !== lastResetValues.current![key],
+        );
+      if (hasChanged) {
+        lastResetValues.current = { ...values };
+        reset(values as T);
+      }
     }
   }, [values, reset]);
 

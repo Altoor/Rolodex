@@ -62,6 +62,7 @@ const TaskBuilder = ({ selectedTaskId }: TaskBuilderProps) => {
         });
 
         if (task.data?.getTask) {
+          console.log("taskResults:", task.data?.getTask.taskResults);
           setLoadedValues({
             name: task.data?.getTask.name ?? "",
             type: task.data?.getTask.type as TaskType,

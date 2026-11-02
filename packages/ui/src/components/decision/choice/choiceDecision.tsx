@@ -3,7 +3,7 @@
 import { Button } from "#components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "#components/ui/field";
 import { Input } from "#components/ui/input";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ChoiceOption from "./choiceOption";
 import { Plus } from "lucide-react";
 import { useDebouncedFormState } from "#hooks/useDebouncedFormState";
@@ -30,38 +30,77 @@ interface ChoiceDecisionFormProps {
 }
 
 const ChoiceDecisionForm = ({ values, setValues }: ChoiceDecisionFormProps) => {
+  const [options, setOptions] = useState(
+    new Map<number, { name: string; description: string }>(),
+  );
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
+
+  // Tracks whether the last values change came from our own setValues call.
+  // Prevents the sync loop: local change → setValues → parent re-renders →
+  // values prop changes → skip re-setting local state.
+  const isLocalChange = useRef(false);
+  const valuesRef = useRef(values);
+  const setValuesRef = useRef(setValues);
+  valuesRef.current = values;
+  setValuesRef.current = setValues;
+
   const { register } = useDebouncedFormState<Inputs>({
     fieldsToWatch: ["instruction", "decisionPremise"],
     valuesFromFields: (watched) => ({
-      instruction: watched["instruction"] as string ?? "",
-      decisionPremise: watched["decisionPremise"] as string ?? "",
-      options: Array.from(options.entries()).map(([_, item]) => ({
-        name: item.name,
-        description: item.description,
-      })),
+      instruction: (watched["instruction"] as string) ?? "",
+      decisionPremise: (watched["decisionPremise"] as string) ?? "",
+      // Include current options so the parent doesn't see them as undefined
+      options: Array.from(optionsRef.current.values()),
     }),
     values,
     setValues,
   });
-  const [options, setOptions] = useState(
-    new Map<number, { name: string; description: string }>(),
-  );
 
-  // Load options from parent values when they change
+  // Load options from parent values when they change externally.
+  // Only update if the actual option data differs, to avoid resetting
+  // ChoiceOption forms when unrelated fields (instruction/decisionPremise) update.
   useEffect(() => {
-    if (values) {
-      const optionsMap = new Map();
-      if (values.options && values.optionDescriptions) {
-        (values.options as string[]).forEach((option, index) =>
-          optionsMap.set(index, {
-            name: option,
-            description: (values.optionDescriptions as string[])[index],
-          }),
+    if (isLocalChange.current) {
+      isLocalChange.current = false;
+      return;
+    }
+    if (values?.options && values?.optionDescriptions) {
+      const newOptions = (values.options as string[]).map((name, index) => ({
+        name,
+        description: (values.optionDescriptions as string[])[index] ?? "",
+      }));
+
+      // Compare with current options to skip unnecessary re-sets
+      const current = Array.from(optionsRef.current.values());
+      const isSame =
+        newOptions.length === current.length &&
+        newOptions.every(
+          (opt, i) =>
+            opt.name === current[i].name &&
+            opt.description === current[i].description,
         );
+
+      if (!isSame) {
+        const optionsMap = new Map<number, { name: string; description: string }>();
+        newOptions.forEach((opt, index) => optionsMap.set(index, opt));
+        setOptions(optionsMap);
       }
-      setOptions(optionsMap);
     }
   }, [values]);
+
+  // Update local options and sync to parent in one step
+  const updateAndSync = (newOptionsMap: Map<number, { name: string; description: string }>) => {
+    isLocalChange.current = true;
+    setOptions(newOptionsMap);
+
+    const v = valuesRef.current;
+    setValuesRef.current({
+      instruction: v?.instruction ?? "",
+      decisionPremise: v?.decisionPremise ?? "",
+      options: Array.from(newOptionsMap.values()),
+    });
+  };
 
   return (
     <form>
@@ -81,37 +120,33 @@ const ChoiceDecisionForm = ({ values, setValues }: ChoiceDecisionFormProps) => {
         <div className="flex flex-row flex-wrap gap-2">
           {Array.from(options.entries()).map(([index, option]) => (
             <ChoiceOption
-              defaultValues={option}
-              setValues={(values) => {
-                const newOptions = new Map(options);
-
-                const changedOption = newOptions.get(index);
-
-                if (changedOption) {
-                  changedOption.name = values.name;
-                  changedOption.description = values.description;
-                  newOptions.set(index, changedOption);
-                }
-
-                setOptions(newOptions);
+              values={option}
+              setValues={(optionValues) => {
+                const newOptions = new Map(optionsRef.current);
+                newOptions.set(index, optionValues);
+                updateAndSync(newOptions);
               }}
-
+              onDelete={() => {
+                const newOptions = new Map(optionsRef.current);
+                newOptions.delete(index);
+                updateAndSync(newOptions);
+              }}
               key={index}
             ></ChoiceOption>
           ))}
         </div>
         <Button
           className="w-min"
-
           onClick={() => {
-            const newIndex = options.size;
-            const newOption = { name: "", description: "" };
-            const newOptionsMap = new Map(options);
-            newOptionsMap.set(newIndex, newOption);
-            setOptions(newOptionsMap);
+            const newOptions = new Map(optionsRef.current);
+            const nextKey = newOptions.size === 0
+              ? 0
+              : Math.max(...newOptions.keys()) + 1;
+            newOptions.set(nextKey, { name: "", description: "" });
+            updateAndSync(newOptions);
           }}
         >
-          <Plus></Plus>
+          <Plus />
         </Button>
       </FieldGroup>
     </form>

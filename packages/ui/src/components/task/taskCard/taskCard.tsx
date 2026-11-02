@@ -24,7 +24,7 @@ import {
 import { DecisionType, TaskType } from "@repo/queries/__generated__/graphql";
 import TaskResultOption from "../taskResultOption/taskResultOption";
 import { useDebouncedFormState } from "#hooks/useDebouncedFormState";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 
 type Inputs = {
   name: string;
@@ -59,7 +59,28 @@ interface TaskCardProps {
 }
 
 const TaskCard = ({ id, values, save, setValues }: TaskCardProps) => {
-  const [taskResults, setTaskResults] = useState(values?.taskResults ?? []);
+  const [taskResults, setTaskResults] = useState(values?.taskResults);
+  const isLocalChange = useRef(false);
+  const taskResultsRef = useRef(taskResults);
+  taskResultsRef.current = taskResults;
+
+  // Sync taskResults from parent when values change externally
+  useEffect(() => {
+    if (isLocalChange.current) {
+      isLocalChange.current = false;
+      return;
+    }
+    const incoming = values?.taskResults;
+    const current = taskResultsRef.current;
+
+    const isSame =
+      (incoming === undefined && current === undefined) ||
+      (incoming && current && incoming.length === current.length && incoming.every((r, i) => r.id === current[i].id));
+
+    if (!isSame) {
+      setTaskResults(incoming);
+    }
+  }, [values?.taskResults]);
   const { register, control } = useDebouncedFormState<Inputs>({
     fieldsToWatch: ["name", "type"],
     valuesFromFields: (watched) => ({
@@ -135,9 +156,21 @@ const TaskCard = ({ id, values, save, setValues }: TaskCardProps) => {
                 Array.from(
                   taskResults.map((taskResult) => (
                     <TaskResultOption
-                      values={{ ...taskResult, taskId: id }}
-                      key={taskResult.id}
+                      values={{
+                        ...taskResult,
+                        taskId: id,
+                        type: values.decision?.type as DecisionType,
+                      }}
+                      key={taskResult.id + (taskResult.option ?? "")}
                       options={values?.decision?.options ?? []}
+                      onDelete={() => {
+                        isLocalChange.current = true;
+                        setTaskResults(
+                          taskResultsRef.current?.filter(
+                            (r) => r !== taskResult,
+                          ),
+                        );
+                      }}
                     ></TaskResultOption>
                   )),
                 )}
@@ -154,6 +187,7 @@ const TaskCard = ({ id, values, save, setValues }: TaskCardProps) => {
                     option: null,
                     probabilityThreshold: null,
                   };
+                  isLocalChange.current = true;
                   setTaskResults(taskResults?.concat(newOption));
                 }}
               >
