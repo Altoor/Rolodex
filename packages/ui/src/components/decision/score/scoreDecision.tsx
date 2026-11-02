@@ -66,7 +66,9 @@ const ScoreDecisionForm = ({ values, setValues }: ScoreDecisionFormProps) => {
       const current = Array.from(optionsRef.current.values());
       const isSame =
         newOptions.length === current.length &&
-        newOptions.every((opt, i) => opt.name === current[i].name);
+        newOptions.every(
+          (opt, i) => current[i] && opt.name === current[i].name,
+        );
 
       if (!isSame) {
         const optionsMap = new Map<number, { name: string }>();

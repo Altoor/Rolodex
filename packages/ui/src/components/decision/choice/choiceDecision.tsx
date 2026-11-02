@@ -77,12 +77,16 @@ const ChoiceDecisionForm = ({ values, setValues }: ChoiceDecisionFormProps) => {
         newOptions.length === current.length &&
         newOptions.every(
           (opt, i) =>
+            current[i] &&
             opt.name === current[i].name &&
             opt.description === current[i].description,
         );
 
       if (!isSame) {
-        const optionsMap = new Map<number, { name: string; description: string }>();
+        const optionsMap = new Map<
+          number,
+          { name: string; description: string }
+        >();
         newOptions.forEach((opt, index) => optionsMap.set(index, opt));
         setOptions(optionsMap);
       }
@@ -90,7 +94,9 @@ const ChoiceDecisionForm = ({ values, setValues }: ChoiceDecisionFormProps) => {
   }, [values]);
 
   // Update local options and sync to parent in one step
-  const updateAndSync = (newOptionsMap: Map<number, { name: string; description: string }>) => {
+  const updateAndSync = (
+    newOptionsMap: Map<number, { name: string; description: string }>,
+  ) => {
     isLocalChange.current = true;
     setOptions(newOptionsMap);
 
@@ -139,9 +145,8 @@ const ChoiceDecisionForm = ({ values, setValues }: ChoiceDecisionFormProps) => {
           className="w-min"
           onClick={() => {
             const newOptions = new Map(optionsRef.current);
-            const nextKey = newOptions.size === 0
-              ? 0
-              : Math.max(...newOptions.keys()) + 1;
+            const nextKey =
+              newOptions.size === 0 ? 0 : Math.max(...newOptions.keys()) + 1;
             newOptions.set(nextKey, { name: "", description: "" });
             updateAndSync(newOptions);
           }}

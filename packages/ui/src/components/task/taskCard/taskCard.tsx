@@ -75,7 +75,10 @@ const TaskCard = ({ id, values, save, setValues }: TaskCardProps) => {
 
     const isSame =
       (incoming === undefined && current === undefined) ||
-      (incoming && current && incoming.length === current.length && incoming.every((r, i) => r.id === current[i].id));
+      (incoming &&
+        current &&
+        incoming.length === current.length &&
+        incoming.every((r, i) => current[i] && r.id === current[i].id));
 
     if (!isSame) {
       setTaskResults(incoming);

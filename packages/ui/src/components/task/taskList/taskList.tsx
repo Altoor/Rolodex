@@ -1,13 +1,7 @@
 "use client";
 
 import { Button } from "#components/ui/button";
-import {
-  Item,
-  ItemActions,
-  ItemContent,
-  ItemDescription,
-  ItemTitle,
-} from "#components/ui/item";
+import { Item, ItemActions, ItemContent, ItemTitle } from "#components/ui/item";
 import { Spinner } from "#components/ui/spinner";
 import { useMutation, useQuery } from "@apollo/client/react";
 import { DELETE_TASK } from "@repo/queries/tasks/task-mutations";

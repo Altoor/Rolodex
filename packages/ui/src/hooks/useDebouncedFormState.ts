@@ -1,9 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
-import {
-  useForm,
-  type FieldValues,
-  type UseFormReturn,
-} from "react-hook-form";
+import { useForm, type FieldValues, type UseFormReturn } from "react-hook-form";
 import { debounce } from "#lib/debounce";
 
 export interface UseDebouncedFormStateOptions<T extends FieldValues> {
@@ -51,7 +47,8 @@ export function useDebouncedFormState<T extends FieldValues>(
   valuesFromFieldsRef.current = valuesFromFields;
 
   // Reset form when parent values change (skip if content is unchanged)
-  const lastResetValues = useRef<Record<string, unknown>>();
+  const lastResetValues = useRef<Record<string, unknown>>(undefined);
+
   useEffect(() => {
     if (values !== undefined) {
       const hasChanged =
