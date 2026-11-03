@@ -44,7 +44,7 @@ export const CREATE_TASKRESULT = gql(/* GraphQL */ `
   mutation CreateTaskResult(
     $type: DecisionType!
     $taskId: Int!
-    $confidenceThreshold: Float!
+    $confidenceThreshold: Float
     $probabilityThreshold: Float
     $scoreThreshold: Float
     $resultTaskId: Int

@@ -13,6 +13,7 @@ export type TaskFlowNodeData = {
   taskId: number;
   name: string;
   type: string | null;
+  decisionType: string | null;
   taskResults: FlowTaskResult[];
   onTaskDelete?: (taskId: number) => void;
 } & Record<string, unknown>;

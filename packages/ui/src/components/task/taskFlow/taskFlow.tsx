@@ -175,6 +175,7 @@ const TaskFlow = ({ selectedTaskId, onSelectTaskId }: TaskFlowProps) => {
           taskId: task.id,
           name: task.name ?? "Untitled task",
           type: task.type,
+          decisionType: task.decision?.type ?? null,
           taskResults: (task.taskResults ?? []).filter(
             (result) => result != null,
           ),

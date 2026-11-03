@@ -146,7 +146,7 @@ builder.mutationType({
         option: t.arg.string(),
         scoreThreshold: t.arg.float(),
         probabilityThreshold: t.arg.float(),
-        confidenceThreshold: t.arg.float({ required: true }),
+        confidenceThreshold: t.arg.float(),
         resultTaskId: t.arg.int(),
       },
       resolve: async (
@@ -240,16 +240,25 @@ builder.mutationType({
           });
         }
 
+        // An explicitly provided value (even null) overrides the stored one,
+        // while an omitted argument keeps the stored value.
+        const keepOrSet = <T,>(provided: T | undefined, fallback: T): T =>
+          provided !== undefined ? provided : fallback;
+
         const taskResultDto = {
           taskId: taskId ?? taskResult.taskId,
           type: type ?? taskResult.type,
-          option: option ?? taskResult.option,
-          scoreThreshold: scoreThreshold ?? taskResult.scoreThreshold,
-          probabilityThreshold:
-            probabilityThreshold ?? taskResult.probabilityThreshold,
-          confidenceThreshold:
-            confidenceThreshold ?? taskResult.confidenceThreshold,
-          resultTaskId: resultTaskId ?? taskResult.resultTaskId,
+          option: keepOrSet(option, taskResult.option),
+          scoreThreshold: keepOrSet(scoreThreshold, taskResult.scoreThreshold),
+          probabilityThreshold: keepOrSet(
+            probabilityThreshold,
+            taskResult.probabilityThreshold,
+          ),
+          confidenceThreshold: keepOrSet(
+            confidenceThreshold,
+            taskResult.confidenceThreshold,
+          ),
+          resultTaskId: keepOrSet(resultTaskId, taskResult.resultTaskId),
         };
 
         const updatedTask = await db

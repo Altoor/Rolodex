@@ -49,24 +49,51 @@ interface TaskResultOptionProps {
   onDelete: () => void;
 }
 
-const TaskResultOption = ({ values, options, onDelete }: TaskResultOptionProps) => {
+/** Parses a form field into a number, or null when empty/invalid. */
+const parseNullableFloat = (value: unknown): number | null => {
+  if (value == null) return null;
+  const text = String(value).trim();
+  if (text === "") return null;
+  const parsed = Number.parseFloat(text);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const TaskResultOption = ({
+  values,
+  options,
+  onDelete,
+}: TaskResultOptionProps) => {
   const [createTaskResult, { client }] = useMutation(CREATE_TASKRESULT);
   const [deleteTaskResult] = useMutation(DELETE_TASKRESULT);
   const [updateTaskResult] = useMutation(UPDATE_TASKRESULT);
 
   const [formValues, setFormValues] = useState(values);
 
-  const { register, control } = useDebouncedFormState<Inputs>({
-    fieldsToWatch: ["confidenceThreshold", "option"],
-    valuesFromFields: (watched) => ({
-      confidenceThreshold:
-        parseFloat(watched["confidenceThreshold"] as string) || 0,
-      option: (watched["option"] as string) ?? options[0],
-    }),
-    values,
-    setValues: setFormValues,
-    delay: 500,
-  });
+  const { register, control, watch, setValue } =
+    useDebouncedFormState<Inputs>({
+      fieldsToWatch: [
+        "confidenceThreshold",
+        "option",
+        "scoreThreshold",
+        "probabilityThreshold",
+      ],
+      valuesFromFields: (watched) => ({
+        confidenceThreshold: parseNullableFloat(
+          watched["confidenceThreshold"],
+        ),
+        scoreThreshold: parseFloat(watched["scoreThreshold"] as string) || 0,
+        probabilityThreshold:
+          parseFloat(watched["probabilityThreshold"] as string) || 0,
+        option: (watched["option"] as string) ?? options[0],
+      }),
+      values,
+      setValues: setFormValues,
+      delay: 500,
+    });
+
+  const confidenceInput = watch("confidenceThreshold");
+  const hasConfidence =
+    confidenceInput != null && String(confidenceInput).trim() !== "";
 
   client.refetchQueries({ include: [TASKS] });
 
@@ -75,7 +102,7 @@ const TaskResultOption = ({ values, options, onDelete }: TaskResultOptionProps) 
     const variables = {
       ...restValues,
       ...formValues,
-      confidenceThreshold: formValues.confidenceThreshold ?? 0,
+      confidenceThreshold: formValues.confidenceThreshold ?? null,
     };
 
     if (id != null) {
@@ -121,38 +148,69 @@ const TaskResultOption = ({ values, options, onDelete }: TaskResultOptionProps) 
           <FieldLabel htmlFor="confidenceThreshold">
             ConfidenceThreshold
           </FieldLabel>
-          <Input
-            type="number"
-            {...register("confidenceThreshold", { required: true })}
-          />
+          <div className="flex items-center gap-1">
+            <Input type="number" {...register("confidenceThreshold")} />
+            {hasConfidence && (
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                title="Remove confidence threshold"
+                onClick={() => setValue("confidenceThreshold", null)}
+              >
+                <X className="size-4 text-muted-foreground" />
+              </Button>
+            )}
+          </div>
         </Field>
-        {values.type === "choice" && (
+
+        {values.type === "score" && (
           <Field>
-            <SelectController
-              name="option"
-              control={control}
-              defaultValue={options[0]}
-            >
-              {(value, onChange) => (
-                <>
-                  <Select value={value} onValueChange={onChange}>
-                    <SelectTrigger className="w-[180px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {options.map((option) => (
-                          <SelectItem key={option} value={option}>
-                            {option}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </>
-              )}
-            </SelectController>
+            <FieldLabel htmlFor="scoreThreshold">scoreThreshold</FieldLabel>
+            <Input
+              type="number"
+              {...register("scoreThreshold", { required: true })}
+            />
           </Field>
+        )}
+        {values.type === "choice" && (
+          <>
+            <Field>
+              <SelectController
+                name="option"
+                control={control}
+                defaultValue={options[0]}
+              >
+                {(value, onChange) => (
+                  <>
+                    <Select value={value} onValueChange={onChange}>
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          {options.map((option) => (
+                            <SelectItem key={option} value={option}>
+                              {option}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </>
+                )}
+              </SelectController>
+            </Field>
+
+            <Field>
+              <FieldLabel htmlFor="probabilityThreshold">
+                probabilityThreshold
+              </FieldLabel>
+              <Input
+                type="number"
+                {...register("probabilityThreshold", { required: true })}
+              />
+            </Field>
+          </>
         )}
       </FieldGroup>
     </Item>

@@ -46,7 +46,7 @@ export const taskResults = pgTable("taskResults", {
   option: text("option"),
   scoreThreshold: real("scoreThreshold"),
   probabilityThreshold: real("probabilityThreshold"),
-  confidenceThreshold: real("confidenceThreshold").notNull(),
+  confidenceThreshold: real("confidenceThreshold"),
   resultTaskId: integer("resultTaskId"),
 });
 

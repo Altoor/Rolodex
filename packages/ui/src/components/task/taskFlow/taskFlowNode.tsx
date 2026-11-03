@@ -3,7 +3,32 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { X } from "lucide-react";
 import { cn } from "#lib/utils";
-import { type TaskFlowNode } from "./taskFlowTypes";
+import { type FlowTaskResult, type TaskFlowNode } from "./taskFlowTypes";
+
+const resultLabel = (
+  result: FlowTaskResult,
+  decisionType: string | null,
+  index: number,
+) => {
+  // "P:" only applies to choice decisions and "S:" only to score decisions.
+  // Each threshold is only shown when it is defined; confidence ("C:") is a
+  // modifier shown alongside for any decision type.
+  const parts: string[] = [];
+  if (decisionType === "score") {
+    if (result.scoreThreshold != null) {
+      parts.push(`S: ${result.scoreThreshold}`);
+    }
+  } else {
+    parts.push(result.option ?? `Result ${index + 1}`);
+    if (decisionType === "choice" && result.probabilityThreshold != null) {
+      parts.push(`P: ${result.probabilityThreshold}`);
+    }
+  }
+  if (result.confidenceThreshold != null) {
+    parts.push(`C: ${result.confidenceThreshold}`);
+  }
+  return parts.length > 0 ? parts.join(" · ") : `Result ${index + 1}`;
+};
 
 const TaskFlowNode = ({ data, selected }: NodeProps<TaskFlowNode>) => {
   return (
@@ -41,7 +66,7 @@ const TaskFlowNode = ({ data, selected }: NodeProps<TaskFlowNode>) => {
               key={result.id ?? index}
               className="relative flex items-center justify-between gap-2 rounded border border-dashed px-2 py-1 text-xs text-muted-foreground"
             >
-              <span>{result.option ?? `Result ${index + 1}`}</span>
+              <span>{resultLabel(result, data.decisionType, index)}</span>
               {result.id != null && (
                 <Handle
                   type="source"
