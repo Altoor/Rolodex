@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery } from "@apollo/client/react";
+import type { ApolloCache } from "@apollo/client/core";
 import {
   Background,
   BackgroundVariant,
@@ -17,6 +18,7 @@ import "@xyflow/react/dist/style.css";
 import {
   CREATE_TASK,
   DELETE_TASK,
+  UPDATE_TASK,
   UPDATE_TASKRESULT,
 } from "@repo/queries/tasks/task-mutations";
 import { TASKS } from "@repo/queries/tasks/task-queries";
@@ -34,7 +36,11 @@ import { Spinner } from "#components/ui/spinner";
 import { Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import TaskFlowNodeView from "./taskFlowNode";
-import { type FlowTask, type TaskFlowNode } from "./taskFlowTypes";
+import {
+  FALLBACK_HANDLE_ID,
+  type FlowTask,
+  type TaskFlowNode,
+} from "./taskFlowTypes";
 
 const nodeTypes: NodeTypes = {
   taskFlow: TaskFlowNodeView,
@@ -64,9 +70,15 @@ const computePositions = (
       const current = queue.shift();
       if (current == null) continue;
       const task = byId.get(current);
-      for (const result of task?.taskResults ?? []) {
-        const targetId = result?.resultTaskId;
-        if (targetId == null || !byId.has(targetId) || depth.has(targetId)) {
+      // Follow both result links and the fallback link.
+      const relatedIds = [
+        ...(task?.taskResults ?? [])
+          .map((result) => result?.resultTaskId)
+          .filter((id): id is number => id != null),
+        ...(task?.fallbackTaskId != null ? [task.fallbackTaskId] : []),
+      ];
+      for (const targetId of relatedIds) {
+        if (!byId.has(targetId) || depth.has(targetId)) {
           continue;
         }
         depth.set(targetId, (depth.get(current) ?? 0) + 1);
@@ -107,6 +119,37 @@ const computePositions = (
   return positions;
 };
 
+/**
+ * Reflects a fallbackTaskId change in the Apollo cache immediately, so the
+ * flow updates right away instead of waiting for the refetch to round-trip.
+ */
+const setFallbackInCache = (
+  cache: ApolloCache,
+  taskId: number,
+  fallbackTaskId: number | null,
+) => {
+  const ref = cache.identify({ __typename: "Task", id: taskId });
+  if (!ref) return;
+  cache.modify({
+    id: ref,
+    fields: { fallbackTaskId: () => fallbackTaskId },
+  });
+};
+
+/** Reflects a resultTaskId change on a TaskResult entity immediately. */
+const setResultTaskIdInCache = (
+  cache: ApolloCache,
+  resultId: number,
+  resultTaskId: number | null,
+) => {
+  const ref = cache.identify({ __typename: "TaskResult", id: resultId });
+  if (!ref) return;
+  cache.modify({
+    id: ref,
+    fields: { resultTaskId: () => resultTaskId },
+  });
+};
+
 interface TaskFlowProps {
   selectedTaskId?: number;
   onSelectTaskId?: (id: number | undefined) => void;
@@ -117,6 +160,7 @@ const TaskFlow = ({ selectedTaskId, onSelectTaskId }: TaskFlowProps) => {
   const [updateTaskResult, { client }] = useMutation(UPDATE_TASKRESULT);
   const [createTask] = useMutation(CREATE_TASK);
   const [deleteTask] = useMutation(DELETE_TASK);
+  const [updateTask] = useMutation(UPDATE_TASK);
 
   const tasks = useMemo<FlowTask[]>(
     () =>
@@ -185,7 +229,8 @@ const TaskFlow = ({ selectedTaskId, onSelectTaskId }: TaskFlowProps) => {
     });
   }, [tasks, rootTask, effectiveRootId, selectedTaskId, handleDeleteTask, setNodes]);
 
-  // Edges are derived from the taskResults' resultTaskId values.
+  // Edges are derived from the taskResults' resultTaskId values and each
+  // task's fallbackTaskId (rendered dashed).
   const edges = useMemo<Edge[]>(() => {
     const taskIds = new Set(tasks.map((task) => String(task.id)));
     const result: Edge[] = [];
@@ -204,36 +249,91 @@ const TaskFlow = ({ selectedTaskId, onSelectTaskId }: TaskFlowProps) => {
           markerEnd: MarkerType.ArrowClosed,
         });
       }
+      if (
+        task.fallbackTaskId != null &&
+        task.fallbackTaskId !== task.id &&
+        taskIds.has(String(task.fallbackTaskId))
+      ) {
+        result.push({
+          id: `e-fallback-${task.id}`,
+          source: String(task.id),
+          sourceHandle: FALLBACK_HANDLE_ID,
+          target: String(task.fallbackTaskId),
+          targetHandle: "input",
+          // A lighter grey than the default edge colour (#b1b1b7).
+          style: { stroke: "#d4d4d8", strokeDasharray: "5 5" },
+          markerEnd: MarkerType.ArrowClosed,
+        });
+      }
     }
     return result;
   }, [tasks]);
 
-  // Connecting an output (a TaskResult) to another task's input updates the
-  // TaskResult's resultTaskId to point at the newly connected task.
+  // A task can never connect to itself (result or fallback).
+  const isValidConnection = useCallback(
+    (connection: Connection | Edge) => connection.source !== connection.target,
+    [],
+  );
+
+  // Connecting an output to another task's input updates the relationship:
+  // a TaskResult output updates its resultTaskId, the fallback output
+  // updates the task's fallbackTaskId.
   const onConnect = useCallback(
     (connection: Connection) => {
+      const targetTaskId = Number(connection.target);
+      if (!Number.isFinite(targetTaskId)) return;
+      if (connection.sourceHandle === FALLBACK_HANDLE_ID) {
+        const taskId = Number(connection.source);
+        if (!Number.isFinite(taskId)) return;
+        void updateTask({
+          variables: { id: taskId, fallbackTaskId: targetTaskId },
+          update: (cache) =>
+            setFallbackInCache(cache, taskId, targetTaskId),
+        }).then(({ error }) => {
+          if (!error) {
+            client.refetchQueries({ include: [TASKS] });
+          }
+        });
+        return;
+      }
       const resultId = Number(connection.sourceHandle);
-      const resultTaskId = Number(connection.target);
-      if (!Number.isFinite(resultId) || !Number.isFinite(resultTaskId)) return;
+      if (!Number.isFinite(resultId)) return;
       void updateTaskResult({
-        variables: { id: resultId, resultTaskId },
+        variables: { id: resultId, resultTaskId: targetTaskId },
+        update: (cache) =>
+          setResultTaskIdInCache(cache, resultId, targetTaskId),
       }).then(({ error }) => {
         if (!error) {
           client.refetchQueries({ include: [TASKS] });
         }
       });
     },
-    [updateTaskResult, client],
+    [updateTask, updateTaskResult, client],
   );
 
-  // Deleting an edge clears the TaskResult's resultTaskId.
+  // Deleting an edge clears the matching relationship (resultTaskId or
+  // fallbackTaskId).
   const onEdgesDelete = useCallback(
     (edges: Edge[]) => {
       for (const edge of edges) {
+        if (edge.id.startsWith("e-fallback-")) {
+          const taskId = Number(edge.id.replace("e-fallback-", ""));
+          if (!Number.isFinite(taskId)) continue;
+          void updateTask({
+            variables: { id: taskId, fallbackTaskId: null },
+            update: (cache) => setFallbackInCache(cache, taskId, null),
+          }).then(({ error }) => {
+            if (!error) {
+              client.refetchQueries({ include: [TASKS] });
+            }
+          });
+          continue;
+        }
         const resultId = Number(edge.id.replace("e-", ""));
         if (!Number.isFinite(resultId)) continue;
         void updateTaskResult({
           variables: { id: resultId, resultTaskId: null },
+          update: (cache) => setResultTaskIdInCache(cache, resultId, null),
         }).then(({ error }) => {
           if (!error) {
             client.refetchQueries({ include: [TASKS] });
@@ -241,7 +341,7 @@ const TaskFlow = ({ selectedTaskId, onSelectTaskId }: TaskFlowProps) => {
         });
       }
     },
-    [updateTaskResult, client],
+    [updateTask, updateTaskResult, client],
   );
 
   // Keyboard delete (Delete/Backspace on a selected node) also removes the
@@ -315,6 +415,8 @@ const TaskFlow = ({ selectedTaskId, onSelectTaskId }: TaskFlowProps) => {
           onEdgesDelete={onEdgesDelete}
           onDelete={onDelete}
           onNodeClick={onNodeClick}
+          isValidConnection={isValidConnection}
+          deleteKeyCode={["Backspace", "Delete"]}
           fitView
         >
           <Background variant={BackgroundVariant.Dots} />

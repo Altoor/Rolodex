@@ -57,6 +57,7 @@ export const tasks = pgTable("tasks", {
   name: text("name").notNull(),
   type: TaskType().default("decision").notNull(),
   decisionId: integer("decisionId"),
+  fallbackTaskId: integer("fallbackTaskId"),
 });
 
 export const queuedTasks = pgTable("queuedTasks", {

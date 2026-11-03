@@ -10,8 +10,10 @@ export const Task = builder.drizzleObject("tasks", {
     id: t.exposeInt("id"),
     name: t.exposeString("name"),
     type: t.exposeString("type"),
+    fallbackTaskId: t.exposeInt("fallbackTaskId"),
     decision: t.relation("decision"),
     taskResults: t.relation("taskResults"),
+    fallbackTask: t.relation("fallbackTask"),
   }),
 });
 

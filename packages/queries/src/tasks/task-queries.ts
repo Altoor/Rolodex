@@ -6,6 +6,7 @@ export const TASKS = gql(/* GraphQL */ `
       id
       name
       type
+      fallbackTaskId
       taskResults {
         confidenceThreshold
         id
@@ -31,6 +32,7 @@ export const GET_TASK = gql(/* GraphQL */ `
       id
       name
       type
+      fallbackTaskId
       taskResults {
         type
         taskId

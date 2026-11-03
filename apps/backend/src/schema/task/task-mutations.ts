@@ -12,9 +12,15 @@ builder.mutationType({
       args: {
         name: t.arg.string({ required: true }),
         decisionId: t.arg.int(),
+        fallbackTaskId: t.arg.int(),
         type: t.arg({ type: TaskType, required: true }),
       },
-      resolve: async (_query, _root, { name, decisionId, type }, ctx) => {
+      resolve: async (
+        _query,
+        _root,
+        { name, decisionId, fallbackTaskId, type },
+        ctx,
+      ) => {
         const author_id = (ctx as any).user.id;
 
         if (!author_id) {
@@ -41,6 +47,7 @@ builder.mutationType({
           name,
           type,
           decisionId,
+          fallbackTaskId,
         };
         const createdTask = await db.insert(tasks).values(task).returning();
 
@@ -54,9 +61,15 @@ builder.mutationType({
         id: t.arg.int({ required: true }),
         name: t.arg.string(),
         decisionId: t.arg.int(),
+        fallbackTaskId: t.arg.int(),
         type: t.arg({ type: TaskType }),
       },
-      resolve: async (_query, _root, { id, name, type, decisionId }, ctx) => {
+      resolve: async (
+        _query,
+        _root,
+        { id, name, type, decisionId, fallbackTaskId },
+        ctx,
+      ) => {
         const author_id = (ctx as any).user.id;
 
         if (!author_id) {
@@ -93,6 +106,9 @@ builder.mutationType({
           name: name ?? task.name,
           type: type ?? task.type,
           decisionId: decisionId ?? task.decisionId,
+          // An explicit null clears the fallback task.
+          fallbackTaskId:
+            fallbackTaskId !== undefined ? fallbackTaskId : task.fallbackTaskId,
         };
 
         const updatedTask = await db
@@ -132,6 +148,11 @@ builder.mutationType({
         }
 
         await db.delete(taskResults).where(eq(taskResults.taskId, id));
+        // Clear any tasks that used this task as their fallback.
+        await db
+          .update(tasks)
+          .set({ fallbackTaskId: null })
+          .where(eq(tasks.fallbackTaskId, id));
         await db.delete(tasks).where(eq(tasks.id, id));
 
         return "successfully deleted task";

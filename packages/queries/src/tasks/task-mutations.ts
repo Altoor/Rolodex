@@ -1,8 +1,18 @@
 import { gql } from "../__generated__";
 
 export const CREATE_TASK = gql(/* GraphQL */ `
-  mutation CreateTask($name: String!, $type: TaskType!, $decisionId: Int) {
-    createTask(name: $name, type: $type, decisionId: $decisionId) {
+  mutation CreateTask(
+    $name: String!
+    $type: TaskType!
+    $decisionId: Int
+    $fallbackTaskId: Int
+  ) {
+    createTask(
+      name: $name
+      type: $type
+      decisionId: $decisionId
+      fallbackTaskId: $fallbackTaskId
+    ) {
       id
       name
       decision {
@@ -20,8 +30,15 @@ export const UPDATE_TASK = gql(/* GraphQL */ `
     $name: String
     $type: TaskType
     $decisionId: Int
+    $fallbackTaskId: Int
   ) {
-    updateTask(id: $id, name: $name, type: $type, decisionId: $decisionId) {
+    updateTask(
+      id: $id
+      name: $name
+      type: $type
+      decisionId: $decisionId
+      fallbackTaskId: $fallbackTaskId
+    ) {
       id
       name
       type

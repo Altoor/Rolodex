@@ -10,7 +10,7 @@ export default function TaskQueuePage() {
 
   return (
     <div className="flex flex-col gap-4 m-4">
-      <div className="flex h-[520px] flex-col">
+      <div className="flex h-130 flex-col">
         <TaskFlow
           selectedTaskId={selectedTaskId}
           onSelectTaskId={setSelectedTaskId}

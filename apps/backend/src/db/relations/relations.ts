@@ -40,6 +40,11 @@ export const relations = defineRelations(schema, (r) => ({
       from: r.tasks.decisionId,
       to: r.decisions.id,
     }),
+    fallbackTask: r.one.tasks({
+      from: r.tasks.fallbackTaskId,
+      to: r.tasks.id,
+      alias: "fallbackTask",
+    }),
   },
 
   taskResults: {

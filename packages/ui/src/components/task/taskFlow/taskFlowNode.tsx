@@ -3,7 +3,11 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { X } from "lucide-react";
 import { cn } from "#lib/utils";
-import { type FlowTaskResult, type TaskFlowNode } from "./taskFlowTypes";
+import {
+  FALLBACK_HANDLE_ID,
+  type FlowTaskResult,
+  type TaskFlowNode,
+} from "./taskFlowTypes";
 
 const resultLabel = (
   result: FlowTaskResult,
@@ -81,6 +85,15 @@ const TaskFlowNode = ({ data, selected }: NodeProps<TaskFlowNode>) => {
             No results — add a result to connect this task to another.
           </p>
         )}
+        {/* Every task also has a fallback output */}
+        <div className="relative flex items-center justify-between gap-2 rounded border px-2 py-1 text-xs text-muted-foreground">
+          <span>Fallback</span>
+          <Handle
+            type="source"
+            position={Position.Right}
+            id={FALLBACK_HANDLE_ID}
+          />
+        </div>
       </div>
     </div>
   );
