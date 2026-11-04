@@ -84,6 +84,7 @@ export const CREATE_TASKRESULT = gql(/* GraphQL */ `
       scoreThreshold
       taskId
       type
+      appendState
     }
   }
 `);
@@ -117,6 +118,7 @@ export const UPDATE_TASKRESULT = gql(/* GraphQL */ `
       scoreThreshold
       taskId
       type
+      appendState
     }
   }
 `);
@@ -124,5 +126,18 @@ export const UPDATE_TASKRESULT = gql(/* GraphQL */ `
 export const DELETE_TASKRESULT = gql(/* GraphQL */ `
   mutation DeleteTaskResult($id: Int!) {
     deleteTaskResult(id: $id)
+  }
+`);
+
+export const CREATE_QUEUED_TASK = gql(/* GraphQL */ `
+  mutation CreateQueuedTask($taskId: Int!, $state: String!) {
+    createQueuedTask(taskId: $taskId, state: $state) {
+      id
+      taskId
+      state
+      status
+      runId
+      queued_by
+    }
   }
 `);

@@ -1,6 +1,8 @@
 import { GraphQLError } from "graphql";
+import { asc, eq } from "drizzle-orm";
 import { builder, db } from "../builder";
-import { Task, TaskResult } from "./";
+import { Task, TaskResult, QueuedTask } from "./";
+import { queuedTasks } from "../../db";
 
 builder.queryType({
   fields: (t) => ({
@@ -97,6 +99,47 @@ builder.queryType({
         }
 
         return taskResult;
+      },
+    }),
+
+    queuedTasks: t.field({
+      type: [QueuedTask],
+      resolve: async (_root, _args, ctx) => {
+        const user = (ctx as any).user;
+
+        if (!user) {
+          throw new GraphQLError("Not logged in", {
+            extensions: {
+              code: "BAD_USER_INPUT",
+            },
+          });
+        }
+
+        return db.query.queuedTasks.findMany();
+      },
+    }),
+
+    queuedTask: t.field({
+      type: [QueuedTask],
+      args: {
+        runId: t.arg.string(),
+      },
+      resolve: async (_root, { runId }, ctx) => {
+        const user = (ctx as any).user;
+
+        if (!user) {
+          throw new GraphQLError("Not logged in", {
+            extensions: {
+              code: "BAD_USER_INPUT",
+            },
+          });
+        }
+
+        return db
+          .select()
+          .from(queuedTasks)
+          .where(runId ? eq(queuedTasks.runId, runId) : undefined)
+          .orderBy(asc(queuedTasks.queued_at), asc(queuedTasks.id));
       },
     }),
   }),

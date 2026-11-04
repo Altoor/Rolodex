@@ -1,9 +1,11 @@
 import { and, eq, lt } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 import { builder, db } from "../builder";
 import { GraphQLError } from "graphql/error";
 import { TaskType, Task, TaskResult, QueuedTask } from ".";
 import { taskResults, tasks, queuedTasks } from "../../db";
 import { DecisionType } from "../ai";
+import { triggerQueue } from "../../queue";
 
 builder.mutationType({
   fields: (t) => ({
@@ -331,13 +333,11 @@ builder.mutationType({
       args: {
         taskId: t.arg.int({ required: true }),
         state: t.arg.string({ required: true }),
-        completed: t.arg.boolean({ required: true }),
-        queued_by: t.arg.int({ required: true }),
       },
       resolve: async (
         _query,
         _root,
-        { taskId, state, completed, queued_by },
+        { taskId, state },
         ctx,
       ) => {
         const author_id = (ctx as any).user.id;
@@ -353,15 +353,18 @@ builder.mutationType({
         const queuedTask = {
           taskId,
           state,
-          completed,
-          queued_by,
-          queued_at: new Date().toDateString(),
+          // A new user submission starts a new chain run.
+          runId: randomUUID(),
+          queued_by: author_id,
         };
 
         const createdQueuedTask = await db
           .insert(queuedTasks)
           .values(queuedTask)
           .returning();
+
+        // Start the queue if it is idle (the loop is a no-op otherwise).
+        triggerQueue();
 
         return createdQueuedTask[0];
       },
@@ -397,7 +400,7 @@ builder.mutationType({
 
         const queuedTaskDto = {
           ...queuedTask,
-          completed: true,
+          status: "completed" as const,
         };
 
         const updatedQueuedTask = await db
@@ -432,8 +435,8 @@ builder.mutationType({
           .delete(queuedTasks)
           .where(
             and(
-              eq(queuedTasks.completed, true),
-              lt(queuedTasks.queued_at, date.toDateString()),
+              eq(queuedTasks.status, "completed"),
+              lt(queuedTasks.queued_at, date),
             ),
           );
 

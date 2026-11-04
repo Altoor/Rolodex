@@ -51,3 +51,23 @@ export const GET_TASK = gql(/* GraphQL */ `
     }
   }
 `);
+
+export const QUEUED_TASK = gql(/* GraphQL */ `
+  query QueuedTask($runId: String) {
+    queuedTask(runId: $runId) {
+      id
+      taskId
+      state
+      status
+      runId
+      queued_by
+      queued_at
+      result
+      task {
+        id
+        name
+        type
+      }
+    }
+  }
+`);

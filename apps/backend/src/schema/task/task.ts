@@ -28,8 +28,13 @@ export const TaskResult = builder.drizzleObject("taskResults", {
     probabilityThreshold: t.exposeFloat("probabilityThreshold"),
     confidenceThreshold: t.exposeFloat("confidenceThreshold"),
     resultTaskId: t.exposeInt("resultTaskId"),
+    appendState: t.exposeBoolean("appendState"),
     resultTask: t.relation("task"),
   }),
+});
+
+export const QueuedTaskStatus = builder.enumType("QueuedTaskStatus", {
+  values: ["queued", "running", "completed", "failed"],
 });
 
 export const QueuedTask = builder.drizzleObject("queuedTasks", {
@@ -38,7 +43,16 @@ export const QueuedTask = builder.drizzleObject("queuedTasks", {
     id: t.exposeInt("id"),
     taskId: t.exposeInt("taskId"),
     state: t.exposeString("state"),
-    completed: t.exposeBoolean("completed"),
+    status: t.field({
+      type: QueuedTaskStatus,
+      resolve: (parent) => parent.status,
+    }),
+    runId: t.exposeString("runId"),
+    result: t.field({
+      type: "JSON",
+      nullable: true,
+      resolve: (parent) => parent.result ?? null,
+    }),
     queued_at: t.field({
       type: "DateTime",
       resolve: (parent) =>
@@ -46,5 +60,23 @@ export const QueuedTask = builder.drizzleObject("queuedTasks", {
       nullable: true,
     }),
     queued_by: t.exposeInt("queued_by"),
+    task: t.relation("task"),
   }),
 });
+
+export interface QueuedTaskEventPayload {
+  queuedTask: any;
+  message: string;
+}
+
+export const QueuedTaskEvent = builder
+  .objectRef<QueuedTaskEventPayload>("QueuedTaskEvent")
+  .implement({
+    fields: (t) => ({
+      queuedTask: t.field({
+        type: QueuedTask,
+        resolve: (parent) => parent.queuedTask,
+      }),
+      message: t.string({ resolve: (parent) => parent.message }),
+    }),
+  });

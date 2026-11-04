@@ -1,4 +1,5 @@
 import { boolean } from "drizzle-orm/cockroach-core";
+import { sql } from "drizzle-orm";
 import {
   integer,
   text,
@@ -8,6 +9,8 @@ import {
   bigint,
   json,
   real,
+  timestamp,
+  uuid,
 } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
@@ -48,6 +51,7 @@ export const taskResults = pgTable("taskResults", {
   probabilityThreshold: real("probabilityThreshold"),
   confidenceThreshold: real("confidenceThreshold"),
   resultTaskId: integer("resultTaskId"),
+  appendState: boolean("appendState").default(false).notNull(),
 });
 
 export const TaskType = pgEnum("TaskType", ["decision", "textPrompt", "tool"]);
@@ -60,12 +64,27 @@ export const tasks = pgTable("tasks", {
   fallbackTaskId: integer("fallbackTaskId"),
 });
 
+export const queuedTaskStatus = pgEnum("queuedTaskStatus", [
+  "queued",
+  "running",
+  "completed",
+  "failed",
+]);
+
 export const queuedTasks = pgTable("queuedTasks", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   taskId: integer("taskId").notNull(),
   state: text("state").notNull(),
-  completed: boolean("completed").default(false).notNull(),
-  queued_at: date("queued_at").notNull(),
+  status: queuedTaskStatus().default("queued").notNull(),
+  // Groups all steps that belong to one chain run.
+  runId: uuid("runId")
+    .default(sql`gen_random_uuid()`)
+    .notNull(),
+  // The step's SystemOne answer, chosen branch and any note.
+  result: json("result"),
+  queued_at: timestamp("queued_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
   queued_by: integer("queued_by").notNull(),
 });
 

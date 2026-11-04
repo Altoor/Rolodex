@@ -22,13 +22,13 @@ export const relations = defineRelations(schema, (r) => ({
     }),
   },
 
-  queue: {
-    queued_by: r.one.users({
+  queuedTasks: {
+    user: r.one.users({
       from: r.queuedTasks.queued_by,
       to: r.users.id,
     }),
 
-    queuedTask: r.one.tasks({
+    task: r.one.tasks({
       from: r.queuedTasks.taskId,
       to: r.tasks.id,
     }),
