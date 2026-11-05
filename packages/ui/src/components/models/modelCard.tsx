@@ -81,7 +81,7 @@ export default function ModelCard({
               </>
             )}
           </ItemTitle>
-          {data?.installModel?.status === "success" || pulled ? (
+          {data?.installModel?.status === "success" ? (
             <ItemDescription>
               {error
                 ? error.message
@@ -109,7 +109,9 @@ export default function ModelCard({
               onMouseLeave={() => setShowRefresh(false)}
             >
               <Button onClick={() => setPullStatus(true)}>
-                {loading ? (
+                {loading ||
+                data?.installModel?.status !== "success" ||
+                data?.installModel?.status !== undefined ? (
                   <Spinner />
                 ) : showRefresh ? (
                   <RotateCcw />

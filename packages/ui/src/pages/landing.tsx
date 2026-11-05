@@ -5,13 +5,8 @@ import { CREATE_QUEUED_TASK } from "@repo/queries/tasks/task-mutations";
 import { QUEUED_TASK_EVENT } from "@repo/queries/tasks/task-subscriptions";
 import { TASKS } from "@repo/queries/tasks/task-queries";
 import { ME } from "@repo/queries/user/users-queries";
-import {
-  Circle,
-  CircleAlert,
-  CircleCheck,
-  LoaderCircle,
-} from "lucide-react";
-import { useRef, useState } from "react";
+import { Circle, CircleAlert, CircleCheck, LoaderCircle } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { SubmitHandler, useForm } from "react-hook-form";
 
 import { Button } from "#components/ui/button";
@@ -70,7 +65,7 @@ export default function LandingPage() {
   const user = meData?.me;
   const loggedIn = !!user;
 
-  const { data: tasksData } = useQuery(TASKS);
+  const { data: tasksData, loading: tasksLoading } = useQuery(TASKS);
   const tasks = tasksData?.tasks ?? [];
 
   const [createQueuedTask] = useMutation(CREATE_QUEUED_TASK);
@@ -89,8 +84,17 @@ export default function LandingPage() {
     register,
     handleSubmit,
     reset,
+    getValues,
     formState: { isSubmitting },
-  } = useForm<Inputs>();
+  } = useForm<Inputs>({
+    defaultValues: { taskId: tasks[0]?.id?.toString() ?? "-1" },
+  });
+
+  useEffect(() => {
+    if (!tasksLoading && tasks.length > 0 && getValues("taskId") === "-1") {
+      reset({ ...getValues(), taskId: tasks[0]?.id?.toString() });
+    }
+  }, [tasksLoading, tasks, control, reset, getValues]);
 
   useSubscription(QUEUED_TASK_EVENT, {
     onData: ({ data }) => {
@@ -131,7 +135,7 @@ export default function LandingPage() {
     setActiveRun(runId);
     setSteps([]);
     setCotOpen(true);
-    reset({ state: "" });
+    reset({ state: "", taskId: inputs.taskId });
   };
 
   const submit = handleSubmit(onSubmit);
@@ -155,7 +159,7 @@ export default function LandingPage() {
       : undefined;
 
   const taskName = (id: number | null | undefined) =>
-    id != null ? tasks.find((t) => t.id === id)?.name ?? `task ${id}` : null;
+    id != null ? (tasks.find((t) => t.id === id)?.name ?? `task ${id}`) : null;
 
   return (
     <Card>
@@ -281,7 +285,9 @@ export default function LandingPage() {
                           <Circle />
                         )
                       }
-                      title={step.task?.name ?? `task ${step.taskId ?? step.id}`}
+                      title={
+                        step.task?.name ?? `task ${step.taskId ?? step.id}`
+                      }
                       description={branch}
                     />
                     {detail ? (

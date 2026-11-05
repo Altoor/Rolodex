@@ -165,8 +165,9 @@ const TaskFlow = ({ selectedTaskId, onSelectTaskId }: TaskFlowProps) => {
   const tasks = useMemo<FlowTask[]>(
     () =>
       (data?.tasks ?? [])
-        .filter((task): task is NonNullable<typeof task> & { id: number } =>
-          task != null && task.id != null,
+        .filter(
+          (task): task is NonNullable<typeof task> & { id: number } =>
+            task != null && task.id != null,
         )
         .map((task) => ({ ...task, id: task.id })),
     [data],
@@ -227,7 +228,14 @@ const TaskFlow = ({ selectedTaskId, onSelectTaskId }: TaskFlowProps) => {
         },
       }));
     });
-  }, [tasks, rootTask, effectiveRootId, selectedTaskId, handleDeleteTask, setNodes]);
+  }, [
+    tasks,
+    rootTask,
+    effectiveRootId,
+    selectedTaskId,
+    handleDeleteTask,
+    setNodes,
+  ]);
 
   // Edges are derived from the taskResults' resultTaskId values and each
   // task's fallbackTaskId (rendered dashed).
@@ -262,6 +270,7 @@ const TaskFlow = ({ selectedTaskId, onSelectTaskId }: TaskFlowProps) => {
           targetHandle: "input",
           // A lighter grey than the default edge colour (#b1b1b7).
           style: { stroke: "#d4d4d8", strokeDasharray: "5 5" },
+          animated: true,
           markerEnd: MarkerType.ArrowClosed,
         });
       }
@@ -287,8 +296,7 @@ const TaskFlow = ({ selectedTaskId, onSelectTaskId }: TaskFlowProps) => {
         if (!Number.isFinite(taskId)) return;
         void updateTask({
           variables: { id: taskId, fallbackTaskId: targetTaskId },
-          update: (cache) =>
-            setFallbackInCache(cache, taskId, targetTaskId),
+          update: (cache) => setFallbackInCache(cache, taskId, targetTaskId),
         }).then(({ error }) => {
           if (!error) {
             client.refetchQueries({ include: [TASKS] });
@@ -347,7 +355,7 @@ const TaskFlow = ({ selectedTaskId, onSelectTaskId }: TaskFlowProps) => {
   // Keyboard delete (Delete/Backspace on a selected node) also removes the
   // underlying task.
   const onDelete = useCallback(
-    ({ nodes }: { nodes: TaskFlowNode[] }) => {
+    ({ nodes }: { nodes: TaskFlowNode[]; edges: Edge[] }) => {
       for (const node of nodes) {
         handleDeleteTask(Number(node.id));
       }
@@ -424,8 +432,8 @@ const TaskFlow = ({ selectedTaskId, onSelectTaskId }: TaskFlowProps) => {
         </ReactFlow>
       </div>
       <p className="text-xs text-muted-foreground">
-        Click a node to edit it, drag a result output onto another task's
-        input to link them, or create new tasks with the "New Task" button.
+        Click a node to edit it, drag a result output onto another task's input
+        to link them, or create new tasks with the "New Task" button.
       </p>
     </div>
   );
