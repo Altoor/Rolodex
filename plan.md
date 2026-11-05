@@ -1,1734 +1,1197 @@
-# Rolodex Implementation Plan
+# Tools feature implementation plan
 
-This plan turns the requested changes into concrete, ordered implementation work.
-It is written so another agent can execute it without re-discovering the codebase.
+## Goal
 
-The work is split into two tracks:
+Add a first-class **tools** system:
 
-1. **Functional changes (Phases 1-5):** user-specific settings, user page, auth-aware navigation, and applying defaults to the task queue.
-2. **UI rework (Phase 6):** a structured cleanup of `packages/ui`.
+1. A tools page that shows information about every available tool.
+2. Tasks with `type = "tool"` are actually executed by the queue processor.
+3. Implement these tools first:
+   - `prompt` — prompt another LLM, wait for the answer, return it.
+   - `create_todo` — create a todo.
+   - `update_todo` — update a todo.
+   - `mark_todo_done` — mark a todo done or not done.
+   - `delete_todo` — delete a todo.
 
-Phases 1-5 should be completed and green before starting the larger UI refactor. Phase 6 is intentionally split into independent sub-phases so it can be applied incrementally without breaking the working app.
-
----
-
-## 0. Implementation Status
-
-Last updated: 2026-11-05
-
-| Area | Status | Notes |
-| --- | --- | --- |
-| Phase 0: baseline/environment | Done | Postgres/Ollama running; backend restarted on port 4000. |
-| Phase 1: backend user settings | Done | `userSettings` table + migration, relations, service, Pothos type, mutation, `me.settings`, auth null-handling, per-user queue model, `createQueuedTask` default task. |
-| Phase 2: GraphQL client/codegen | Done | `ME`, `UPDATE_USER_SETTINGS`, `INSTALLED_MODELS`, optional queued-task id; codegen and `@repo/queries` build pass. |
-| Phase 3: auth navigation/user page | Done | `AuthProvider`, `useAuth`, auth-aware header, `/user` page, route guards, login/signup integration. |
-| Phase 4: defaults applied | Done | Landing page preselects `defaultTaskId`; the task-queue "First task" selector reads and saves it; API fallback verified; queue model lookup added. |
-| Phase 5: functional verification | Done | `pnpm lint`, `pnpm check-types`, and `pnpm build` pass. Backend GraphQL smoke tests pass. Backend still has no local `typescript` dependency, so it has no standalone `check-types` script. |
-| Phase 6: `packages/ui` rework | Done | Shared layout/feedback/auth primitives, active navigation, single-source-of-truth decision/task forms, `useFieldArray` option/result editing, confirm-delete UX, responsive page polish, model-card state fixes, and removal of render-time Apollo side effects are complete. `useDebouncedFormState` and `lib/debounce` were deleted. Optional file-level extraction of the landing timeline and model-card container remains. |
-
-### Implemented files (high level)
-
-- `apps/backend/drizzle/20261105124205_flashy_joystick/migration.sql`
-- `apps/backend/src/db/schema.ts`
-- `apps/backend/src/db/relations/relations.ts`
-- `apps/backend/src/schema/auth.ts`
-- `apps/backend/src/schema/user/user-settings*.ts`
-- `apps/backend/src/schema/user/user.ts`
-- `apps/backend/src/schema/user/user-queries.ts`
-- `apps/backend/src/schema/user/user-service.ts`
-- `apps/backend/src/schema/user/index.ts`
-- `apps/backend/src/schema/builder.ts`
-- `apps/backend/src/queue/processor.ts`
-- `apps/backend/src/schema/task/task-mutations.ts`
-- `apps/backend/src/schema/ai/ai-mutations.ts`
-- `apps/backend/src/schema/todo/todo-queries.ts`
-- `apps/backend/src/schema/todo/todo-mutations.ts`
-- `apps/backend/server.ts`
-- `packages/queries/src/user/*`
-- `packages/queries/src/model/model-queries.ts`
-- `packages/queries/src/tasks/task-mutations.ts`
-- `packages/ui/src/components/auth/auth-provider.tsx`
-- `packages/ui/src/components/auth/auth-gate.tsx`
-- `packages/ui/src/components/auth/auth-layout.tsx`
-- `packages/ui/src/components/headerMenu/headerMenu.tsx`
-- `packages/ui/src/components/layout/*`
-- `packages/ui/src/components/feedback/*` (including `confirm-button.tsx`)
-- `packages/ui/src/components/user/*`
-- `packages/ui/src/components/decision/decision-form.ts`
-- `packages/ui/src/components/decision/decision-answer.ts`
-- `packages/ui/src/components/task/task-form.ts`
-- `packages/ui/src/pages/user.tsx`
-- `packages/ui/src/pages/landing.tsx`
-- `packages/ui/src/pages/login.tsx`
-- `packages/ui/src/pages/signUp.tsx`
-- `packages/ui/src/pages/decisions.tsx`
-- `packages/ui/src/pages/taskQueue.tsx`
-- `packages/ui/src/pages/models.tsx`
-- `packages/ui/src/components/auth/loginForm.tsx`
-- `packages/ui/src/components/auth/signUpForm.tsx`
-- `apps/web/app/App.tsx`
-- `apps/web/app/user/page.tsx`
-- `apps/web/app/GraphQlProvider.tsx`
-- `apps/web/app/globals.css`
-- `apps/web/app/layout.tsx`
-- `apps/web/eslint.config.js`
-- `apps/web/next.config.ts`
-
-### Verified commands
-
-```sh
-pnpm --filter backend generate
-pnpm --filter backend push
-pnpm --filter @repo/queries codegen
-pnpm --filter @repo/queries build
-pnpm --filter @repo/ui check-types
-pnpm --filter @repo/ui build:components
-pnpm --filter @repo/ui build:styles
-pnpm --filter web check-types
-pnpm --filter web build
-pnpm lint
-pnpm check-types
-pnpm build
-```
-
-### Remaining work
-
-1. Optional internal cleanup: extract the landing page into `StartRunForm`/`RunTimeline` and split `ModelCard` into presentational + container components. Behavior is implemented; this is file organization only.
-2. Optional: add a backend `check-types` script and local `typescript` dependency so backend type-checking can run in CI (the backend currently relies on `tsx` at runtime and has no `tsc` script).
-3. Optional hardening: remove `hashedPassword` from JWT payloads.
-4. Manual visual smoke test at narrow mobile and wide desktop widths (HTTP smoke checks for navigation/routes passed, but no browser automation was run).
+A todo already has a `name` and a `content` column. `content` is the
+description for the purposes of this feature. The `prompt` tool/helper must be
+reusable by the todo tools so it can fill in a todo's `name` and description
+when they are not supplied explicitly.
 
 ---
 
-## 1. Scope and Assumptions
+## Design decisions
 
-### 1.1 What "changes/settings" means in this plan
+- **Tools are code-defined, not database rows.** The tool registry is the
+  single source of truth for tool metadata (`key`, `name`, `description`,
+  input schema, examples). This avoids stale tool tables and makes the tool
+  implementation and its metadata live together.
+- **Tasks reference a tool by key.** Add `toolKey` (nullable text) and
+  `toolConfig` (nullable JSON) to `tasks`. `toolKey` is a stable identifier such
+  as `prompt` or `create_todo`.
+- **Tool input comes from two places:**
+  1. The queued task's `state` string (what the user types on the landing page).
+  2. The task's `toolConfig` JSON (defaults/fixed arguments).
+  If `state` is valid JSON, its values override `toolConfig`. If `state` is
+  plain text, tools use it as free-form input and/or use the `prompt` helper to
+  extract structured fields from it.
+- **Tool tasks continue through `fallbackTaskId`.** Tool tasks do not use
+  `TaskResult` rows. For a tool task, the existing fallback edge is the normal
+  "next task" edge. A tool may also return an explicit `nextTaskId` later.
+- **Tool output is stored in `queuedTasks.result`.** It has the same shape as a
+  decision step plus a tool-specific `output` field, so the existing queue
+  subscription/chain-of-thought UI can display it.
+- **No todo database migration is required.** `todos.name` is the todo name and
+  `todos.content` is the description.
 
-The settings are per-user preferences, persisted in PostgreSQL, with these initial fields:
+### Change-type legend
 
-| Setting | Meaning | Used by |
-| --- | --- | --- |
-| `defaultTaskId` | The task preselected as the starting task when a user queues a run. | Landing page, `createQueuedTask` fallback |
-| `defaultModelName` | The Ollama model used to execute that user's queued tasks. | Queue processor |
-
-The table is designed as one row per user, so it is unique per user by construction. Further settings can be added as new nullable columns without changing the ownership model.
-
-### 1.2 Interpretation of "first task in the task queue"
-
-The current app queues a run from the landing page using a "Starting task" selector. There is no separate queue-order editor. This plan implements the setting as:
-
-- The default starting task shown on the landing page.
-- The task used when `createQueuedTask` is called without an explicit `taskId`.
-
-If the intended meaning is literal queue ordering (for example, a separate ordered list of tasks that should be queued automatically), that is a larger feature. The data model below can be extended with a `userQueueItems` join table later; it is called out in Section 13.
-
-### 1.3 Interpretation of "models" (plural)
-
-The current executor runs one model per request, hardcoded as `tev1:4b` in `apps/backend/src/queue/processor.ts`. This plan stores a single default model per user (`defaultModelName`) and applies it to every step in that user's run.
-
-If multiple models per user are required, replace `defaultModelName` with a `userSettingsModels` join table or a `text[]` column and select a model per run. Do not block on this unless the product requirement is explicitly multiple models.
-
-### 1.4 Logged-in detection
-
-A user is considered logged in **only** if the GraphQL `me` query returns a non-null user.
-
-This requires fixing the current backend behavior, which returns an empty object (`{}`) instead of `null` when authentication is absent or invalid. See Phase 1.5.
-
-### 1.5 UI rework definition
-
-"Reworking `packages/ui`" in this plan means:
-
-- Consistent page/layout primitives.
-- Auth-aware navigation and route guards.
-- One source of truth for form state.
-- Correct Apollo mutation/refetch behavior (no side effects during render).
-- Consistent loading, empty, error, and destructive-action states.
-- Better responsive layout, accessibility, and visual polish.
-- No wholesale rewrite of generated shadcn/Base UI primitives.
+- `[NEW]` — create a new file.
+- `[EDIT]` — modify an existing file.
+- `[DB]` — schema/migration change.
+- `[GRAPHQL]` — GraphQL type/query/mutation change.
+- `[QUEUE]` — queue execution change.
+- `[UI]` — frontend component/page change.
+- `[QUERIES]` — GraphQL document change in `packages/queries`.
+- `[CODEGEN]` — regenerate generated GraphQL files.
+- `[REFACTOR]` — move/extract existing code without behavior change.
 
 ---
 
-## 2. Current-State Notes (Useful for the Implementer)
+## 1. Backend tool runtime
 
-These are the specific problems this plan addresses:
+### 1.1 Add tool types
 
-- `apps/backend/src/queue/processor.ts` line 15: model is hardcoded:
-  ```ts
-  const MODEL = "tev1:4b";
-  ```
-- `apps/backend/server.ts` lines 34-49: `extract_user` returns `{}` for missing/invalid auth. That makes `ctx.user` truthy and breaks auth checks.
-- `apps/backend/src/schema/user/user-queries.ts`: `me` returns `ctx.user` directly, so it must return `null` when there is no user.
-- `apps/backend/src/schema/task/task-mutations.ts`: `createQueuedTask` requires a `taskId`; there is no fallback to a saved default.
-- `packages/ui/src/components/headerMenu/headerMenu.tsx` lines 19-22: logout is a button in the menu.
-- `packages/ui/src/pages/landing.tsx` lines 90-97: starting task defaults to `tasks[0]`, not a user setting.
-- `packages/ui/src/hooks/useDebouncedFormState.ts`: duplicated parent/child form state, debounced mirrors, and ref-based sync loops.
-- `packages/ui/src/components/task/taskResultOption/taskResultOption.tsx` line 98: `client.refetchQueries(...)` is called during render.
-- `packages/ui/src/components/models/modelCard.tsx` line 60: `setValue(...)` is called during render.
-- `packages/ui/src/components/task/taskFlow/taskFlow.tsx` line 17: CSS for `@xyflow/react` is imported inside a component.
-- `apps/web/next.config.ts`: `typescript.ignoreBuildErrors` is enabled.
+**File:** `apps/backend/src/tools/types.ts` — `[NEW]`
 
----
-
-## 3. Target Design
-
-### 3.1 Database
-
-Add a `userSettings` table at the bottom of `apps/backend/src/db/schema.ts` (after `users`, `tasks`, and `models` are declared, so the foreign-key callbacks can reference them safely):
+Define the shared contracts below. Keep this file free of database/queue
+imports.
 
 ```ts
-export const userSettings = pgTable("userSettings", {
-  userId: integer("userId")
-    .primaryKey()
-    .references(() => users.id, { onDelete: "cascade" }),
-  defaultTaskId: integer("defaultTaskId").references(() => tasks.id, {
-    onDelete: "set null",
-  }),
-  defaultModelName: text("defaultModelName").references(() => models.name, {
-    onDelete: "set null",
-  }),
-  updatedAt: timestamp("updatedAt", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-});
-```
+export type ToolConfig = Record<string, unknown>;
 
-Notes:
+export type ToolInputMode = "text" | "json";
 
-- `userId` is the primary key: exactly one settings row per user.
-- `onDelete: "cascade"` removes settings when a user is deleted.
-- `onDelete: "set null"` clears defaults when a task/model is deleted.
-- `models.name` is already a unique primary key, so it is a valid FK target.
-
-### 3.2 Drizzle relations
-
-In `apps/backend/src/db/relations/relations.ts`:
-
-- Add `settings` to `users`:
-  ```ts
-  users: {
-    todos: r.many.todos(),
-    todos_todo: r.many.todos(),
-    settings: r.one.userSettings({
-      from: r.users.id,
-      to: r.userSettings.userId,
-    }),
-  },
-  ```
-- Add a `userSettings` relation block:
-  ```ts
-  userSettings: {
-    user: r.one.users({
-      from: r.userSettings.userId,
-      to: r.users.id,
-    }),
-    defaultTask: r.one.tasks({
-      from: r.userSettings.defaultTaskId,
-      to: r.tasks.id,
-    }),
-    defaultModel: r.one.models({
-      from: r.userSettings.defaultModelName,
-      to: r.models.name,
-    }),
-  },
-  ```
-
-### 3.3 GraphQL API
-
-Add to `apps/backend/src/schema/user/`:
-
-- `user-settings.ts`: `UserSettings` Pothos Drizzle object.
-- `user-settings-service.ts`: `ensureUserSettings`, `getUserSettings`, `updateUserSettings`.
-- `user-settings-queries.ts`: optional standalone query if needed.
-- `user-settings-mutations.ts`: `updateUserSettings` mutation.
-- Update `apps/backend/src/schema/user/index.ts` to export the new files.
-
-GraphQL shape:
-
-```graphql
-type UserSettings {
-  userId: Int!
-  defaultTaskId: Int
-  defaultModelName: String
-  defaultTask: Task
-  defaultModel: Model
-  updatedAt: DateTime!
+export interface ToolInputProperty {
+  type: "string" | "number" | "boolean" | "object";
+  description: string;
+  enum?: string[];
+  default?: unknown;
 }
 
-type User {
-  id: Int!
-  name: String!
-  email: String!
-  settings: UserSettings
+export interface ToolInputSchema {
+  type: "object";
+  properties: Record<string, ToolInputProperty>;
+  required?: string[];
 }
 
-type Query {
-  me: User
+export interface ToolDefinition {
+  /** Stable identifier stored on tasks, e.g. "prompt" or "create_todo". */
+  key: string;
+  /** Human-readable name shown on the tools page. */
+  name: string;
+  description: string;
+  category: "ai" | "todo";
+  inputMode: ToolInputMode;
+  inputSchema: ToolInputSchema;
+  outputDescription: string;
+  /** Example `toolConfig` the tools page can display. */
+  exampleConfig?: ToolConfig | null;
 }
 
-type Mutation {
-  updateUserSettings(
-    defaultTaskId: Int
-    defaultModelName: String
-  ): UserSettings!
+export interface ToolRunContext {
+  userId: number;
+  runId: string;
+  taskId: number;
+  queuedTaskId: number;
+  /** Raw queued task state (the user's free-text input). */
+  state: string;
+  /** The task's `toolConfig` JSON, or null. */
+  config: ToolConfig | null;
 }
-```
 
-Semantics of `updateUserSettings`:
+export interface ToolExecution {
+  /** Arbitrary JSON stored as `queuedTasks.result.output`. */
+  output: unknown;
+  /** Short human-readable description shown in the queue UI. */
+  summary: string;
+  /** Text appended to the next queue step's state. */
+  stateAppend?: string;
+  /**
+   * Whether to append `stateAppend`/`summary` to the next step's state.
+   * When omitted, the queue falls back to `toolConfig.appendState`.
+   */
+  appendState?: boolean;
+  /** Optional explicit next task; otherwise the queue uses fallbackTaskId. */
+  nextTaskId?: number | null;
+}
 
-- An **omitted** argument keeps the current value.
-- An explicit `null` clears the value.
-- The user id is always taken from the auth context; never accept a `userId` argument.
-- Validate that `defaultTaskId` exists.
-- Validate that `defaultModelName` exists and is pulled/installed.
+export interface Tool {
+  definition: ToolDefinition;
+  execute(context: ToolRunContext): Promise<ToolExecution>;
+}
 
-### 3.4 Queue behavior
-
-For every queued task, look up the settings row of `queuedTasks.queued_by`:
-
-```ts
-const [settings] = await db
-  .select({ defaultModelName: userSettings.defaultModelName })
-  .from(userSettings)
-  .where(eq(userSettings.userId, row.queued_by))
-  .limit(1);
-
-const model = settings?.defaultModelName ?? DEFAULT_MODEL;
-```
-
-Use `DEFAULT_MODEL` as a fallback for users with no settings row or no configured model. Store the model in the step result for traceability:
-
-```ts
-const result = {
-  answer,
-  usage: response.usage,
-  model,
-  branch,
-  nextTaskId,
-  summary,
-  ...(note ? { note } : {}),
-};
-```
-
----
-
-## 4. Phase 0: Baseline and Environment
-
-> Status: DONE — environment started and baseline checks recorded.
-
-- [ ] Confirm the working tree is clean or record existing local changes:
-  ```sh
-  git status --short
-  ```
-- [ ] Install dependencies:
-  ```sh
-  pnpm install
-  ```
-- [ ] Start Postgres and Ollama:
-  ```sh
-  docker compose up -d postgres ollama
-  ```
-- [ ] Start the backend in a separate terminal:
-  ```sh
-  pnpm --filter backend api
-  ```
-- [ ] Run the current checks once to capture the baseline:
-  ```sh
-  pnpm lint
-  pnpm check-types
-  ```
-- [ ] If the baseline has unrelated failures, record them in the PR/notes before changing code.
-
-Do not start by regenerating the GraphQL client code. The backend schema must be changed first, then codegen runs against the live API.
-
----
-
-## 5. Phase 1: Backend User Settings
-
-> Status: DONE — schema, migration, GraphQL settings API, auth fixes, queue model, and default task fallback are implemented and smoke-tested.
-
-### 5.1 Add the database table
-
-- [ ] Edit `apps/backend/src/db/schema.ts`.
-- [ ] Add the `userSettings` table from Section 3.1 at the end of the file.
-- [ ] Confirm the file imports everything needed (`integer`, `text`, `timestamp`, `pgTable` are already imported).
-
-### 5.2 Add relations
-
-- [ ] Edit `apps/backend/src/db/relations/relations.ts`.
-- [ ] Add `users.settings` and the `userSettings` block from Section 3.2.
-- [ ] Run a type check on the backend:
-  ```sh
-  pnpm --filter backend check-types
-  ```
-  If the backend has no `check-types` script, run `pnpm --filter backend exec tsc --noEmit`.
-
-### 5.3 Add the settings service
-
-Create `apps/backend/src/schema/user/user-settings-service.ts`.
-
-Required functions:
-
-```ts
-import { eq } from "drizzle-orm";
-import { GraphQLError } from "graphql";
-import { db } from "../builder";
-import { models, tasks, userSettings } from "../../db";
-
-export const ensureUserSettings = async (userId: number) => {
-  const existing = await db.query.userSettings.findFirst({
-    where: { userId },
-  });
-  if (existing) return existing;
-
-  const [created] = await db
-    .insert(userSettings)
-    .values({ userId })
-    .onConflictDoNothing()
-    .returning();
-
-  if (created) return created;
-
-  const settings = await db.query.userSettings.findFirst({
-    where: { userId },
-  });
-
-  if (!settings) {
-    throw new GraphQLError("Could not create user settings", {
-      extensions: { code: "INTERNAL_SERVER_ERROR" },
-    });
+export class ToolInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ToolInputError";
   }
+}
+```
 
-  return settings;
-};
+### 1.2 Add input parsing helpers
 
-export const getUserSettings = async (userId: number) => {
-  return ensureUserSettings(userId);
-};
+**File:** `apps/backend/src/tools/input.ts` — `[NEW]`
 
-type UpdateSettingsInput = {
-  defaultTaskId?: number | null;
-  defaultModelName?: string | null;
-};
+Add helpers used by every tool:
 
-export const updateUserSettings = async (
+- `parseJsonObject(value: string): Record<string, unknown> | null`
+  - Return `null` for empty/plain text or invalid JSON. Never throw.
+  - Only return objects; arrays/primitives return `null`.
+- `mergeToolInput(context: ToolRunContext): Record<string, unknown>`
+  - Start with `{ ...(context.config ?? {}) }`.
+  - If `parseJsonObject(context.state)` is non-null, merge it on top so JSON
+    state overrides config.
+  - Do not put the raw plain-text state into the object; tools read
+    `context.state` directly when they need free-form text.
+- `readString(input, key): string | undefined`
+- `readNumber(input, key): number | undefined`
+- `readBoolean(input, key): boolean | undefined`
+  - Validate the runtime type and throw `ToolInputError` with a clear message
+    when a present value has the wrong type.
+- `requireNonEmptyString(value, fieldName): string`
+  - Throw `ToolInputError` when missing/blank.
+
+### 1.3 Extract the model lookup helper
+
+**File:** `apps/backend/src/ai/model.ts` — `[NEW]` / `[REFACTOR]`
+
+Move the existing `DEFAULT_MODEL` and `modelForUser` logic out of
+`apps/backend/src/queue/processor.ts`:
+
+```ts
+export const DEFAULT_MODEL = "tev1:4b";
+
+export async function getModelForUser(userId: number): Promise<string> {
+  // Same query as the current modelForUser(): read userSettings.defaultModelName,
+  // fall back to DEFAULT_MODEL.
+}
+```
+
+Then:
+
+- **File:** `apps/backend/src/queue/processor.ts` — `[EDIT]`
+  - Remove the local `DEFAULT_MODEL` constant and `modelForUser()` function.
+  - Import `DEFAULT_MODEL` and `getModelForUser` from `../ai/model`.
+  - Replace calls to `modelForUser(row.queued_by)` with
+    `getModelForUser(row.queued_by)`.
+
+This lets the prompt tool use the same user default model.
+
+### 1.4 Implement the prompt tool
+
+**File:** `apps/backend/src/tools/prompt.ts` — `[NEW]`
+
+Export a reusable function and the tool object:
+
+```ts
+export interface PromptOptions {
+  prompt: string;
+  system?: string;
+  model?: string;
+  format?: Record<string, unknown>;
+}
+
+export interface PromptResult {
+  text: string;
+  thinking?: string;
+  model: string;
+}
+
+export async function runPrompt(
   userId: number,
-  input: UpdateSettingsInput,
-) => {
-  await ensureUserSettings(userId);
+  options: PromptOptions,
+): Promise<PromptResult>;
+```
 
-  if (input.defaultTaskId !== undefined && input.defaultTaskId !== null) {
-    const task = await db.query.tasks.findFirst({
-      where: { id: input.defaultTaskId },
-    });
-    if (!task) {
-      throw new GraphQLError("Task not found", {
-        extensions: { code: "BAD_USER_INPUT" },
-      });
+Implementation details:
+
+- Resolve the model as `options.model ?? (await getModelForUser(userId))`.
+- Call `ollama.generate({ model, prompt, system, format })` using the shared
+  `ollama` instance from `apps/backend/src/ai/Ollama.ts`.
+- Return `response.response` as `text`, `response.thinking` as `thinking` (if
+  present), and the resolved `model`.
+- If Ollama returns an empty response, throw `ToolInputError` or a plain
+  `Error` with a useful message.
+
+Define `promptTool: Tool` with this definition:
+
+- `key: "prompt"`
+- `name: "Prompt"`
+- `description: "Send a prompt to an installed Ollama model, wait for the answer, and return it."`
+- `category: "ai"`
+- `inputMode: "text"`
+- Input schema properties:
+  - `prompt` (`string`): optional; defaults to the queued task's `state`.
+  - `system` (`string`): optional system prompt.
+  - `model` (`string`): optional installed model override.
+  - `format` (`object`): optional JSON schema passed to Ollama for structured
+    output.
+- `outputDescription: "The model answer as text, plus the model name and optional thinking text."`
+- `exampleConfig: { "system": "You are a helpful assistant.", "appendState": true }`
+
+`execute` behavior:
+
+1. `const input = mergeToolInput(context)`.
+2. `const prompt = readString(input, "prompt") ?? context.state`.
+3. Throw `ToolInputError("prompt is required")` if both are blank.
+4. Call `runPrompt(context.userId, { prompt, system, model, format })`.
+5. Return:
+
+```ts
+{
+  output: { text, thinking, model },
+  summary: text,
+  stateAppend: text,
+  // Prompt answers are normally useful to the next task.
+  appendState: true,
+}
+```
+
+### 1.5 Implement the todo tools
+
+**File:** `apps/backend/src/tools/todos.ts` — `[NEW]`
+
+All todo tools live here so they can share helpers. They must use the existing
+Drizzle `db` from `apps/backend/src/schema/builder.ts` and the `todos` table
+from `apps/backend/src/db`.
+
+#### Shared helpers
+
+- `listUserTodos(userId: number)`
+  - `db.query.todos.findMany({ where: { OR: [{ authorId: userId }, { actorId: userId }] } })`
+  - Mirrors the ownership rule in `todo-queries.ts`/`todo-mutations.ts`.
+- `loadUserTodo(userId: number, id: number)`
+  - Same ownership filter plus `{ id }`.
+  - Throw `ToolInputError("todo <id> not found")` when missing/not owned.
+- `extractTodoFields(userId: number, context: ToolRunContext)`
+  - Read `name` and `description`/`content` from `mergeToolInput(context)`.
+  - If both are present, return them.
+  - Otherwise call `runPrompt` from `tools/prompt.ts` with a prompt that asks
+    for a structured `{ name, description }` from `context.state` (and any
+    supplied partial fields). Pass an Ollama JSON `format` schema:
+    ```ts
+    {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        description: { type: "string" },
+      },
+      required: ["name", "description"],
     }
+    ```
+  - Parse the JSON text. If parsing fails or fields are blank, throw
+    `ToolInputError("could not determine todo name/description")`.
+  - Return `{ name, description }`.
+  - This is the key requirement: the prompt helper fills in the todo fields.
+- `resolveTodoId(userId: number, context: ToolRunContext)`
+  - Read an explicit `id`/`todoId` number from `mergeToolInput(context)`.
+  - If present, call `loadUserTodo` and return it.
+  - Otherwise load all user todos.
+  - If there are no todos, throw `ToolInputError("no todos found")`.
+  - If there is exactly one, use it.
+  - Otherwise call `runPrompt` with the user's todos (`id`, `name`, `done`) and
+    `context.state`, using a JSON schema:
+    ```ts
+    {
+      type: "object",
+      properties: { id: { type: "number" } },
+      required: ["id"],
+    }
+    ```
+  - Validate that the returned id belongs to the user's todo list; otherwise
+    throw `ToolInputError`.
+  - Return the selected todo.
+
+#### `createTodoTool`
+
+- Definition:
+  - `key: "create_todo"`
+  - `name: "Create todo"`
+  - `description: "Create a todo. Name and description are taken from toolConfig, JSON state, or inferred from the state with the prompt tool."`
+  - `category: "todo"`
+  - `inputMode: "json"`
+  - Input schema: optional `name` (`string`), optional `description`
+    (`string`).
+  - Output: the created `Todo`.
+  - Example config: `{ "name": "Pick up Johnny from daycare", "description": "Pick him up this afternoon." }`
+- Execute:
+  1. `extractTodoFields(context.userId, context)`.
+  2. Insert into `todos`:
+     ```ts
+     {
+       name,
+       content: description,
+       done: false,
+       authorId: context.userId,
+       actorId: context.userId,
+     }
+     ```
+  3. Return `{ output: { todo }, summary: `Created todo "${name}"` }`.
+
+#### `updateTodoTool`
+
+- Definition:
+  - `key: "update_todo"`
+  - `name: "Update todo"`
+  - `description: "Update a todo's name and/or description. The todo can be selected by id or inferred from state."`
+  - `category: "todo"`
+  - `inputMode: "json"`
+  - Input schema: optional `id` (`number`), optional `name` (`string`),
+    optional `description` (`string`).
+  - Output: the updated `Todo`.
+  - Example config: `{ "id": 3, "name": "Updated name", "description": "Updated description" }`
+- Execute:
+  1. `const todo = await resolveTodoId(context.userId, context)`.
+  2. Read `name` and `description` from `mergeToolInput(context)`.
+  3. If neither is supplied, call `extractTodoFields` and use those values.
+  4. Update with `name ?? todo.name`, `content: description ?? todo.content`.
+  5. Return `{ output: { todo: updated }, summary: `Updated todo "${updated.name}"` }`.
+
+#### `markTodoDoneTool`
+
+- Definition:
+  - `key: "mark_todo_done"`
+  - `name: "Mark todo done"`
+  - `description: "Mark a todo as done or not done. The todo can be selected by id or inferred from state."`
+  - `category: "todo"`
+  - `inputMode: "json"`
+  - Input schema: optional `id` (`number`), optional `done` (`boolean`,
+    default `true`).
+  - Output: the updated `Todo`.
+  - Example config: `{ "id": 3, "done": true }`
+- Execute:
+  1. `const todo = await resolveTodoId(context.userId, context)`.
+  2. `const done = readBoolean(mergeToolInput(context), "done") ?? true`.
+  3. Update `{ done }`.
+  4. Return `{ output: { todo: updated }, summary: done ? `Marked todo "${updated.name}" as done` : `Marked todo "${updated.name}" as not done` }`.
+
+#### `deleteTodoTool`
+
+- Definition:
+  - `key: "delete_todo"`
+  - `name: "Delete todo"`
+  - `description: "Delete a todo. The todo can be selected by id or inferred from state."`
+  - `category: "todo"`
+  - `inputMode: "json"`
+  - Input schema: optional `id` (`number`).
+  - Output: `{ id, name }` of the deleted todo.
+  - Example config: `{ "id": 3 }`
+- Execute:
+  1. `const todo = await resolveTodoId(context.userId, context)`.
+  2. Delete by `todo.id`.
+  3. Return `{ output: { id: todo.id, name: todo.name }, summary: `Deleted todo "${todo.name}"` }`.
+
+### 1.6 Add the tool registry
+
+**File:** `apps/backend/src/tools/registry.ts` — `[NEW]`
+
+- Import `promptTool` and the four todo tools.
+- Keep one ordered array:
+  ```ts
+  export const tools: Tool[] = [
+    promptTool,
+    createTodoTool,
+    updateTodoTool,
+    markTodoDoneTool,
+    deleteTodoTool,
+  ];
+  ```
+- Build a `Map<string, Tool>` by `definition.key`.
+- Export:
+  - `listToolDefinitions(): ToolDefinition[]`
+  - `getToolDefinition(key: string): ToolDefinition | undefined`
+  - `getTool(key: string): Tool | undefined`
+  - `requireTool(key: string): Tool` (throws a clear `Error` if missing)
+- Do not import `schema/index.ts` from this file or the tool handlers. Import
+  the Drizzle client from `apps/backend/src/schema/builder.ts` only.
+
+**File:** `apps/backend/src/tools/index.ts` — `[NEW]`
+
+```ts
+export * from "./types";
+export * from "./registry";
+export * from "./prompt";
+```
+
+Do not re-export every todo helper unless needed.
+
+---
+
+## 2. Database changes
+
+### 2.1 Task columns
+
+**File:** `apps/backend/src/db/schema.ts` — `[EDIT]` `[DB]`
+
+In the `tasks` table definition, add:
+
+```ts
+toolKey: text("toolKey"),
+toolConfig: json("toolConfig"),
+```
+
+Both are nullable so existing tasks keep working. Do not add a `tools` table;
+tool metadata comes from the code registry.
+
+### 2.2 Generate and apply the migration
+
+- Run from the repo root:
+  - `pnpm --filter backend generate`
+- Review the new migration under
+  `apps/backend/drizzle/<new-timestamp>/migration.sql`. It should contain
+  `ALTER TABLE "tasks" ADD COLUMN "toolKey" text;` and
+  `ALTER TABLE "tasks" ADD COLUMN "toolConfig" json;`.
+- Apply it using the project's existing workflow:
+  - `pnpm --filter backend push` for a dev database, or the team's normal
+    `drizzle-kit migrate` command if migrations are applied explicitly.
+- Do not hand-edit a migration snapshot unless `generate` is unavailable.
+  If it is unavailable, create the SQL migration manually and update the
+  snapshot consistently.
+
+### 2.3 Relations
+
+**File:** `apps/backend/src/db/relations/relations.ts` — `[EDIT]` (likely no change)
+
+No new relation is required because tools are not tables. Leave existing task
+relations unchanged.
+
+---
+
+## 3. GraphQL changes
+
+### 3.1 Tool object and queries
+
+**File:** `apps/backend/src/schema/tool/tool.ts` — `[NEW]` `[GRAPHQL]`
+
+- Import `ToolDefinition` from `../../tools/types` and `builder` from
+  `../builder`.
+- Create:
+  ```ts
+  export const Tool = builder
+    .objectRef<ToolDefinition>("Tool")
+    .implement({
+      description: "A runnable tool available to tool tasks.",
+      fields: (t) => ({
+        key: t.exposeString("key"),
+        name: t.exposeString("name"),
+        description: t.exposeString("description"),
+        category: t.exposeString("category"),
+        inputMode: t.exposeString("inputMode"),
+        inputSchema: t.field({
+          type: "JSON",
+          resolve: (parent) => parent.inputSchema,
+        }),
+        outputDescription: t.exposeString("outputDescription"),
+        exampleConfig: t.field({
+          type: "JSON",
+          nullable: true,
+          resolve: (parent) => parent.exampleConfig ?? null,
+        }),
+      }),
+    });
+  ```
+
+**File:** `apps/backend/src/schema/tool/tool-queries.ts` — `[NEW]` `[GRAPHQL]`
+
+Add to `builder.queryType`:
+
+- `tools: [Tool!]!`
+  - Resolve with `listToolDefinitions()` from `../../tools/registry`.
+  - Require a logged-in user with `requireUserId(ctx)` for consistency with the
+    other authenticated queries (or omit if the team prefers a public catalog;
+    keep it authenticated by default).
+- `getTool(key: String!): Tool`
+  - Resolve with `getToolDefinition(key)`.
+  - Throw a `GraphQLError("Tool not found")` with `BAD_USER_INPUT` when missing.
+
+**File:** `apps/backend/src/schema/tool/index.ts` — `[NEW]`
+
+```ts
+export * from "./tool";
+export * from "./tool-queries";
+```
+
+**File:** `apps/backend/src/schema/index.ts` — `[EDIT]`
+
+Add `import "./tool/index";` alongside the other schema imports.
+
+### 3.2 Extend the Task GraphQL object
+
+**File:** `apps/backend/src/schema/task/task.ts` — `[EDIT]` `[GRAPHQL]`
+
+- Import `Tool` from `../tool` and `getToolDefinition` from
+  `../../tools/registry`.
+- Add to the `Task` object fields:
+  ```ts
+  toolKey: t.exposeString("toolKey", { nullable: true }),
+  toolConfig: t.field({
+    type: "JSON",
+    nullable: true,
+    resolve: (parent) => parent.toolConfig ?? null,
+  }),
+  tool: t.field({
+    type: Tool,
+    nullable: true,
+    resolve: (parent) =>
+      parent.toolKey ? getToolDefinition(parent.toolKey) : null,
+  }),
+  ```
+- Keep the existing `type`, `decision`, `taskResults`, `fallbackTask` fields.
+
+No change is required to `QueuedTask` itself; clients can follow its `task`
+relation and read `task.toolKey`.
+
+### 3.3 Extend task mutations
+
+**File:** `apps/backend/src/schema/task/task-mutations.ts` — `[EDIT]` `[GRAPHQL]`
+
+#### `createTask`
+
+- Add arguments:
+  ```ts
+  toolKey: t.arg.string(),
+  toolConfig: t.arg({ type: "JSON" }),
+  ```
+- Include them in the inserted object:
+  ```ts
+  {
+    name,
+    type,
+    decisionId,
+    fallbackTaskId,
+    toolKey: toolKey ?? null,
+    toolConfig: toolConfig ?? null,
+  }
+  ```
+- Remove the empty `switch (type)` block.
+- Validate after building the object:
+  - If `type === "tool"`, require `toolKey` and verify it exists with
+    `getToolDefinition(toolKey)`. Throw `GraphQLError` with
+    `BAD_USER_INPUT` when missing/unknown.
+  - If `type !== "tool"`, allow `toolKey` to be omitted or null.
+- A shared helper is recommended:
+  ```ts
+  function assertValidToolTask(type: string, toolKey: string | null) {
+    if (type !== "tool") return;
+    if (!toolKey) throw new GraphQLError("toolKey is required for tool tasks", ...);
+    if (!getToolDefinition(toolKey)) throw new GraphQLError(`Unknown tool "${toolKey}"`, ...);
+  }
+  ```
+
+#### `updateTask`
+
+- Add arguments:
+  ```ts
+  toolKey: t.arg.string(),
+  toolConfig: t.arg({ type: "JSON" }),
+  ```
+- Use explicit-null-aware merge semantics, like `fallbackTaskId`:
+  ```ts
+  toolKey: toolKey !== undefined ? toolKey : task.toolKey,
+  toolConfig: toolConfig !== undefined ? toolConfig : task.toolConfig,
+  ```
+  This allows the UI to clear a tool by sending `null`.
+- Determine the effective type (`type ?? task.type`) and effective tool key
+  (`toolKey !== undefined ? toolKey : task.toolKey`), then call
+  `assertValidToolTask(...)`.
+- Remove the empty `switch (type)` block.
+
+### 3.4 Optional Todo description alias
+
+**File:** `apps/backend/src/schema/todo/todo.ts` — `[EDIT]` `[GRAPHQL]` (recommended)
+
+Add an additive alias so API consumers can use the word "description" while the
+database keeps `content`:
+
+```ts
+description: t.exposeString("content"),
+```
+
+This does not require a migration and does not break existing `content`
+consumers.
+
+---
+
+## 4. Queue execution for tool tasks
+
+**File:** `apps/backend/src/queue/processor.ts` — `[EDIT]` `[QUEUE]`
+
+### 4.1 Import the tool runtime
+
+Add imports for `getTool`, `ToolInputError`, and the shared tool config type.
+
+### 4.2 Branch before the decision check
+
+In `processStep`, after the task is loaded and marked `running`, replace the
+current block:
+
+```ts
+if (task.type !== "decision" || task.decisionId == null) {
+  // currently marked completed with a "skipped" note
+}
+```
+
+with:
+
+```ts
+if (task.type === "tool") {
+  await processToolStep(row, task, stepsByRun);
+  return;
+}
+
+if (task.type !== "decision" || task.decisionId == null) {
+  await finishStep(row.id, "completed", {
+    note: `skipped: task type "${task.type}" is not runnable yet`,
+  });
+  return;
+}
+```
+
+### 4.3 Add `processToolStep`
+
+Add a helper in the same file (or a small `queue/toolStep.ts` if preferred; if
+split out, export `finishStep` or pass the needed callbacks):
+
+```ts
+async function processToolStep(
+  row: QueuedRow,
+  task: typeof tasks.$inferSelect,
+  stepsByRun: Map<string, number>,
+): Promise<void> {
+  if (!task.toolKey) {
+    await finishStep(row.id, "failed", {
+      toolKey: null,
+      note: "tool task has no toolKey",
+    });
+    return;
   }
 
-  if (input.defaultModelName !== undefined && input.defaultModelName !== null) {
-    const model = await db.query.models.findFirst({
-      where: { name: input.defaultModelName },
+  const tool = getTool(task.toolKey);
+  if (!tool) {
+    await finishStep(row.id, "failed", {
+      toolKey: task.toolKey,
+      note: `unknown tool "${task.toolKey}"`,
     });
-    if (!model) {
-      throw new GraphQLError("Model not found", {
-        extensions: { code: "BAD_USER_INPUT" },
-      });
-    }
-    if (!model.pulled) {
-      throw new GraphQLError("Model is not installed", {
-        extensions: { code: "BAD_USER_INPUT" },
-      });
-    }
+    return;
   }
 
-  const [updated] = await db
-    .update(userSettings)
-    .set({
-      ...(input.defaultTaskId !== undefined
-        ? { defaultTaskId: input.defaultTaskId }
-        : {}),
-      ...(input.defaultModelName !== undefined
-        ? { defaultModelName: input.defaultModelName }
-        : {}),
-      updatedAt: new Date(),
-    })
-    .where(eq(userSettings.userId, userId))
-    .returning();
+  const toolConfig =
+    (task.toolConfig as Record<string, unknown> | null) ?? null;
 
-  return updated;
-};
+  try {
+    const execution = await tool.execute({
+      userId: row.queued_by,
+      runId: row.runId,
+      taskId: task.id,
+      queuedTaskId: row.id,
+      state: row.state,
+      config: toolConfig,
+    });
+
+    const steps = (stepsByRun.get(row.runId) ?? 0) + 1;
+    stepsByRun.set(row.runId, steps);
+
+    let nextTaskId = execution.nextTaskId ?? task.fallbackTaskId ?? null;
+    let note: string | undefined;
+
+    if (nextTaskId != null && steps >= MAX_STEPS_PER_RUN) {
+      nextTaskId = null;
+      note = `max chain depth (${MAX_STEPS_PER_RUN}) reached — run stopped`;
+    }
+
+    const result = {
+      toolKey: task.toolKey,
+      output: execution.output,
+      summary: execution.summary,
+      branch: nextTaskId != null ? "tool" : "none",
+      nextTaskId,
+      ...(note ? { note } : {}),
+    };
+
+    await finishStep(row.id, "completed", result, execution.summary);
+
+    if (nextTaskId != null) {
+      const append =
+        execution.appendState ?? Boolean(toolConfig?.appendState);
+      const nextState = append
+        ? `${row.state}\n\n${execution.stateAppend ?? execution.summary}`
+        : row.state;
+
+      await db.insert(queuedTasks).values({
+        taskId: nextTaskId,
+        state: nextState,
+        runId: row.runId,
+        queued_by: row.queued_by,
+      });
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await finishStep(row.id, "failed", {
+      toolKey: task.toolKey,
+      note: `tool error: ${message}`,
+    });
+  }
+}
 ```
 
 Notes:
 
-- `ensureUserSettings` is the lazy backfill path for users created before this migration.
-- Also call `ensureUserSettings` during `createUser` in `apps/backend/src/schema/user/user-service.ts` so new users get a row immediately:
-  ```ts
-  await db.insert(userSettings).values({ userId: user[0].id }).onConflictDoNothing();
-  ```
-- Keep the service independent of `ctx`; the resolver decides which user is acting.
-
-### 5.4 Add the Pothos object
-
-Create `apps/backend/src/schema/user/user-settings.ts`:
-
-```ts
-import { builder } from "../builder";
-
-export const UserSettings = builder.drizzleObject("userSettings", {
-  name: "UserSettings",
-  fields: (t) => ({
-    userId: t.exposeInt("userId"),
-    defaultTaskId: t.exposeInt("defaultTaskId", { nullable: true }),
-    defaultModelName: t.exposeString("defaultModelName", { nullable: true }),
-    defaultTask: t.relation("defaultTask", { nullable: true }),
-    defaultModel: t.relation("defaultModel", { nullable: true }),
-    updatedAt: t.field({
-      type: "DateTime",
-      resolve: (parent) => new Date(parent.updatedAt),
-    }),
-  }),
-});
-```
-
-Then add the relation field to `User` in `apps/backend/src/schema/user/user.ts`:
-
-```ts
-settings: t.relation("settings", { nullable: true }),
-```
-
-### 5.5 Add the mutation
-
-Create `apps/backend/src/schema/user/user-settings-mutations.ts`:
-
-```ts
-import { GraphQLError } from "graphql";
-import { builder } from "../builder";
-import { UserSettings } from "./user-settings";
-import { updateUserSettings as updateSettings } from "./user-settings-service";
-
-builder.mutationType({
-  fields: (t) => ({
-    updateUserSettings: t.field({
-      type: UserSettings,
-      args: {
-        defaultTaskId: t.arg.int(),
-        defaultModelName: t.arg.string(),
-      },
-      resolve: async (_root, args, ctx) => {
-        const user = (ctx as any).user;
-        if (!user?.id) {
-          throw new GraphQLError("Not logged in", {
-            extensions: { code: "UNAUTHENTICATED" },
-          });
-        }
-
-        return updateSettings(user.id, {
-          defaultTaskId: args.defaultTaskId,
-          defaultModelName: args.defaultModelName,
-        });
-      },
-    }),
-  }),
-});
-```
-
-Important: GraphQL distinguishes omitted (`undefined`) from explicit `null` in resolver arguments. Preserve that distinction in the service, as shown.
-
-### 5.6 Export the new modules
-
-Update `apps/backend/src/schema/user/index.ts`:
-
-```ts
-export * from "./user";
-export * from "./user-settings";
-export * from "./user-queries";
-export * from "./user-settings-queries"; // only if that file was added
-export * from "./user-mutations";
-export * from "./user-settings-mutations";
-```
-
-`apps/backend/src/schema/index.ts` already imports `./user/index`, so no change is needed there.
-
-### 5.7 Fix `me` and auth context
-
-Edit `apps/backend/src/schema/user/user-queries.ts`:
-
-```ts
-me: t.field({
-  type: User,
-  nullable: true,
-  resolve: async (_root, _args, ctx) => {
-    const user = (ctx as any).user;
-    if (!user?.id) return null;
-    await ensureUserSettings(user.id);
-    return user;
-  },
-}),
-```
-
-Edit `apps/backend/server.ts`:
-
-- Change `extract_user` to return `null` instead of `{}` for missing/invalid auth.
-- Keep a typed return value:
-  ```ts
-  async function extractUser(
-    authHeader: string | null,
-  ): Promise<typeof users.$inferSelect | null> {
-    if (!authHeader) return null;
-    const token = authHeader.split(" ")[1];
-    if (!token) return null;
-    try {
-      const verified = jwt.verify(token, process.env.TOKEN_SECRET);
-      if (typeof verified === "string" || !verified.aud) return null;
-      return await getUser(parseInt(verified.aud as string));
-    } catch {
-      return null;
-    }
-  }
-  ```
-- Rename the function to `extractUser` and update the context call.
-- Add the needed type import from `./src/db` if necessary.
-
-Also update `PothosTypes.Context` in `apps/backend/src/schema/builder.ts` so it reflects reality:
-
-```ts
-Context: { user: typeof schema.users.$inferSelect | null };
-```
-
-Remove the old `import { User } from "./user";` if it becomes unused. This is important because the current `Context: { user: typeof User }` is not the database row type.
-
-#### Audit direct `ctx.user.id` access
-
-Changing the context from `{}` to `null` means code like this now throws a `TypeError` before the existing "not logged in" check:
-
-```ts
-const author_id = (ctx as any).user.id; // fails when user is null
-if (!author_id) { ... }
-```
-
-Add a shared helper, for example `apps/backend/src/schema/auth.ts`:
-
-```ts
-import { GraphQLError } from "graphql";
-
-type AuthContext = { user?: { id?: number } | null };
-
-export function requireUserId(ctx: AuthContext): number {
-  const id = ctx.user?.id;
-  if (!id) {
-    throw new GraphQLError("Not logged in", {
-      extensions: { code: "UNAUTHENTICATED" },
-    });
-  }
-  return id;
-}
-```
-
-Then find every direct access:
-
-```sh
-grep -rn "(ctx as any)\.user\.id" apps/backend/src
-```
-
-Replace the affected resolvers with either:
-
-- `const authorId = requireUserId(ctx);` (preferred), or
-- `const authorId = (ctx as any).user?.id;` followed by the existing check.
-
-This must cover at least:
-
-- `apps/backend/src/schema/ai/ai-mutations.ts`
-- `apps/backend/src/schema/todo/todo-mutations.ts`
-- `apps/backend/src/schema/todo/todo-queries.ts`
-- `apps/backend/src/schema/task/task-mutations.ts`
-
-For resolvers that already do `const user = (ctx as any).user; if (!user) ...`, no change is needed after the context becomes `null`.
-
-After this change, every existing `if (!user)` / `if (!(ctx as any).user)` check works correctly. Do not use truthiness of an empty object anymore.
-
-### 5.8 Apply the user's model in the queue
-
-Edit `apps/backend/src/queue/processor.ts`:
-
-- Rename `MODEL` to `DEFAULT_MODEL` and keep the current value.
-- Import `userSettings` from `../db`.
-- Add a small helper:
-
-  ```ts
-  async function modelForUser(userId: number): Promise<string> {
-    const [settings] = await db
-      .select({ defaultModelName: userSettings.defaultModelName })
-      .from(userSettings)
-      .where(eq(userSettings.userId, userId))
-      .limit(1);
-
-    return settings?.defaultModelName ?? DEFAULT_MODEL;
-  }
-  ```
-
-- In `processStep`, before the `ollama.systemone` call:
-  ```ts
-  const model = await modelForUser(row.queued_by);
-  response = await ollama.systemone({
-    model,
-    state: row.state,
-    questions,
-  });
-  ```
-- Add `model` to the result object from Section 3.4.
-
-Do not use the settings service inside the queue processor if it creates an import cycle with `builder.ts`. A direct `db.select()` on `userSettings` is simpler and safe.
-
-### 5.9 Make `createQueuedTask` use the default task
-
-Edit `apps/backend/src/schema/task/task-mutations.ts`:
-
-- Change the argument from required to optional:
-  ```ts
-  taskId: t.arg.int(),
-  ```
-- Resolve the task id as follows:
-  ```ts
-  const settings = await getUserSettings(author_id);
-  const resolvedTaskId = taskId ?? settings.defaultTaskId;
-
-  if (resolvedTaskId == null) {
-    throw new GraphQLError(
-      "No starting task selected and no default task configured",
-      {
-        extensions: { code: "BAD_USER_INPUT" },
-      },
-    );
-  }
-  ```
-- Use `resolvedTaskId` when inserting the queued task.
-
-Import `getUserSettings` from `../user/user-settings-service`.
-
-### 5.10 Generate and apply the migration
-
-From the repository root:
-
-```sh
-pnpm --filter backend generate
-```
-
-- Inspect the new SQL folder under `apps/backend/drizzle/`.
-- Confirm it creates `"userSettings"` with the three FK constraints and `updatedAt`.
-- Apply it:
-  ```sh
-  pnpm --filter backend push
-  ```
-  The project currently uses `drizzle-kit push`; there is no `drizzle-kit migrate` script.
-
-Optional backfill for existing users:
-
-```sql
-INSERT INTO "userSettings" ("userId")
-SELECT "id" FROM "users"
-ON CONFLICT ("userId") DO NOTHING;
-```
-
-This is optional because `ensureUserSettings` lazily creates missing rows.
-
-### 5.11 Backend smoke test
-
-With the backend running, test with `curl` or the GraphQL playground:
-
-1. Create/login a user and capture the token.
-2. Query:
-   ```graphql
-   query {
-     me {
-       id
-       name
-       email
-       settings {
-         defaultTaskId
-         defaultModelName
-       }
-     }
-   }
-   ```
-   Expected: `me` is non-null and `settings` exists.
-3. Query without an `Authorization` header.
-   Expected: `data.me` is `null`, not an error caused by missing non-null fields.
-4. Update settings:
-   ```graphql
-   mutation {
-     updateUserSettings(
-       defaultTaskId: 1
-       defaultModelName: "tev1:4b"
-     ) {
-       defaultTaskId
-       defaultModelName
-     }
-   }
-   ```
-5. Clear a setting with an explicit `null`:
-   ```graphql
-   mutation {
-     updateUserSettings(defaultTaskId: null) {
-       defaultTaskId
-     }
-   }
-   ```
-   Expected: the value is cleared.
-6. Omit a setting:
-   ```graphql
-   mutation {
-     updateUserSettings(defaultModelName: "tev1:4b") {
-       defaultTaskId
-       defaultModelName
-     }
-   }
-   ```
-   Expected: `defaultTaskId` keeps its previous value.
+- `MAX_STEPS_PER_RUN` and `stepsByRun` retain the existing chain-depth guard.
+- `finishStep` publishes the queued task event, so the existing subscription UI
+  receives tool progress without changes.
+- `toolConfig.appendState` is the generic opt-in for passing tool output to the
+  next step. The prompt tool opts in itself via `execution.appendState = true`.
+- Tool tasks with no `fallbackTaskId` finish the run (`nextTaskId = null`).
 
 ---
 
-## 6. Phase 2: GraphQL Client Documents and Codegen
+## 5. GraphQL documents in `packages/queries`
 
-> Status: DONE — client documents updated, codegen run, and `@repo/queries` rebuilt.
+### 5.1 Tool documents
 
-All GraphQL documents live in `packages/queries`; generated files must not be edited by hand.
-
-### 6.1 Update `ME`
-
-Edit `packages/queries/src/user/users-queries.ts`:
+**File:** `packages/queries/src/tools/tool-queries.ts` — `[NEW]` `[QUERIES]`
 
 ```ts
-export const ME = gql(/* GraphQL */ `
-  query GetMe {
-    me {
-      email
-      id
-      name
-      settings {
-        defaultTaskId
-        defaultModelName
-      }
-    }
-  }
-`);
-```
+import { gql } from "../__generated__";
 
-### 6.2 Add the update mutation
-
-Edit `packages/queries/src/user/user-mutations.ts`:
-
-```ts
-export const UPDATE_USER_SETTINGS = gql(/* GraphQL */ `
-  mutation UpdateUserSettings(
-    $defaultTaskId: Int
-    $defaultModelName: String
-  ) {
-    updateUserSettings(
-      defaultTaskId: $defaultTaskId
-      defaultModelName: $defaultModelName
-    ) {
-      userId
-      defaultTaskId
-      defaultModelName
-    }
-  }
-`);
-```
-
-### 6.3 Add an installed-models query
-
-Edit `packages/queries/src/model/model-queries.ts`:
-
-```ts
-export const INSTALLED_MODELS = gql(/* GraphQL */ `
-  query GetInstalledModels {
-    installedModels {
+export const TOOLS = gql(/* GraphQL */ `
+  query GetTools {
+    tools {
+      key
       name
       description
-      pulled
+      category
+      inputMode
+      inputSchema
+      outputDescription
+      exampleConfig
+    }
+  }
+`);
+
+export const GET_TOOL = gql(/* GraphQL */ `
+  query GetTool($key: String!) {
+    getTool(key: $key) {
+      key
+      name
+      description
+      category
+      inputMode
+      inputSchema
+      outputDescription
+      exampleConfig
     }
   }
 `);
 ```
 
-`installedModels` already exists in `apps/backend/src/schema/llmModel/llmModel-queries.ts` and only returns installed models.
+### 5.2 Task documents
 
-### 6.4 Make the queued-task task id optional
+**File:** `packages/queries/src/tasks/task-queries.ts` — `[EDIT]` `[QUERIES]`
 
-Edit `packages/queries/src/tasks/task-mutations.ts`:
+- In `TASKS`, add to each task:
+  ```graphql
+  toolKey
+  toolConfig
+  tool {
+    key
+    name
+    description
+  }
+  ```
+- In `GET_TASK`, add the same fields.
+- In `QUEUED_TASK`, add `toolKey` inside `task { ... }`.
+
+**File:** `packages/queries/src/tasks/task-mutations.ts` — `[EDIT]` `[QUERIES]`
+
+- `CREATE_TASK`:
+  - Add variables `$toolKey: String`, `$toolConfig: JSON`.
+  - Pass `toolKey: $toolKey`, `toolConfig: $toolConfig`.
+  - Select `toolKey`, `toolConfig`, and `tool { key name description }`.
+- `UPDATE_TASK`:
+  - Same new variables and arguments.
+  - Select `toolKey`, `toolConfig`, and `tool { key name description }`.
+
+**File:** `packages/queries/src/tasks/task-subscriptions.ts` — `[EDIT]` `[QUERIES]`
+
+- In `queuedTask.task`, add `toolKey` so chain-of-thought steps can label tool
+  tasks.
+
+### 5.3 Regenerate generated GraphQL files
+
+**Type:** `[CODEGEN]`
+
+After the backend schema changes compile and the API is running:
+
+1. Start the API if it is not already running:
+   - `pnpm --filter backend api`
+2. In another terminal, from the repo root:
+   - `pnpm --filter @repo/queries codegen`
+   - or `pnpm codegen` to run codegen across the workspace.
+
+This regenerates:
+
+- `packages/queries/src/__generated__/gql.ts`
+- `packages/queries/src/__generated__/graphql.ts`
+- `apps/web/src/__generated__/*` if applicable
+
+Do not hand-edit generated files. If the API cannot be started in the
+implementer's environment, run codegen with a schema exported from a build
+server or update the generated files with the same codegen command later; the
+typed documents must include `GetTools`, `GetTool`, and the new task fields.
+
+---
+
+## 6. Tools page (frontend)
+
+### 6.1 Tool card component
+
+**File:** `packages/ui/src/components/tools/toolCard.tsx` — `[NEW]` `[UI]`
+
+Create a presentational card, similar in spirit to
+`packages/ui/src/components/models/modelCard.tsx`.
+
+Props derived from the generated `GetToolsQuery` item:
 
 ```ts
-export const CREATE_QUEUED_TASK = gql(/* GraphQL */ `
-  mutation CreateQueuedTask($taskId: Int, $state: String!) {
-    createQueuedTask(taskId: $taskId, state: $state) {
-      id
-      taskId
-      state
-      status
-      runId
-      queued_by
-    }
-  }
-`);
-```
-
-### 6.5 Regenerate and rebuild
-
-Start the backend first (codegen reads `http://localhost:4000/graphql`):
-
-```sh
-pnpm --filter backend api
-```
-
-In another terminal:
-
-```sh
-pnpm --filter @repo/queries codegen
-pnpm --filter @repo/queries build
-```
-
-Validation:
-
-- The generated file under `packages/queries/src/__generated__/` should contain the new mutation and updated `GetMe` type.
-- `@repo/ui` imports generated types from `@repo/queries/__generated__/graphql`; rebuild before type-checking the UI.
-
-Do not run codegen before the backend schema is live; it will generate the old schema.
-
----
-
-## 7. Phase 3: Auth-Aware Navigation and User Page
-
-> Status: DONE — `AuthProvider`, auth-aware navigation, user page, route guards, and login/signup integration are implemented.
-
-### 7.1 Add a shared auth provider
-
-Create `packages/ui/src/components/auth/auth-provider.tsx` (`"use client"`).
-
-Responsibilities:
-
-- Run the `ME` query once for the app.
-- Expose `user`, `loading`, `setToken`, and `logout`.
-- Keep the token in `localStorage` under the existing key `auth_token`.
-- After login, reset the Apollo store so `ME` and all dependent queries refetch.
-- After logout, clear the Apollo store and remove the token.
-
-Suggested shape:
-
-```tsx
-"use client";
-
-import { createContext, useContext, useMemo } from "react";
-import { useQuery } from "@apollo/client/react";
-import { ME } from "@repo/queries/user/users-queries";
-
-type AuthContextValue = {
-  user: {
-    id: number;
-    name: string;
-    email: string;
-    settings: {
-      defaultTaskId: number | null;
-      defaultModelName: string | null;
-    } | null;
-  } | null;
-  loading: boolean;
-  setToken: (token: string) => Promise<void>;
-  logout: () => Promise<void>;
-};
-
-const AuthContext = createContext<AuthContextValue | null>(null);
-
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const { data, loading, client } = useQuery(ME, {
-    fetchPolicy: "cache-and-network",
-  });
-
-  const value = useMemo<AuthContextValue>(
-    () => ({
-      user: data?.me ?? null,
-      loading,
-      setToken: async (token) => {
-        localStorage.setItem("auth_token", token);
-        await client.resetStore();
-      },
-      logout: async () => {
-        localStorage.removeItem("auth_token");
-        await client.clearStore();
-        window.location.assign("/user");
-      },
-    }),
-    [data?.me, loading, client],
-  );
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}
-
-export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useAuth must be used inside AuthProvider");
-  }
-  return context;
+interface ToolCardProps {
+  tool: NonNullable<GetToolsQuery["tools"]>[number];
 }
 ```
 
-Notes:
+Render:
 
-- `useQuery(ME)` is safe to run when logged out because `me` now returns `null`.
-- `client.resetStore()` refetches active queries after the token changes.
-- `GraphQlProvider` already reads the token from `localStorage` on every request, so no link changes are required.
+- Tool `name` as `CardTitle`.
+- `key` and `category` as `Badge`s (use `#components/ui/badge`).
+- `description`.
+- `inputMode` and `outputDescription`.
+- Input fields from `inputSchema.properties`:
+  - Use `inputSchema.required` to mark required fields.
+  - Show each property name, type, description, and enum/default when present.
+- `exampleConfig` inside a `<pre>` with `JSON.stringify(exampleConfig, null, 2)`.
+- Keep the component client-safe and presentational; no data fetching.
 
-### 7.2 Wire the provider into the app
+Use existing UI primitives (`Card`, `CardContent`, `CardHeader`, `Badge`,
+`Separator`) and `cn` where needed.
 
-Edit `apps/web/app/App.tsx`:
+### 6.2 Tools page
 
-```tsx
-import HeaderMenu from "@repo/ui/components/headerMenu/headerMenu";
-import { AuthProvider } from "@repo/ui/components/auth/auth-provider";
-import GraphQlProvider from "./GraphQlProvider";
+**File:** `packages/ui/src/pages/tools.tsx` — `[NEW]` `[UI]`
 
-export default function App({ children }: { children: React.ReactNode }) {
-  return (
-    <GraphQlProvider>
-      <AuthProvider>
-        <HeaderMenu />
-        <main className="mx-auto w-full max-w-6xl px-4 pb-12 md:px-6">
-          {children}
-        </main>
-      </AuthProvider>
-    </GraphQlProvider>
-  );
-}
-```
+Follow the structure of `packages/ui/src/pages/models.tsx`:
 
-### 7.3 Update login and signup forms
+- `"use client"`.
+- Wrap the content in `AuthGate`.
+- `const { data, error, loading } = useQuery(TOOLS)`.
+- `const tools = data?.tools ?? []`.
+- Render:
+  - `PageHeader title="Tools" description="Inspect the tools that tool tasks can run."`
+  - `LoadingState` while loading.
+  - `ErrorState` on error.
+  - `EmptyState` when there are no tools.
+  - A list/grid of `ToolCard`s.
 
-Edit `packages/ui/src/components/auth/loginForm.tsx` and `signUpForm.tsx`:
+### 6.3 Next.js route
 
-- Replace the `localStorage.setItem(...); window.location.reload();` block with the auth provider's `setToken`.
-- Keep mutation loading/error handling.
-- On success, `setToken(data.login)` / `setToken(data.createUser)`.
-- Add `type="password"` and `autoComplete` attributes while touching these files.
-
-Example:
+**File:** `apps/web/app/tools/page.tsx` — `[NEW]` `[UI]`
 
 ```tsx
-const { setToken } = useAuth();
-
-const onSubmit: SubmitHandler<Inputs> = async (inputs) => {
-  const result = await login({ variables: inputs });
-  if (result.data?.login) {
-    await setToken(result.data.login);
-  }
-};
-```
-
-### 7.4 Rewrite the header menu
-
-Edit `packages/ui/src/components/headerMenu/headerMenu.tsx`.
-
-Requirements:
-
-- Always show **Main** (`/`).
-- Always show **User** (`/user`).
-- When logged in, also show **Decisions**, **Task queue**, and **Models**.
-- When logged out, hide those three links.
-- Remove the Logout button entirely.
-- While `ME` is loading, avoid flashing protected links. Show the spinner in the trailing item, but keep the nav stable.
-- Use `data?.me` as the source of truth, not `data`.
-
-Suggested structure:
-
-```tsx
-const { user, loading } = useAuth();
-
-const navItems = [
-  { href: "/", label: "Main", requiresAuth: false },
-  { href: "/decisions", label: "Decisions", requiresAuth: true },
-  { href: "/task-queue", label: "Task queue", requiresAuth: true },
-  { href: "/models", label: "Models", requiresAuth: true },
-  { href: "/user", label: "User", requiresAuth: false },
-];
-
-const visibleItems = navItems.filter(
-  (item) => !item.requiresAuth || Boolean(user),
-);
-
-return (
-  <div className="flex w-full p-6 md:p-10">
-    <NavigationMenu className="w-full flex flex-row">
-      <NavigationMenuList className="w-full">
-        {visibleItems.map((item) => (
-          <NavigationMenuItem key={item.href}>
-            <NavigationMenuLink href={item.href}>
-              {item.label}
-            </NavigationMenuLink>
-          </NavigationMenuItem>
-        ))}
-      </NavigationMenuList>
-      <NavigationMenuList>
-        <NavigationMenuItem>
-          {loading ? <Spinner /> : null}
-        </NavigationMenuItem>
-      </NavigationMenuList>
-    </NavigationMenu>
-  </div>
-);
-```
-
-Optional polish: show the user's name in the User link (`User · {user.name}`), but keep the label stable for accessibility.
-
-### 7.5 Add the user page route
-
-Create `apps/web/app/user/page.tsx`:
-
-```tsx
-import UserPage from "@repo/ui/pages/user";
+import ToolsPage from "@repo/ui/pages/tools";
 
 export default function Page() {
-  return <UserPage />;
+  return <ToolsPage />;
 }
 ```
 
-### 7.6 Add the user page UI
+### 6.4 Navigation entry
 
-Create `packages/ui/src/pages/user.tsx` (`"use client"`).
+**File:** `packages/ui/src/components/headerMenu/headerMenu.tsx` — `[EDIT]` `[UI]`
 
-Behavior:
+Add to `NAV_ITEMS`, probably after Task queue or Models:
 
-- Use `useAuth()`.
-- If `loading`: show a loading state.
-- If no `user`: render `<LoginForm />` plus a link to `/signUp`.
-- If `user`:
-  - Show profile details (`name`, `email`).
-  - Show a settings form.
-  - Show a Logout button that calls `logout()`.
-
-Split the component into `UserPage` (decides logged-in vs logged-out) and `AuthenticatedUserPage` (owns the protected `TASKS` / `INSTALLED_MODELS` / settings queries). This avoids running logged-in-only queries while the login form is shown.
-
-The settings form:
-
-- Initialize from `user.settings` (the `ME` query already includes it through `AuthProvider`).
-- Query `TASKS` and `INSTALLED_MODELS`.
-- Use `react-hook-form` with either real values or sentinel `"__none__"` for null selects.
-- Submit `UPDATE_USER_SETTINGS`:
-  ```ts
-  updateUserSettings({
-    variables: {
-      defaultTaskId: taskId === "__none__" ? null : Number(taskId),
-      defaultModelName:
-        modelName === "__none__" ? null : modelName,
-    },
-    refetchQueries: [ME],
-  });
-  ```
-- Reset the form from `user.settings` after the refetch (or pass `values` to `useForm`) so the saved values are reflected.
-- Show saving state, success feedback, and GraphQL errors inline.
-- Disable the form when tasks/models are loading.
-- If no tasks exist, explain that a task must be created first and link to `/task-queue`.
-- If no models are installed, explain that a model must be installed first and link to `/models`.
-
-Suggested page outline:
-
-```tsx
-<div className="flex flex-col gap-6">
-  <PageHeader
-    title="Account"
-    description="Manage your profile and queue defaults"
-  />
-
-  <ProfileCard user={user} onLogout={logout} />
-
-  <Card>
-    <CardHeader>
-      <CardTitle>Queue defaults</CardTitle>
-      <CardDescription>
-        These settings apply only to your account.
-      </CardDescription>
-    </CardHeader>
-    <CardContent>
-      <UserSettingsForm />
-    </CardContent>
-  </Card>
-</div>
+```ts
+{ href: "/tools", label: "Tools", requiresAuth: true },
 ```
 
-`PageHeader`, `ProfileCard`, and `UserSettingsForm` can start as local components in `user.tsx` and move to `components/user/` during Phase 6. If `PageHeader`/`PageContainer` do not exist yet, create minimal versions now; Phase 6 formalizes them.
+---
 
-### 7.7 Add route guards
+## 7. Task builder UI for tool tasks
 
-The navigation hides protected links, but direct URLs must also be protected.
+### 7.1 Form values
 
-Create `packages/ui/src/components/auth/auth-gate.tsx`:
+**File:** `packages/ui/src/components/task/task-form.ts` — `[EDIT]` `[UI]`
 
-```tsx
-"use client";
+Extend `TaskFormValues` with:
 
-import { useAuth } from "./auth-provider";
-import { EmptyState } from "#components/feedback/empty-state";
-import { LoadingState } from "#components/feedback/loading-state";
+```ts
+toolKey: string | null;
+toolConfigText: string;
+```
 
-export function AuthGate({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+Update:
 
-  if (loading) return <LoadingState />;
-  if (!user) {
-    return (
-      <EmptyState
-        title="Sign in required"
-        description="Log in to use this page."
-        actionHref="/user"
-        actionLabel="Go to account"
-      />
-    );
+- `emptyTaskFormValues`:
+  ```ts
+  toolKey: null,
+  toolConfigText: "",
+  ```
+- `taskToFormValues`:
+  ```ts
+  toolKey: task.toolKey ?? null,
+  toolConfigText: task.toolConfig
+    ? JSON.stringify(task.toolConfig, null, 2)
+    : "",
+  ```
+
+Using a text field (`toolConfigText`) avoids react-hook-form needing nested
+object validation; parse it only when saving.
+
+### 7.2 Task builder save logic
+
+**File:** `packages/ui/src/components/task/taskBuilder.tsx` — `[EDIT]` `[UI]`
+
+- Add `useQuery(TOOLS)` and pass `data?.tools ?? []` to `TaskCard`.
+- Parse the JSON config when saving:
+  ```ts
+  let toolConfig: Record<string, unknown> | null = null;
+  if (values.type === "tool" && values.toolConfigText.trim()) {
+    try {
+      toolConfig = JSON.parse(values.toolConfigText);
+    } catch {
+      // set a form error / show ErrorState and abort the save
+      return;
+    }
   }
-
-  return <>{children}</>;
-}
-```
-
-If `EmptyState`/`LoadingState` do not exist yet, create simple versions now (Phase 6 formalizes them).
-
-Wrap the page contents in:
-
-- `packages/ui/src/pages/decisions.tsx`
-- `packages/ui/src/pages/taskQueue.tsx`
-- `packages/ui/src/pages/models.tsx`
-
-Example:
-
-```tsx
-export default function ModelsPage() {
-  return (
-    <AuthGate>
-      <ModelsPageContent />
-    </AuthGate>
-  );
-}
-```
-
-Keep the existing page implementation in a local `...Content` component to avoid changing all the internals at once.
-
-### 7.8 Update login/signup pages
-
-`packages/ui/src/pages/login.tsx` and `signUp.tsx` currently check `data` instead of `data.me`. Update them to use `useAuth()`:
-
-- If logged in, show a short "You are logged in" card with a link to `/user`.
-- If logged out, show the form.
-- Optionally redirect logged-in users to `/user` in Phase 6.
-
-This also removes the `data ? ...` bug where an Apollo response object is truthy even when `me` is null.
-
-### 7.9 Verify navigation behavior
-
-- Logged out:
-  - Header shows only **Main** and **User**.
-  - `/decisions`, `/task-queue`, `/models` show the sign-in gate.
-  - `/user` shows the login form.
-  - `me` returns `null`.
-- Logged in:
-  - Header shows **Main**, **Decisions**, **Task queue**, **Models**, **User**.
-  - No Logout button in the header.
-  - `/user` shows profile, settings, and Logout.
-  - Logout returns to `/user` and the header collapses back to Main + User.
-
----
-
-## 8. Phase 4: Apply Defaults on the Landing Page and Queue
-
-> Status: DONE — landing page uses `defaultTaskId`; `createQueuedTask` fallback and per-user queue model were verified. The `/task-queue` "First task" selector now initializes from and persists the user's default task.
-
-### 8.1 Use the user's default starting task
-
-Edit `packages/ui/src/pages/landing.tsx`.
-
-Current behavior:
-
-- `useForm` default is `tasks[0]?.id ?? "-1"`.
-- An effect replaces `-1` with `tasks[0]` once tasks load.
-
-New behavior:
-
-- Read `me.settings.defaultTaskId` from the existing `ME` query (or use `useAuth()`).
-- Only fetch tasks and subscribe to queued-task events when logged in:
+  ```
+  Reject parsed values that are not plain objects (arrays/null are invalid).
+- Include in `taskVariables`:
   ```ts
-  const { data: tasksData, loading: tasksLoading } = useQuery(TASKS, {
-    skip: !loggedIn,
-  });
-
-  useSubscription(QUEUED_TASK_EVENT, {
-    skip: !loggedIn,
-    onData: ...,
-  });
+  toolKey: values.type === "tool" ? values.toolKey : null,
+  toolConfig,
   ```
-  After the backend `ctx.user` fix, logged-out `TASKS` would otherwise throw "Not logged in".
-- When tasks are loaded, choose:
-  1. The user's default task, if it still exists.
-  2. Otherwise the first task.
-- Keep `-1` only as the temporary "not initialized" sentinel.
+- If `values.type === "tool"` and `values.toolKey` is empty, do not save; show
+  a validation message.
+- When creating a task, keep the existing behavior of placing `createdTaskId`
+  and result task IDs.
+- Only render the `DecisionList`/`DecisionBuilder` section when
+  `values.type === "decision"` (use `watch("type")` or `getValues("type")`).
+  For tool tasks, hide decision selection to avoid confusion.
 
-Suggested effect:
+### 7.3 Task card
 
-```tsx
-const defaultTaskId = meData?.me?.settings?.defaultTaskId ?? null;
+**File:** `packages/ui/src/components/task/taskCard/taskCard.tsx` — `[EDIT]` `[UI]`
 
-useEffect(() => {
-  if (tasksLoading || tasks.length === 0) return;
-  if (getValues("taskId") !== "-1") return;
-
-  const preferredTaskId =
-    defaultTaskId != null && tasks.some((task) => task.id === defaultTaskId)
-      ? defaultTaskId
-      : tasks[0]?.id;
-
-  if (preferredTaskId != null) {
-    reset({ ...getValues(), taskId: String(preferredTaskId) });
-  }
-}, [tasksLoading, tasks, defaultTaskId, getValues, reset]);
-```
-
-Keep the selector so users can override the default for a single run.
-
-### 8.2 Optionally use the API fallback
-
-The UI always sends a task id, but the backend now supports omitting it. This makes `createQueuedTask` robust for future callers and for an eventual "start queue" button.
-
-To exercise the fallback manually, call:
-
-```graphql
-mutation {
-  createQueuedTask(state: "test") {
-    id
-    taskId
-  }
-}
-```
-
-Expected: it uses the authenticated user's `defaultTaskId`, or returns a clear error if none is configured.
-
-### 8.3 Verify per-user model selection
-
-1. Set user A's default model to a value available in Ollama.
-2. Set user B's default model to a different value.
-3. Queue a task as each user.
-4. Inspect the completed `queuedTasks.result` JSON.
-5. Confirm `result.model` matches each user's setting.
-
-If a user has no setting, confirm the fallback `tev1:4b` is used.
-
----
-
-## 9. Phase 5: Regenerate, Type-Check, and Smoke Test the Functional Work
-
-> Status: MOSTLY DONE — codegen/build/type checks and web production build pass; lint retains pre-existing warnings.
-
-- [ ] Re-run codegen if any GraphQL document changed after the last run:
-  ```sh
-  pnpm --filter @repo/queries codegen
-  pnpm --filter @repo/queries build
-  ```
-- [ ] Build the UI package:
-  ```sh
-  pnpm --filter @repo/ui build:components && pnpm --filter @repo/ui build:styles
-  ```
-- [ ] Type-check:
-  ```sh
-  pnpm check-types
-  ```
-- [ ] Lint:
-  ```sh
-  pnpm lint
-  ```
-- [ ] Run the web app and complete the manual checks in Sections 5.11, 7.9, 8.3.
-
-At this point, requirements 1-3 should be functionally complete even if the UI is not yet pretty.
-
----
-
-## 10. Phase 6: `packages/ui` Rework
-
-> Status: DONE — layout/feedback/auth primitives, active navigation, single-source-of-truth forms, confirm-delete UX, responsive polish, and model-card state fixes are implemented. `useDebouncedFormState` and `lib/debounce` were removed.
-
-This phase improves the frontend without changing the backend contract. Apply it in small batches. After each sub-phase, run `pnpm --filter @repo/ui lint`, `pnpm --filter @repo/ui check-types`, and `pnpm --filter @repo/ui build:components && pnpm --filter @repo/ui build:styles`.
-
-### 10.1 Design goals
-
-- Every page shares one horizontal rhythm and max width.
-- Every page handles loading, empty, error, and success states explicitly.
-- Every form has one source of truth.
-- Destructive actions require confirmation and are visually distinct.
-- Icon-only buttons have accessible labels/titles.
-- Layout is usable down to a narrow mobile viewport.
-- Presentational components do not call Apollo unless they are explicitly containers. Prefer a `Foo` component that receives props and a `FooContainer` that owns queries.
-
-### 10.2 Create layout and feedback primitives
-
-Create:
-
-- `packages/ui/src/components/layout/page-container.tsx`
-  - `PageContainer`: `mx-auto w-full max-w-6xl px-4 py-6 md:px-6 lg:py-8`
-  - `PageHeader`: title, description, optional actions.
-- `packages/ui/src/components/layout/section.tsx`
-  - Consistent section spacing/title if needed.
-- `packages/ui/src/components/feedback/loading-state.tsx`
-  - Centered spinner plus optional label.
-- `packages/ui/src/components/feedback/empty-state.tsx`
-  - Title, description, optional action link/button.
-- `packages/ui/src/components/feedback/error-state.tsx`
-  - Human-readable error plus retry action.
-- `packages/ui/src/components/feedback/confirm-button.tsx`
-  - `AlertDialog`/dropdown-based confirmation for delete actions.
-- `packages/ui/src/components/feedback/toast.tsx` or integrate a small toast helper.
-  - Use it for mutation success/error feedback instead of silently refetching.
-
-Update `apps/web/app/App.tsx` to render pages inside the shared page container as shown in Section 7.2, or let each page use `PageContainer` explicitly. Do not do both with double padding.
-
-### 10.3 Normalize app chrome and styles
-
-- Edit `apps/web/app/globals.css`.
-  - Remove the legacy RGB variables and body gradient (lines 4-26). They conflict with the shared theme tokens.
-  - Keep only:
-    ```css
-    @import "tailwindcss";
-    @import "@repo/tailwind-config";
-    ```
-- Keep theme tokens in `packages/tailwind-config/shared-styles.css`.
-- Update `apps/web/app/layout.tsx` body classes:
-  ```tsx
-  <body className={`${GeistSans.className} min-h-dvh bg-background text-foreground antialiased`}>
-  ```
-- Move the `@xyflow/react` CSS import out of `packages/ui/src/components/task/taskFlow/taskFlow.tsx`.
-  - Preferred: add `@import "@xyflow/react/dist/style.css";` to `packages/ui/src/styles.css`, or import it once in `apps/web/app/layout.tsx`.
-  - Verify the flow still renders with handles and edges.
-- Replace raw colors such as `text-red-400` with `text-destructive` or the appropriate token.
-
-### 10.4 Refactor navigation
-
-- Keep the header links data-driven.
-- Add an active-link state.
-  - `packages/ui` should not import `next/navigation` if the package is meant to stay framework-neutral.
-  - Either accept a `currentPath` prop from `apps/web`, or create the route-aware header in `apps/web` and keep the visual header presentational in `packages/ui`.
-- Improve mobile behavior:
-  - On narrow screens, allow the nav to wrap or use a compact menu.
-  - Ensure the User link remains visible.
-- Show the user's display name next to the User link when authenticated, with a max-width and truncation.
-- Keep the Logout action on the user page only.
-
-### 10.5 Refactor forms to one source of truth
-
-This is the highest-value code-quality change.
-
-#### Decision editor
-
-Current flow:
-
-- `DecisionBuilder` owns `formValues`.
-- `DecisionCard`, `NoulDecisionForm`, `ChoiceDecisionForm`, `ScoreDecisionForm`, and `StateCard` each mirror state through `useDebouncedFormState`.
-- Parent and child synchronize with `isLocalChange` refs.
-
-Target flow:
-
-- `DecisionBuilder` owns a single `useForm<DecisionFormValues>`.
-- Wrap the editor in `<FormProvider {...methods}>`.
-- Child forms use `useFormContext`.
-- Use `useFieldArray` for choice options.
-- `StateCard` uses `useWatch` to read the current values.
-- Save uses `methods.handleSubmit(onSave)`.
-- Map the form shape to GraphQL variables in one place:
+- Add a `tools` prop:
   ```ts
-  type DecisionFormValues = {
-    name: string;
-    type: DecisionType;
-    instruction: string;
-    decisionPremise: string;
-    options: Array<{ name: string; description: string }>;
-  };
-
-  const variables = {
-    name: values.name,
-    type: values.type,
-    instruction: values.instruction,
-    decisionPremise: values.decisionPremise,
-    options:
-      values.type === "choice" || values.type === "score"
-        ? values.options.map((option) => option.name)
-        : undefined,
-    optionDescriptions:
-      values.type === "choice"
-        ? values.options.map((option) => option.description)
-        : undefined,
-  };
+  tools: Array<{
+    key: string;
+    name: string | null;
+    description: string | null;
+    exampleConfig?: unknown;
+  }>;
   ```
-- Delete `packages/ui/src/hooks/useDebouncedFormState.ts` once no callers remain.
-- Keep `apps/backend/src/schema/ai/ai-queries.ts` unchanged for now.
+- `const type = useWatch({ control, name: "type" })` already exists.
+- When `type === "tool"`, render:
+  - A `SelectController` for `toolKey` with `rules={{ required: "select a tool" }}`.
+    Options from `tools`.
+  - A `Field` with a `Textarea` bound to `toolConfigText`, labeled
+    "Tool config (JSON)".
+  - `FieldDescription` explaining: "Optional JSON. For example: `{\"id\": 3, \"done\": true}`. The queued task state is also passed to the tool."
+  - The selected tool's `description` and example config, if available.
+- Keep the existing results section only for `type === "decision"`.
+- Import `Textarea` from `#components/ui/textarea` and `FieldDescription` from
+  `#components/ui/field`.
 
-#### Task editor
+### 7.4 Task flow display
 
-Current flow:
+**File:** `packages/ui/src/components/task/taskFlow/taskFlowTypes.ts` — `[EDIT]` `[UI]`
 
-- `TaskBuilder` owns `loadedValues` and `formValues`.
-- `TaskCard` mirrors `taskResults` in local state and uses `isLocalChange` refs.
-- `TaskResultOption` owns a separate debounced form and calls `client.refetchQueries` during render.
+- Add `toolKey: string | null` to `TaskFlowNodeData`.
+- Optionally add `toolConfig` if needed for display.
 
-Target flow:
+**File:** `packages/ui/src/components/task/taskFlow/taskFlow.tsx` — `[EDIT]` `[UI]`
 
-- `TaskBuilder` owns one `TaskFormValues` shape, including `taskResults`.
-- Use `useFieldArray` for task results.
-- Save task fields with `CREATE_TASK` / `UPDATE_TASK`.
-- Save each task result with `CREATE_TASKRESULT` / `UPDATE_TASKRESULT` after the task exists.
-- Delete results with `DELETE_TASKRESULT` behind a confirmation.
-- Use `useMutation` options for refetching:
+- When mapping tasks to node data, include:
   ```ts
-  const [updateTaskResult] = useMutation(UPDATE_TASKRESULT, {
-    refetchQueries: [TASKS, GET_TASK],
-    awaitRefetchQueries: true,
-  });
+  toolKey: task.toolKey ?? null,
   ```
-- Remove `client.refetchQueries(...)` from render and from the body of `useDebouncedFormState` callbacks.
-- Remove the `console.log` in `TaskBuilder`.
 
-#### Model card
+**File:** `packages/ui/src/components/task/taskFlow/taskFlowNode.tsx` — `[EDIT]` `[UI]`
 
-- Remove the render-time `if (description) setValue("description", description);`.
-- Initialize the form with `defaultValues: { description: description ?? "" }`.
-- Use `reset` when the prop changes, in an effect, or give the card a `key` from the parent.
-- Split the card into:
-  - `ModelCard` presentational.
-  - `ModelCardContainer` (or the parent page) owning `PULL_MODEL` and `UPDATE_MODEL_DESCRIPTION`.
-- Fix the pull button state logic. Current conditions such as:
-  ```tsx
-  loading ||
-  data?.installModel?.status !== "success" ||
-  data?.installModel?.status !== undefined
-  ```
-  are effectively always true. Define explicit states: `idle`, `pulling`, `success`, `error`.
+- For tool tasks (`data.type === "tool"`), show the tool key/name near the
+  task title, e.g. `Tool · create_todo`.
+- Leave the fallback output handle visible. For tool tasks it is the normal
+  continuation edge.
 
-#### Auth forms
+### 7.5 Landing / run UI
 
-- Remove `window.location.reload()`.
-- Use `setToken` from `useAuth`.
-- Add `type="password"` and `autoComplete="current-password"` / `"new-password"`.
-- Remove the dead "Forgot your password?" links or implement them.
-- Show mutation errors with `FieldError` or an `ErrorState`.
+**File:** `packages/ui/src/pages/landing.tsx` — `[EDIT]` `[UI]`
 
-### 10.6 Page-specific rework
-
-#### Landing (`packages/ui/src/pages/landing.tsx`)
-
-- Split the 300-line page into:
-  - `StartRunForm`
-  - `RunTimeline`
-  - `LandingPage` composition
-- Keep the current `ChainOfThought` behavior but extract the step mapping into `RunTimeline`.
-- When logged out, show a card with a link to `/user` instead of a disabled form.
-- Use `PageHeader`, `Card`, and `EmptyState` consistently.
-- Improve the run status header so it does not say "Currently not doing anything" when a run has just finished; distinguish idle vs completed.
-
-#### Models (`packages/ui/src/pages/models.tsx` + `modelCard.tsx`)
-
-- Use `PageHeader`.
-- Remove the nested card/center wrapper; use a normal vertical list with consistent max width.
-- Show a clear empty state when there are no models.
-- Separate "add a model by name" from the list.
-- Show pull progress as a progress bar or percentage, not only a spinner.
-- Add confirmation for any destructive model action if one is added later.
-- Use `installedModels` for the user settings picker; `models` can remain the full catalog page.
-
-#### Decisions (`packages/ui/src/pages/decisions.tsx`)
-
-- Keep the master-detail layout on desktop.
-- On mobile, switch to list-first then editor (or tabs).
-- Replace the "click the selected row again to delete" pattern with an explicit delete icon and confirmation.
-- Show an empty state and "Create new decision" action.
-- Make the try-prompt result rendering type-safe instead of repeated `(answer as any)[premise]` casts. Create one adapter:
+- Extend `StepResult`:
   ```ts
-  type SystemOneAnswer =
-    | { type: "choice"; choice: string; confidence: number; probabilities: Record<string, number> }
-    | { type: "score"; score: number; confidence: number; legend?: string; probabilities?: Record<string, number> }
-    | { type: "noul"; noul: number };
+  branch?: "result" | "fallback" | "tool" | "none";
+  output?: unknown;
   ```
-- Add loading/error states around `SYSTEM_ONE_PROMPT`.
-
-#### Task queue (`packages/ui/src/pages/taskQueue.tsx`)
-
-- Use a responsive layout:
-  - Desktop: flow on top or left, builder on the right.
-  - Mobile: tabs or stacked sections with sensible height.
-- Add `PageHeader`.
-- The flow currently imports CSS in the component; move it as described in 10.3.
-- Ensure the flow canvas has a defined minimum height and does not collapse.
-
-#### Login/signup
-
-- Use a shared `AuthLayout` with the same max width and card styling.
-- Fix the typo "Create a new accoung".
-- Show field-level validation errors.
-- Link signup/login to each other.
-- If already authenticated, show a concise card linking to `/user`.
-
-#### User page
-
-- Move the local `ProfileCard` / `UserSettingsForm` pieces into:
-  - `packages/ui/src/components/user/profile-card.tsx`
-  - `packages/ui/src/components/user/user-settings-form.tsx`
-- Add explicit success/error feedback after saving settings.
-- Explain what each setting does in one sentence under the label.
-
-### 10.7 Clean up shared code
-
-- Remove unused imports and `console.log` calls.
-- Prefer generated GraphQL types over hand-copied object shapes:
-  - `TaskBuilder` and `TaskCard` currently redeclare task result shapes.
-  - Use `GetTasksQuery` / `GetTaskQuery` result types and `Pick`/`Omit` helpers.
-- Reduce `any` usage.
-  - `StateCard` has several `(data.systemOnePrompt?.answer as any)` casts.
-  - Add a narrow adapter function for the JSON scalar.
-- Ensure every icon-only button has either visible text or `aria-label`/`title`.
-- Ensure every `FieldLabel` matches an input `id`; add `id` to inputs where missing.
-- Avoid `useEffect` for derived state where the value can be computed during render.
-- Keep effects limited to external synchronization (loading data into a form, subscriptions, localStorage).
-- Make the Apollo provider browser-safe:
-  - Guard `localStorage` access in `apps/web/app/GraphQlProvider.tsx` with `typeof window !== "undefined"`.
-  - The current link reads `localStorage` directly and the client is created with `ssrMode: true`; this can fail during server rendering.
-  - Prefer creating the client inside the provider (for example with `useState`) with `ssrMode: false`, or pass the token through context instead of reading storage in the link.
-
-### 10.8 Quality gates for the UI rework
-
-- [x] `pnpm --filter @repo/ui lint`
-- [x] `pnpm --filter @repo/ui check-types`
-- [x] `pnpm --filter @repo/ui build:components && pnpm --filter @repo/ui build:styles`
-- [x] `pnpm --filter web check-types`
-- [x] `pnpm --filter web build`
-- [x] `pnpm lint`
-- [x] `pnpm check-types`
-- [x] Removed `typescript.ignoreBuildErrors` from `apps/web/next.config.ts`; `pnpm --filter web build` passes.
-- [ ] Manual browser smoke test at desktop and mobile widths (HTTP route/nav smoke checks passed):
-  - Logged out: Main/User only; sign-in gate works.
-  - Logged in: all links visible; user page settings save; logout works.
-  - Decisions: create/edit/delete a decision; try prompt.
-  - Task queue: create/edit task, add/delete result, connect flow edges.
-  - Models: pull/update description.
-  - Landing: default task is preselected; run timeline updates.
+- In the chain-of-thought branch label, handle `"tool"`:
+  ```ts
+  step.result?.branch === "tool"
+    ? step.result.nextTaskId != null
+      ? `next: ${taskName(step.result.nextTaskId)}`
+      : "tool result"
+    : ...
+  ```
+- The tool `summary` already appears through the existing
+  `step.result.summary` rendering. Optionally show a compact JSON preview of
+  `step.result.output` when it is present.
+- No new submission form is required: users select a tool task and type the
+  free-text state as before. Tool-specific arguments can be set in the task's
+  `toolConfig`.
 
 ---
 
-## 11. File Change Map
+## 8. End-to-end examples
 
-### Backend
+These examples should work after the changes.
 
-- `apps/backend/src/db/schema.ts` — add `userSettings`.
-- `apps/backend/src/db/relations/relations.ts` — add user/settings relations.
-- `apps/backend/src/schema/user/user-settings.ts` — new Pothos type.
-- `apps/backend/src/schema/user/user-settings-service.ts` — new service.
-- `apps/backend/src/schema/user/user-settings-mutations.ts` — new mutation.
-- `apps/backend/src/schema/user/user-settings-queries.ts` — optional query module.
-- `apps/backend/src/schema/user/user.ts` — add `settings` relation.
-- `apps/backend/src/schema/user/user-queries.ts` — nullable `me`, ensure settings.
-- `apps/backend/src/schema/user/user-mutations.ts` — create settings on signup if not done in the service.
-- `apps/backend/src/schema/user/user-service.ts` — create settings row on user creation.
-- `apps/backend/src/schema/user/index.ts` — export new modules.
-- `apps/backend/src/schema/builder.ts` — fix `Context` typing.
-- `apps/backend/src/schema/auth.ts` — new `requireUserId` helper (or equivalent).
-- `apps/backend/server.ts` — return `null` from auth extraction.
-- `apps/backend/src/queue/processor.ts` — per-user model.
-- `apps/backend/src/schema/task/task-mutations.ts` — optional `taskId` with default.
-- `apps/backend/drizzle/<new migration>/` — generated, do not hand-write unless adding backfill.
+### 8.1 Prompt → create todo chain
 
-### GraphQL client
+Task 1:
 
-- `packages/queries/src/user/users-queries.ts` — `ME` includes settings.
-- `packages/queries/src/user/user-mutations.ts` — `UPDATE_USER_SETTINGS`.
-- `packages/queries/src/model/model-queries.ts` — `INSTALLED_MODELS`.
-- `packages/queries/src/tasks/task-mutations.ts` — optional `$taskId`.
-- `packages/queries/src/__generated__/**` — generated by codegen, never hand-edited.
+- `type: "tool"`
+- `toolKey: "prompt"`
+- `toolConfig: { "system": "Extract a todo name and description from the user text. Return JSON.", "appendState": true }`
+- `fallbackTaskId: <task 2 id>`
 
-### Web app and UI
+Task 2:
 
-- `apps/web/app/App.tsx` — auth provider + shared main layout.
-- `apps/web/app/GraphQlProvider.tsx` — browser-safe Apollo client/token handling.
-- `apps/web/app/layout.tsx` — body classes/theme cleanup.
-- `apps/web/app/globals.css` — remove legacy gradient.
-- `apps/web/app/user/page.tsx` — new route.
-- `apps/web/app/login/page.tsx` — unchanged route, updated UI page underneath.
-- `apps/web/app/signUp/page.tsx` — unchanged route, updated UI page underneath.
-- `apps/web/next.config.ts` — remove `ignoreBuildErrors` after type cleanup.
-- `packages/ui/src/components/auth/auth-provider.tsx` — new.
-- `packages/ui/src/components/auth/auth-gate.tsx` — new.
-- `packages/ui/src/components/headerMenu/headerMenu.tsx` — auth-aware links.
-- `packages/ui/src/pages/user.tsx` — new.
-- `packages/ui/src/components/layout/*` — new layout primitives.
-- `packages/ui/src/components/feedback/*` — new feedback primitives.
-- `packages/ui/src/components/user/*` — profile/settings components.
-- `packages/ui/src/pages/landing.tsx` — default task + split timeline.
-- `packages/ui/src/pages/decisions.tsx` — auth gate + polish.
-- `packages/ui/src/pages/taskQueue.tsx` — auth gate + responsive layout.
-- `packages/ui/src/pages/models.tsx` — auth gate + polish.
-- `packages/ui/src/pages/login.tsx`, `signUp.tsx` — auth provider integration.
-- `packages/ui/src/components/auth/loginForm.tsx`, `signUpForm.tsx` — token handling and form fixes.
-- `packages/ui/src/components/decision/**` — form-context refactor.
-- `packages/ui/src/components/task/**` — form-context/field-array refactor.
-- `packages/ui/src/components/models/modelCard.tsx` — remove render-time side effects, split container.
-- `packages/ui/src/hooks/useDebouncedFormState.ts` — delete after migration.
-- `packages/ui/src/lib/debounce.ts` — delete if no longer used.
-- `packages/ui/src/styles.css` — add `@xyflow/react` import if moved here.
+- `type: "tool"`
+- `toolKey: "create_todo"`
+- `toolConfig: {}`
 
----
+Run with state:
 
-## 12. Acceptance Criteria
+> "I need to pick up Johnny from daycare this afternoon."
 
-### Requirement 1: Per-user saved settings
+Flow:
 
-- [x] A `userSettings` row exists for every user (eager on signup, lazy for existing users).
-- [x] Settings are keyed by `userId` and cannot be read or written for another user.
-- [x] `me.settings` returns the authenticated user's settings.
-- [x] `updateUserSettings` persists changes, supports clearing with `null`, and validates task/model references.
-- [x] The queue uses `defaultModelName` for that user's run and falls back to `tev1:4b` when unset.
-- [x] The landing page preselects `defaultTaskId` when it is still valid.
-- [x] `createQueuedTask` falls back to `defaultTaskId` when `taskId` is omitted.
-- [x] Settings survive logout/login and page reload.
-- [x] Two different users see different settings.
+1. The prompt task sends the state to Ollama and appends the answer to the
+   next state.
+2. The create-todo task calls `extractTodoFields`, which uses `runPrompt` to
+   produce `{ name, description }`.
+3. A todo is inserted with the current user as both `authorId` and `actorId`.
+4. The queue result for step 2 contains the created todo in `output`.
 
-### Requirement 2: User page instead of header Logout
+### 8.2 Direct create todo
 
-- [x] The header has no Logout button.
-- [x] A `/user` page exists.
-- [x] Logged-in users see profile information, their queue settings, and a Logout button.
-- [x] Logout removes the token, clears Apollo state, and returns to `/user`.
-- [x] Saving settings shows success/error feedback.
+- `type: "tool"`, `toolKey: "create_todo"`, `toolConfig: {}`
+- State: "Buy milk and bread tonight."
 
-### Requirement 3: Logged-out navigation
+`extractTodoFields` infers the name/description from the state.
 
-- [x] `me` returns `null` when there is no valid token.
-- [x] Logged-out users see only **Main** and **User** in the header.
-- [x] Protected pages show a sign-in gate instead of data.
-- [x] Logged-in users see Main, Decisions, Task queue, Models, and User.
+### 8.3 Update todo
 
-### Requirement 4: UI rework
+- `type: "tool"`, `toolKey: "update_todo"`
+- `toolConfig: { "id": 3, "name": "Buy groceries", "description": "Milk, bread, eggs" }`
 
-- [x] All pages use a shared page container/header.
-- [x] Loading, empty, and error states are explicit.
-- [x] Form state has one source of truth per editor.
-- [x] No Apollo refetch/cache side effects run during render.
-- [x] Destructive actions require confirmation.
-- [x] Icon-only buttons have accessible names.
-- [ ] Responsive layouts visually verified at mobile and desktop widths (implemented; only HTTP nav/route smoke checks were run).
-- [x] `pnpm lint`, `pnpm check-types`, and `pnpm build` pass.
-- [x] `apps/web/next.config.ts` no longer ignores build type errors (after cleanup).
+Or run with JSON state: `{ "id": 3, "description": "Milk, bread" }`.
+
+### 8.4 Mark todo done / not done
+
+- Done: `toolKey: "mark_todo_done"`, `toolConfig: { "id": 3, "done": true }`
+- Not done: `toolKey: "mark_todo_done"`, `toolConfig: { "id": 3, "done": false }`
+- If `id` is omitted, the tool tries to resolve the todo from the state using
+  the user's todo list and the prompt helper.
+
+### 8.5 Delete todo
+
+- `toolKey: "delete_todo"`, `toolConfig: { "id": 3 }`
+- Or JSON state `{ "id": 3 }`.
+- If `id` is omitted, the tool resolves the todo from the state.
 
 ---
 
-## 13. Risks, Edge Cases, and Follow-Ups
+## 9. Error handling and validation rules
 
-- **Existing users without settings:** handled by `ensureUserSettings`; optionally backfill during migration.
-- **Deleted default task/model:** FK `onDelete: set null` clears the setting. Verify the generated migration includes these constraints.
-- **Model name changes/deletions:** `defaultModelName` is a FK to `models.name`; renaming a model would require updating settings or adding `onUpdate: cascade`.
-- **Queue runs from deleted users:** `queued_by` has no FK today. `modelForUser` safely falls back when no settings row exists.
-- **Multiple models or per-step model selection:** current plan stores one default. If needed, replace the single column with a join table and select a model when creating the queued task.
-- **Literal queue ordering:** current plan uses a default starting task. If queued tasks must be automatically seeded in a specific order, add a separate `userQueueItems` table and a "start my queue" mutation.
-- **Auth token contents:** `login` and `createUser` currently sign `{ aud, user }` where `user` includes `hashedPassword`. This is outside the requested scope, but it should be removed from the JWT payload as a security hardening follow-up.
-- **Codegen depends on a running API:** always start the backend before regenerating client documents.
-- **UI moved files can break exports:** after moving files, run `pnpm --filter @repo/ui build:components && pnpm --filter @repo/ui build:styles` and update imports in `apps/web` if route-facing names change.
-- **Apollo cache normalization:** `UserSettings` has no `id` field. Use `refetchQueries: [ME]` after updating settings rather than relying on normalized cache updates.
+- Missing `toolKey` on a tool task → GraphQL validation error on save, and a
+  failed queued step with a clear note if it somehow reaches the queue.
+- Unknown `toolKey` → GraphQL validation error on save, failed queued step if
+  it reaches the queue.
+- Invalid `toolConfig` JSON in the UI → block the save and show an error.
+- `toolConfig` must be a JSON object, not an array or primitive.
+- Missing/invalid tool input → throw `ToolInputError`; the queue catches it and
+  marks the step `failed` with `note: "tool error: ..."`.
+- Todo operations must always be limited to todos where
+  `authorId === userId` or `actorId === userId`, same as the existing GraphQL
+  todo mutations.
+- Never let an unhandled tool error escape `processQueue`; the queue loop must
+  keep processing later rows.
+- LLM JSON output must be parsed defensively. If it is not valid JSON or does
+  not contain the expected fields, throw a useful `ToolInputError`.
+
+---
+
+## 10. Verification checklist
+
+Run these after implementation:
+
+1. **Database**
+   - `pnpm --filter backend generate`
+   - Review the generated SQL.
+   - `pnpm --filter backend push` (or the project's migration command).
+   - Confirm `tasks."toolKey"` and `tasks."toolConfig"` exist.
+2. **Type checks**
+   - `pnpm exec tsc -p apps/backend/tsconfig.json --noEmit`
+   - `pnpm --filter @repo/queries build`
+   - `pnpm --filter @repo/ui build:components`
+   - `pnpm --filter web check-types`
+   - Root `pnpm check-types` if the workspace scripts are configured for it.
+3. **Codegen**
+   - Start the backend.
+   - Run `pnpm --filter @repo/queries codegen`.
+   - Confirm generated types include `GetTools`, `GetTool`, `Task.toolKey`,
+     `Task.toolConfig`, and `Task.tool`.
+4. **Tools page**
+   - Visit `/tools`.
+   - Confirm all five tools appear with descriptions, input schemas, output
+     descriptions, and example configs.
+5. **Task builder**
+   - Create a task with `type = Tool`, select `prompt`, save.
+   - Confirm the task persists `toolKey = "prompt"`.
+   - Create tool tasks for each todo tool and confirm the JSON config editor
+     saves/reloads correctly.
+6. **Queue execution**
+   - Run a `prompt` task from the landing page. Confirm the step completes and
+     the answer appears in the chain-of-thought result.
+   - Run a `create_todo` task with free-text state. Confirm a todo is created
+     with a name and description.
+   - Run `update_todo`, `mark_todo_done` (both `true` and `false`), and
+     `delete_todo`. Confirm the todo changes in the database/API.
+   - Confirm a tool task can chain to a next task through `fallbackTaskId`, and
+     that prompt output is appended to the next state.
+7. **Failure cases**
+   - Create a tool task without a tool key (via direct mutation) and confirm it
+     fails validation.
+   - Send malformed JSON state/config and confirm the queued step fails with a
+     readable note instead of crashing the queue.
+
+---
+
+## 11. Out of scope
+
+- User-defined/managed tools stored in the database.
+- A dedicated tool-run form with typed fields; tool input is `state` +
+  `toolConfig` for now.
+- Per-tool permissions or approvals.
+- Tool versioning.
+- Streaming Ollama output; the prompt tool waits for the complete answer.
