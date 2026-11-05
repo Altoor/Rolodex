@@ -3,6 +3,12 @@
 import { useMutation, useQuery } from "@apollo/client/react";
 
 import { MODELS } from "@repo/queries/model/model-queries";
+import { AuthGate } from "../components/auth/auth-gate";
+import { EmptyState } from "#components/feedback/empty-state";
+import { ErrorState } from "#components/feedback/error-state";
+import { LoadingState } from "#components/feedback/loading-state";
+import { PageContainer } from "#components/layout/page-container";
+import { PageHeader } from "#components/layout/page-header";
 import ModelCard from "#components/models/modelCard";
 import {
   Field,
@@ -16,67 +22,97 @@ import { CREATE_MODEL_DESCRIPTION } from "@repo/queries/model/model-mutations";
 import { Card, CardContent } from "#components/ui/card";
 import { Button } from "#components/ui/button";
 import { Input } from "#components/ui/input";
+
 type Inputs = {
   name: string;
-  description: string;
 };
-export default function ModelsPage() {
-  const { data, error, loading } = useQuery(MODELS);
-  const [createModelDescription] = useMutation(CREATE_MODEL_DESCRIPTION);
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors: formErrors },
-  } = useForm<Inputs>();
+export default function ModelsPage() {
+  return (
+    <AuthGate>
+      <ModelsPageContent />
+    </AuthGate>
+  );
+}
+
+function ModelsPageContent() {
+  const { data, error, loading } = useQuery(MODELS);
+  const [createModelDescription, { loading: pulling, error: pullError }] =
+    useMutation(CREATE_MODEL_DESCRIPTION, {
+      refetchQueries: [MODELS],
+    });
+
+  const { register, handleSubmit, reset } = useForm<Inputs>();
 
   const onSubmit: SubmitHandler<Inputs> = async (inputs) => {
-    await createModelDescription({
-      variables: { name: inputs.name, description: inputs.description },
+    const { error: mutationError } = await createModelDescription({
+      variables: { name: inputs.name },
     });
+
+    if (!mutationError) reset({ name: "" });
   };
 
-  return (
-    <div className="flex h-full w-full items-center justify-center p-6 md:p-10">
-      <Card>
-        <CardContent>
-          <div className="w-full max-w-sm">
-            {data ? (
-              data.models?.map((model) => {
-                if (model.name) {
-                  return (
-                    <ModelCard
-                      name={model.name}
-                      description={model.description}
-                      size={model.size as bigint}
-                      key={model.name}
-                      pulled={model.pulled}
-                      capabilities={model.capabilities}
-                    ></ModelCard>
-                  );
-                }
-              })
-            ) : (
-              <div>No models</div>
-            )}
+  const models = data?.models ?? [];
 
-            <form onSubmit={handleSubmit(onSubmit)}>
+  return (
+    <PageContainer>
+      <PageHeader
+        title="Models"
+        description="Pull models and describe what they are useful for."
+      />
+
+      <Card>
+        <CardContent className="flex flex-col gap-4">
+          <form onSubmit={handleSubmit(onSubmit)}>
+            <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="name">Name</FieldLabel>
-                <FieldGroup className="flex flex-row">
-                  <Input {...register("name")} />
-                  <Field className="w-fit">
-                    <FieldError errors={[error]}></FieldError>
-                    <Button type="submit">
-                      {loading ? <Spinner /> : "Pull new model"}
-                    </Button>
-                  </Field>
-                </FieldGroup>
+                <FieldLabel htmlFor="model-name">
+                  Pull a model by name
+                </FieldLabel>
+                <div className="flex flex-wrap items-end gap-2">
+                  <Input
+                    id="model-name"
+                    placeholder="e.g. llama3.2"
+                    {...register("name", { required: true })}
+                  />
+                  <Button type="submit" disabled={pulling}>
+                    {pulling ? <Spinner /> : "Pull new model"}
+                  </Button>
+                </div>
+                <FieldError errors={[pullError]} />
               </Field>
-            </form>
-          </div>
+            </FieldGroup>
+          </form>
         </CardContent>
       </Card>
-    </div>
+
+      {loading ? (
+        <LoadingState label="Loading models…" />
+      ) : error ? (
+        <ErrorState title="Could not load models" error={error} />
+      ) : models.length === 0 ? (
+        <EmptyState
+          title="No models available"
+          description="Pull a model above to make it available for your queued tasks."
+        />
+      ) : (
+        <Card>
+          <CardContent className="flex flex-col gap-2">
+            {models.map((model) =>
+              model.name ? (
+                <ModelCard
+                  key={model.name}
+                  name={model.name}
+                  description={model.description}
+                  size={model.size as bigint | null}
+                  pulled={model.pulled}
+                  capabilities={model.capabilities}
+                />
+              ) : null,
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </PageContainer>
   );
 }

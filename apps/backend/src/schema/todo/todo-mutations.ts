@@ -3,7 +3,7 @@ import { todos } from "../../db";
 import { builder, db } from "../builder";
 import { Todo } from "./todo";
 import { GraphQLError } from "graphql/error";
-import { GraphQLString } from "graphql";
+import { requireUserId } from "../auth";
 
 builder.mutationType({
   fields: (t) => ({
@@ -15,15 +15,7 @@ builder.mutationType({
         actor_id: t.arg.int({ required: false }),
       },
       resolve: async (_query, _root, { name, content, actor_id }, ctx) => {
-        const author_id = (ctx as any).user.id;
-
-        if (!author_id) {
-          throw new GraphQLError("Not logged in", {
-            extensions: {
-              code: "BAD_USER_INPUT",
-            },
-          });
-        }
+        const author_id = requireUserId(ctx);
 
         const todo = {
           name,
@@ -45,14 +37,12 @@ builder.mutationType({
         done: t.arg.boolean({ required: true }),
       },
       resolve: async (_query, _root, { id, done }, ctx) => {
+        const userId = requireUserId(ctx);
         const todo = await db.query.todos.findFirst({
           where: {
             AND: [
               {
-                OR: [
-                  { actorId: (ctx as any).user.id },
-                  { authorId: (ctx as any).user.id },
-                ],
+                OR: [{ actorId: userId }, { authorId: userId }],
               },
 
               { id: id },
@@ -85,14 +75,12 @@ builder.mutationType({
         actor_id: t.arg.int({ required: false }),
       },
       resolve: async (_query, _root, { id, name, content, actor_id }, ctx) => {
+        const userId = requireUserId(ctx);
         const todo = await db.query.todos.findFirst({
           where: {
             AND: [
               {
-                OR: [
-                  { actorId: (ctx as any).user.id },
-                  { authorId: (ctx as any).user.id },
-                ],
+                OR: [{ actorId: userId }, { authorId: userId }],
               },
 
               { id: id },
@@ -128,14 +116,12 @@ builder.mutationType({
         id: t.arg.int({ required: true }),
       },
       resolve: async (_root, { id }, ctx) => {
+        const userId = requireUserId(ctx);
         const todo = await db.query.todos.findFirst({
           where: {
             AND: [
               {
-                OR: [
-                  { actorId: (ctx as any).user.id },
-                  { authorId: (ctx as any).user.id },
-                ],
+                OR: [{ actorId: userId }, { authorId: userId }],
               },
 
               { id: id },

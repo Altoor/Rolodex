@@ -13,44 +13,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "#components/ui/select";
-import { useDebouncedFormState } from "#hooks/useDebouncedFormState";
-import { useMutation } from "@apollo/client/react";
-import { DecisionType } from "@repo/queries/__generated__/graphql";
-import {
-  CREATE_TASKRESULT,
-  DELETE_TASKRESULT,
-  UPDATE_TASKRESULT,
-} from "@repo/queries/tasks/task-mutations";
-import { TASKS } from "@repo/queries/tasks/task-queries";
+import { ConfirmButton } from "#components/feedback/confirm-button";
 import { Save, X } from "lucide-react";
-import { useState } from "react";
-
-type Inputs = {
-  type: DecisionType;
-  scoreThreshold: number | null;
-  resultTaskId: number | null;
-  confidenceThreshold: number | null;
-  option: string | null;
-  probabilityThreshold: number | null;
-};
+import { useFormContext, useWatch } from "react-hook-form";
+import type { TaskFormValues } from "../task-form";
 
 interface TaskResultOptionProps {
-  values: {
-    id: number | null;
-    type: DecisionType;
-    taskId: number;
-    scoreThreshold: number | null;
-    resultTaskId: number | null;
-    confidenceThreshold: number | null;
-    option: string | null;
-    probabilityThreshold: number | null;
-  };
+  index: number;
   options: string[];
   onDelete: () => void;
+  onSave: () => void;
 }
 
-/** Parses a form field into a number, or null when empty/invalid. */
-const parseNullableFloat = (value: unknown): number | null => {
+/** Turns an empty numeric input into null and any other text into a number. */
+const parseNullableNumber = (value: unknown): number | null => {
   if (value == null) return null;
   const text = String(value).trim();
   if (text === "") return null;
@@ -59,159 +35,138 @@ const parseNullableFloat = (value: unknown): number | null => {
 };
 
 const TaskResultOption = ({
-  values,
+  index,
   options,
   onDelete,
+  onSave,
 }: TaskResultOptionProps) => {
-  const [createTaskResult, { client }] = useMutation(CREATE_TASKRESULT);
-  const [deleteTaskResult] = useMutation(DELETE_TASKRESULT);
-  const [updateTaskResult] = useMutation(UPDATE_TASKRESULT);
-
-  const [formValues, setFormValues] = useState(values);
-
-  const { register, control, watch, setValue } =
-    useDebouncedFormState<Inputs>({
-      fieldsToWatch: [
-        "confidenceThreshold",
-        "option",
-        "scoreThreshold",
-        "probabilityThreshold",
-      ],
-      valuesFromFields: (watched) => ({
-        confidenceThreshold: parseNullableFloat(
-          watched["confidenceThreshold"],
-        ),
-        scoreThreshold: parseFloat(watched["scoreThreshold"] as string) || 0,
-        probabilityThreshold:
-          parseFloat(watched["probabilityThreshold"] as string) || 0,
-        option: (watched["option"] as string) ?? options[0],
-      }),
-      values,
-      setValues: setFormValues,
-      delay: 500,
-    });
-
-  const confidenceInput = watch("confidenceThreshold");
+  const { register, control, setValue } = useFormContext<TaskFormValues>();
+  const type = useWatch({ control, name: `taskResults.${index}.type` });
+  const confidenceValue = useWatch({
+    control,
+    name: `taskResults.${index}.confidenceThreshold`,
+  });
   const hasConfidence =
-    confidenceInput != null && String(confidenceInput).trim() !== "";
-
-  client.refetchQueries({ include: [TASKS] });
-
-  const save = () => {
-    const { id, ...restValues } = values;
-    const variables = {
-      ...restValues,
-      ...formValues,
-      confidenceThreshold: formValues.confidenceThreshold ?? null,
-    };
-
-    if (id != null) {
-      updateTaskResult({
-        variables: {
-          ...variables,
-          id,
-        },
-      });
-    } else {
-      createTaskResult({
-        variables,
-      });
-    }
-  };
+    confidenceValue != null && String(confidenceValue).trim() !== "";
 
   return (
-    <Item variant={"outline"} className="relative max-w-60">
-      <button
-        className="absolute right-2 top-2 text-muted-foreground hover:text-destructive"
-        onClick={() => {
-          if (values.id != null) {
-            deleteTaskResult({
-              variables: {
-                id: values.id,
-              },
-            });
-          }
-          onDelete();
-        }}
+    <Item variant="outline" className="relative w-full max-w-60">
+      <ConfirmButton
+        title="Delete result"
+        className="absolute right-2 top-2"
+        onConfirm={onDelete}
       >
         <X className="size-4" />
-      </button>
+      </ConfirmButton>
       <ItemContent>
         <ItemActions>
-          <Button onClick={() => save()}>
-            <Save></Save>
+          <Button
+            type="button"
+            onClick={onSave}
+            title="Save result"
+            aria-label="Save result"
+          >
+            <Save />
           </Button>
         </ItemActions>
       </ItemContent>
       <FieldGroup>
         <Field>
-          <FieldLabel htmlFor="confidenceThreshold">
-            ConfidenceThreshold
+          <FieldLabel htmlFor={`task-result-${index}-confidence`}>
+            Confidence threshold
           </FieldLabel>
           <div className="flex items-center gap-1">
-            <Input type="number" {...register("confidenceThreshold")} />
-            {hasConfidence && (
+            <Input
+              id={`task-result-${index}-confidence`}
+              type="number"
+              step="any"
+              {...register(`taskResults.${index}.confidenceThreshold`, {
+                setValueAs: parseNullableNumber,
+              })}
+            />
+            {hasConfidence ? (
               <Button
+                type="button"
                 variant="ghost"
                 size="icon-xs"
                 title="Remove confidence threshold"
-                onClick={() => setValue("confidenceThreshold", null)}
+                aria-label="Remove confidence threshold"
+                onClick={() =>
+                  setValue(`taskResults.${index}.confidenceThreshold`, null)
+                }
               >
                 <X className="size-4 text-muted-foreground" />
               </Button>
-            )}
+            ) : null}
           </div>
         </Field>
 
-        {values.type === "score" && (
+        {type === "score" ? (
           <Field>
-            <FieldLabel htmlFor="scoreThreshold">scoreThreshold</FieldLabel>
+            <FieldLabel htmlFor={`task-result-${index}-score`}>
+              Score threshold
+            </FieldLabel>
             <Input
+              id={`task-result-${index}-score`}
               type="number"
-              {...register("scoreThreshold", { required: true })}
+              step="any"
+              {...register(`taskResults.${index}.scoreThreshold`, {
+                setValueAs: parseNullableNumber,
+                required: true,
+              })}
             />
           </Field>
-        )}
-        {values.type === "choice" && (
+        ) : null}
+
+        {type === "choice" ? (
           <>
             <Field>
+              <FieldLabel htmlFor={`task-result-${index}-option`}>
+                Option
+              </FieldLabel>
               <SelectController
-                name="option"
+                name={`taskResults.${index}.option`}
                 control={control}
                 defaultValue={options[0]}
               >
                 {(value, onChange) => (
-                  <>
-                    <Select value={value} onValueChange={onChange}>
-                      <SelectTrigger className="w-[180px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          {options.map((option) => (
-                            <SelectItem key={option} value={option}>
-                              {option}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                  </>
+                  <Select value={value} onValueChange={onChange}>
+                    <SelectTrigger
+                      id={`task-result-${index}-option`}
+                      className="w-[180px]"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {options.map((option) => (
+                          <SelectItem key={option} value={option}>
+                            {option}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
                 )}
               </SelectController>
             </Field>
 
             <Field>
-              <FieldLabel htmlFor="probabilityThreshold">
-                probabilityThreshold
+              <FieldLabel htmlFor={`task-result-${index}-probability`}>
+                Probability threshold
               </FieldLabel>
               <Input
+                id={`task-result-${index}-probability`}
                 type="number"
-                {...register("probabilityThreshold", { required: true })}
+                step="any"
+                {...register(`taskResults.${index}.probabilityThreshold`, {
+                  setValueAs: parseNullableNumber,
+                  required: true,
+                })}
               />
             </Field>
           </>
-        )}
+        ) : null}
       </FieldGroup>
     </Item>
   );

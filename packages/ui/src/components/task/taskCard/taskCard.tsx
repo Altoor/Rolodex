@@ -11,6 +11,7 @@ import {
 import { Field, FieldGroup, FieldLabel } from "#components/ui/field";
 import { Input } from "#components/ui/input";
 import { Button } from "#components/ui/button";
+import { Spinner } from "#components/ui/spinner";
 import { Plus, Save } from "lucide-react";
 import {
   Select,
@@ -21,91 +22,47 @@ import {
   SelectTrigger,
   SelectValue,
 } from "#components/ui/select";
-import { DecisionType, TaskType } from "@repo/queries/__generated__/graphql";
+import type { FieldArrayWithId } from "react-hook-form";
+import { useFormContext, useWatch } from "react-hook-form";
+import type { TaskFormValues } from "../task-form";
 import TaskResultOption from "../taskResultOption/taskResultOption";
-import { useDebouncedFormState } from "#hooks/useDebouncedFormState";
-import { useState, useEffect, useRef } from "react";
+import { TaskType } from "@repo/queries/__generated__/graphql";
 
-type Inputs = {
-  name: string;
-  type: TaskType;
-};
+const TASK_TYPES = [
+  { label: "Decision", value: "decision" as TaskType },
+  { label: "TextPrompt", value: "textPrompt" as TaskType },
+  { label: "Tool", value: "tool" as TaskType },
+];
 
 interface TaskCardProps {
-  id?: number;
-  values:
-    | {
-        name: string;
-        type: TaskType;
-        taskResults?: {
-          type: DecisionType;
-          taskId: number | null;
-          scoreThreshold: number | null;
-          resultTaskId: number | null;
-          confidenceThreshold: number | null;
-          id: number | null;
-          option: string | null;
-          probabilityThreshold: number | null;
-        }[];
-        decision?: {
-          id: number | null;
-          options: string[] | null;
-          type: string | null;
-        };
-      }
-    | undefined;
+  resultFields: FieldArrayWithId<TaskFormValues, "taskResults", "id">[];
   save: () => void;
-  setValues: (variables: { name: string; type: TaskType }) => void;
+  saving?: boolean;
+  canEditResults: boolean;
+  onAddResult: () => void;
+  onSaveResult: (index: number) => void;
+  onDeleteResult: (index: number) => void;
 }
 
-const TaskCard = ({ id, values, save, setValues }: TaskCardProps) => {
-  const [taskResults, setTaskResults] = useState(values?.taskResults);
-  const isLocalChange = useRef(false);
-  const taskResultsRef = useRef(taskResults);
-  taskResultsRef.current = taskResults;
-
-  // Sync taskResults from parent when values change externally
-  useEffect(() => {
-    if (isLocalChange.current) {
-      isLocalChange.current = false;
-      return;
-    }
-    const incoming = values?.taskResults;
-    const current = taskResultsRef.current;
-
-    const isSame =
-      (incoming === undefined && current === undefined) ||
-      (incoming &&
-        current &&
-        incoming.length === current.length &&
-        incoming.every((r, i) => current[i] && r.id === current[i].id));
-
-    if (!isSame) {
-      setTaskResults(incoming);
-    }
-  }, [values?.taskResults]);
-  const { register, control } = useDebouncedFormState<Inputs>({
-    fieldsToWatch: ["name", "type"],
-    valuesFromFields: (watched) => ({
-      name: (watched["name"] as string) ?? "",
-      type: (watched["type"] as TaskType) ?? ("decision" as TaskType),
-    }),
-    values,
-    setValues,
-  });
-
-  const typeOfChoice = [
-    { label: "Decision", value: "decision" as TaskType },
-    { label: "TextPrompt", value: "textPrompt" as TaskType },
-    { label: "Tool", value: "tool" as TaskType },
-  ];
+const TaskCard = ({
+  resultFields,
+  save,
+  saving = false,
+  canEditResults,
+  onAddResult,
+  onSaveResult,
+  onDeleteResult,
+}: TaskCardProps) => {
+  const { register, control } = useFormContext<TaskFormValues>();
+  const type = useWatch({ control, name: "type" });
+  const decision = useWatch({ control, name: "decision" });
 
   return (
     <Card className="w-full">
-      <CardHeader className="w-full flex flex-row">
-        <CardContent>
+      <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start">
+        <CardContent className="w-full">
           <CardTitle>Task</CardTitle>
-          <CardDescription>Setup a Task</CardDescription>
+          <CardDescription>Set up a task.</CardDescription>
           <Field>
             <SelectController
               name="type"
@@ -113,22 +70,20 @@ const TaskCard = ({ id, values, save, setValues }: TaskCardProps) => {
               defaultValue="decision"
             >
               {(value, onChange) => (
-                <>
-                  <Select value={value} onValueChange={onChange}>
-                    <SelectTrigger className="w-[180px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {typeOfChoice.map((item) => (
-                          <SelectItem key={item.value} value={item.value}>
-                            {item.label}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </>
+                <Select value={value} onValueChange={onChange}>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {TASK_TYPES.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
               )}
             </SelectController>
           </Field>
@@ -136,69 +91,58 @@ const TaskCard = ({ id, values, save, setValues }: TaskCardProps) => {
         <CardContent className="w-full">
           <FieldGroup>
             <Field>
-              <FieldLabel htmlFor="name">Name</FieldLabel>
-              <Input {...register("name", { required: true })} />
+              <FieldLabel htmlFor="task-name">Name</FieldLabel>
+              <Input id="task-name" {...register("name", { required: true })} />
             </Field>
           </FieldGroup>
         </CardContent>
         <CardAction>
-          <Button onClick={() => save()}>
-            <Save></Save>
+          <Button
+            type="button"
+            onClick={save}
+            disabled={saving}
+            title="Save task"
+            aria-label="Save task"
+          >
+            {saving ? <Spinner /> : <Save />}
           </Button>
         </CardAction>
       </CardHeader>
 
       <CardContent>
-        {values?.type == ("decision" as TaskType) && (
-          <>
-            <CardTitle>Options</CardTitle>
-
-            <div className="flex flex-row flex-wrap gap-2">
-              {taskResults != undefined &&
-                id &&
-                Array.from(
-                  taskResults.map((taskResult) => (
+        {type === "decision" ? (
+          <div className="flex flex-col gap-3">
+            <CardTitle>Results</CardTitle>
+            {!canEditResults ? (
+              <p className="text-sm text-muted-foreground">
+                Save the task before adding result branches.
+              </p>
+            ) : (
+              <>
+                <div className="flex flex-row flex-wrap gap-2">
+                  {resultFields.map((field, index) => (
                     <TaskResultOption
-                      values={{
-                        ...taskResult,
-                        taskId: id,
-                        type: values.decision?.type as DecisionType,
-                      }}
-                      key={taskResult.id + (taskResult.option ?? "")}
-                      options={values?.decision?.options ?? []}
-                      onDelete={() => {
-                        isLocalChange.current = true;
-                        setTaskResults(
-                          taskResultsRef.current?.filter(
-                            (r) => r !== taskResult,
-                          ),
-                        );
-                      }}
-                    ></TaskResultOption>
-                  )),
-                )}
-              <Button
-                className="w-min"
-                onClick={() => {
-                  const newOption = {
-                    type: values?.decision?.type as DecisionType,
-                    taskId: id ?? null,
-                    scoreThreshold: null,
-                    resultTaskId: null,
-                    confidenceThreshold: null,
-                    id: null,
-                    option: null,
-                    probabilityThreshold: null,
-                  };
-                  isLocalChange.current = true;
-                  setTaskResults(taskResults?.concat(newOption));
-                }}
-              >
-                <Plus></Plus>
-              </Button>
-            </div>
-          </>
-        )}
+                      key={field.id}
+                      index={index}
+                      options={decision?.options ?? []}
+                      onSave={() => onSaveResult(index)}
+                      onDelete={() => onDeleteResult(index)}
+                    />
+                  ))}
+                </div>
+                <Button
+                  type="button"
+                  className="w-min"
+                  onClick={onAddResult}
+                  title="Add result"
+                  aria-label="Add result"
+                >
+                  <Plus />
+                </Button>
+              </>
+            )}
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );

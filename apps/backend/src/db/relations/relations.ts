@@ -6,6 +6,10 @@ export const relations = defineRelations(schema, (r) => ({
   users: {
     todos: r.many.todos(),
     todos_todo: r.many.todos(),
+    settings: r.one.userSettings({
+      from: r.users.id,
+      to: r.userSettings.userId,
+    }),
   },
 
   todos: {
@@ -64,6 +68,21 @@ export const relations = defineRelations(schema, (r) => ({
     actor: r.one.users({
       from: r.todos.actorId,
       to: r.users.id,
+    }),
+  },
+
+  userSettings: {
+    user: r.one.users({
+      from: r.userSettings.userId,
+      to: r.users.id,
+    }),
+    defaultTask: r.one.tasks({
+      from: r.userSettings.defaultTaskId,
+      to: r.tasks.id,
+    }),
+    defaultModel: r.one.models({
+      from: r.userSettings.defaultModelName,
+      to: r.models.name,
     }),
   },
 }));

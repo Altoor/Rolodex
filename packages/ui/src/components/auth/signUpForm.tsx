@@ -9,12 +9,19 @@ import {
   CardHeader,
   CardTitle,
 } from "../ui/card";
-import { Field, FieldError, FieldGroup, FieldLabel } from "../ui/field";
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "../ui/field";
 import { Input } from "../ui/input";
 import { useMutation } from "@apollo/client/react";
 import { Spinner } from "#components/ui/spinner";
 import { CREATEUSER } from "@repo/queries/user/user-mutations";
 import { SubmitHandler, useForm } from "react-hook-form";
+import { useAuth } from "./auth-provider";
 
 type Inputs = {
   email: string;
@@ -27,11 +34,12 @@ export function SignUpForm({
   ...props
 }: React.ComponentProps<"div">) {
   const [createUser, { loading, error }] = useMutation(CREATEUSER);
+  const { setToken } = useAuth();
 
   const {
     register,
     handleSubmit,
-    formState: { errors: formErrors },
+    formState: { errors },
   } = useForm<Inputs>();
 
   const onSubmit: SubmitHandler<Inputs> = async (inputs) => {
@@ -44,16 +52,15 @@ export function SignUpForm({
     });
 
     if (res.data?.createUser) {
-      localStorage.setItem("auth_token", res.data.createUser);
+      await setToken(res.data.createUser);
     }
-    window.location.reload();
   };
 
   return (
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       <Card>
         <CardHeader>
-          <CardTitle>Create a new accoung</CardTitle>
+          <CardTitle>Create a new account</CardTitle>
           <CardDescription>
             please enter the following information
           </CardDescription>
@@ -63,30 +70,44 @@ export function SignUpForm({
             <FieldGroup>
               <Field>
                 <FieldLabel htmlFor="name">Name</FieldLabel>
-                <Input {...register("name", { required: true })} />
+                <Input
+                  id="name"
+                  autoComplete="name"
+                  {...register("name", { required: "Name is required" })}
+                />
+                <FieldError errors={[errors.name]} />
               </Field>
               <Field>
                 <FieldLabel htmlFor="email">Email</FieldLabel>
-                <Input {...register("email", { required: true })} />
+                <Input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  {...register("email", { required: "Email is required" })}
+                />
+                <FieldError errors={[errors.email]} />
               </Field>
 
               <Field>
-                <div className="flex items-center">
-                  <FieldLabel htmlFor="password">Password</FieldLabel>
-                  <a
-                    href="#"
-                    className="ml-auto inline-block text-sm underline-offset-4 hover:underline"
-                  >
-                    Forgot your password?
-                  </a>
-                </div>
-                <Input {...register("password", { required: true })} />
+                <FieldLabel htmlFor="password">Password</FieldLabel>
+                <Input
+                  id="password"
+                  type="password"
+                  autoComplete="new-password"
+                  {...register("password", {
+                    required: "Password is required",
+                  })}
+                />
+                <FieldError errors={[errors.password]} />
               </Field>
               <Field>
-                <FieldError errors={[error]}></FieldError>
+                <FieldError errors={[error]} />
                 <Button type="submit">
                   {loading ? <Spinner /> : "Create account"}
                 </Button>
+                <FieldDescription className="text-center">
+                  Already have an account? <a href="/login">Log in</a>
+                </FieldDescription>
               </Field>
             </FieldGroup>
           </form>

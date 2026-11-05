@@ -5,11 +5,12 @@ import { schema } from "./src/schema/index.ts";
 import jwt from "jsonwebtoken";
 import { getUser } from "./src/schema/user/user-service.ts";
 import { resetStaleRunningTasks, triggerQueue } from "./src/queue/index.ts";
+import { users } from "./src/db/index.ts";
 
 const yoga = createYoga({
   schema,
   context: async ({ request }) => {
-    const user = await extract_user(request.headers.get("authorization"));
+    const user = await extractUser(request.headers.get("authorization"));
     return { user };
   },
 });
@@ -31,20 +32,22 @@ server.listen(4000, () => {
   triggerQueue();
 });
 
-async function extract_user(auth_header: string | null) {
-  if (!auth_header) return {};
+async function extractUser(
+  auth_header: string | null,
+): Promise<typeof users.$inferSelect | null> {
+  if (!auth_header) return null;
 
   const token = auth_header.split(" ")[1];
 
-  if (!token) return {};
+  if (!token) return null;
 
   try {
     const theTokenVerified = jwt.verify(token, process.env.TOKEN_SECRET);
     if (typeof theTokenVerified === "string" || !theTokenVerified.aud)
-      return {};
+      return null;
 
     return await getUser(parseInt(theTokenVerified.aud as string));
   } catch {
-    return {};
+    return null;
   }
 }

@@ -1,5 +1,6 @@
 import { builder, db } from "../builder";
 import { SimpleUser, User } from "./user";
+import { ensureUserSettings } from "./user-settings-service";
 
 builder.queryType({
   fields: (t) => ({
@@ -9,8 +10,15 @@ builder.queryType({
     }),
     me: t.field({
       type: User,
-      resolve: (_root, _args, ctx) => {
-        return (ctx as any).user;
+      nullable: true,
+      resolve: async (_root, _args, ctx) => {
+        const user = (ctx as any).user;
+
+        if (!user?.id) return null;
+
+        await ensureUserSettings(user.id);
+
+        return user;
       },
     }),
   }),

@@ -6,6 +6,8 @@ import { TaskType, Task, TaskResult, QueuedTask } from ".";
 import { taskResults, tasks, queuedTasks } from "../../db";
 import { DecisionType } from "../ai";
 import { triggerQueue } from "../../queue";
+import { requireUserId } from "../auth";
+import { getUserSettings } from "../user/user-settings-service";
 
 builder.mutationType({
   fields: (t) => ({
@@ -23,15 +25,7 @@ builder.mutationType({
         { name, decisionId, fallbackTaskId, type },
         ctx,
       ) => {
-        const author_id = (ctx as any).user.id;
-
-        if (!author_id) {
-          throw new GraphQLError("Not logged in", {
-            extensions: {
-              code: "BAD_USER_INPUT",
-            },
-          });
-        }
+        const author_id = requireUserId(ctx);
 
         switch (type) {
           case "decision":
@@ -72,15 +66,7 @@ builder.mutationType({
         { id, name, type, decisionId, fallbackTaskId },
         ctx,
       ) => {
-        const author_id = (ctx as any).user.id;
-
-        if (!author_id) {
-          throw new GraphQLError("Not logged in", {
-            extensions: {
-              code: "BAD_USER_INPUT",
-            },
-          });
-        }
+        const author_id = requireUserId(ctx);
 
         const task = await db.query.tasks.findFirst({ where: { id: id } });
 
@@ -129,15 +115,7 @@ builder.mutationType({
         id: t.arg.int({ required: true }),
       },
       resolve: async (_root, { id }, ctx) => {
-        const author_id = (ctx as any).user.id;
-
-        if (!author_id) {
-          throw new GraphQLError("Not logged in", {
-            extensions: {
-              code: "BAD_USER_INPUT",
-            },
-          });
-        }
+        const author_id = requireUserId(ctx);
 
         const task = await db.query.tasks.findFirst({ where: { id: id } });
 
@@ -186,15 +164,7 @@ builder.mutationType({
         },
         ctx,
       ) => {
-        const author_id = (ctx as any).user.id;
-
-        if (!author_id) {
-          throw new GraphQLError("Not logged in", {
-            extensions: {
-              code: "BAD_USER_INPUT",
-            },
-          });
-        }
+        const author_id = requireUserId(ctx);
 
         const taskResult = {
           taskId,
@@ -241,15 +211,7 @@ builder.mutationType({
         },
         ctx,
       ) => {
-        const author_id = (ctx as any).user.id;
-
-        if (!author_id) {
-          throw new GraphQLError("Not logged in", {
-            extensions: {
-              code: "BAD_USER_INPUT",
-            },
-          });
-        }
+        const author_id = requireUserId(ctx);
 
         const taskResult = await db.query.taskResults.findFirst({
           where: { id: id },
@@ -265,7 +227,7 @@ builder.mutationType({
 
         // An explicitly provided value (even null) overrides the stored one,
         // while an omitted argument keeps the stored value.
-        const keepOrSet = <T,>(provided: T | undefined, fallback: T): T =>
+        const keepOrSet = <T>(provided: T | undefined, fallback: T): T =>
           provided !== undefined ? provided : fallback;
 
         const taskResultDto = {
@@ -300,15 +262,7 @@ builder.mutationType({
         id: t.arg.int({ required: true }),
       },
       resolve: async (_root, { id }, ctx) => {
-        const author_id = (ctx as any).user.id;
-
-        if (!author_id) {
-          throw new GraphQLError("Not logged in", {
-            extensions: {
-              code: "BAD_USER_INPUT",
-            },
-          });
-        }
+        const author_id = requireUserId(ctx);
 
         const taskResult = await db.query.taskResults.findFirst({
           where: { id: id },
@@ -331,27 +285,27 @@ builder.mutationType({
     createQueuedTask: t.drizzleField({
       type: QueuedTask,
       args: {
-        taskId: t.arg.int({ required: true }),
+        taskId: t.arg.int(),
         state: t.arg.string({ required: true }),
       },
-      resolve: async (
-        _query,
-        _root,
-        { taskId, state },
-        ctx,
-      ) => {
-        const author_id = (ctx as any).user.id;
+      resolve: async (_query, _root, { taskId, state }, ctx) => {
+        const author_id = requireUserId(ctx);
+        const settings = await getUserSettings(author_id);
+        const resolvedTaskId = taskId ?? settings.defaultTaskId;
 
-        if (!author_id) {
-          throw new GraphQLError("Not logged in", {
-            extensions: {
-              code: "BAD_USER_INPUT",
+        if (resolvedTaskId == null) {
+          throw new GraphQLError(
+            "No starting task selected and no default task configured",
+            {
+              extensions: {
+                code: "BAD_USER_INPUT",
+              },
             },
-          });
+          );
         }
 
         const queuedTask = {
-          taskId,
+          taskId: resolvedTaskId,
           state,
           // A new user submission starts a new chain run.
           runId: randomUUID(),
@@ -376,15 +330,7 @@ builder.mutationType({
         id: t.arg.int({ required: true }),
       },
       resolve: async (_query, _root, { id }, ctx) => {
-        const author_id = (ctx as any).user.id;
-
-        if (!author_id) {
-          throw new GraphQLError("Not logged in", {
-            extensions: {
-              code: "BAD_USER_INPUT",
-            },
-          });
-        }
+        const author_id = requireUserId(ctx);
 
         const queuedTask = await db.query.queuedTasks.findFirst({
           where: { id: id },
@@ -419,15 +365,7 @@ builder.mutationType({
         date: t.arg({ type: "DateTime", required: true }),
       },
       resolve: async (_root, { date }, ctx) => {
-        const author_id = (ctx as any).user.id;
-
-        if (!author_id) {
-          throw new GraphQLError("Not logged in", {
-            extensions: {
-              code: "BAD_USER_INPUT",
-            },
-          });
-        }
+        const author_id = requireUserId(ctx);
 
         date;
 
@@ -450,15 +388,7 @@ builder.mutationType({
         id: t.arg.int({ required: true }),
       },
       resolve: async (_root, { id }, ctx) => {
-        const author_id = (ctx as any).user.id;
-
-        if (!author_id) {
-          throw new GraphQLError("Not logged in", {
-            extensions: {
-              code: "BAD_USER_INPUT",
-            },
-          });
-        }
+        const author_id = requireUserId(ctx);
 
         const queuedTask = await db.query.queuedTasks.findFirst({
           where: { id: id },

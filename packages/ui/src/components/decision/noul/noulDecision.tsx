@@ -1,53 +1,32 @@
 import { Field, FieldGroup, FieldLabel } from "#components/ui/field";
 import { Input } from "#components/ui/input";
-import { useDebouncedFormState } from "#hooks/useDebouncedFormState";
+import { useFormContext } from "react-hook-form";
+import type { DecisionFormValues } from "../decision-form";
 
-type Inputs = {
-  instruction: string;
-  decisionPremise: string;
-};
-
-interface NoulDecisionFormProps {
-  values:
-    | {
-        instruction: string;
-        decisionPremise: string;
-      }
-    | undefined;
-  setValues: (variables: {
-    instruction: string;
-    decisionPremise: string;
-  }) => void;
-}
-
-const NoulDecisionForm = ({ values, setValues }: NoulDecisionFormProps) => {
-  const { register } = useDebouncedFormState<Inputs>({
-    fieldsToWatch: ["instruction", "decisionPremise"],
-    valuesFromFields: (watched) => ({
-      instruction: watched["instruction"] as string ?? "",
-      decisionPremise: watched["decisionPremise"] as string ?? "",
-    }),
-    values,
-    setValues,
-  });
+const NoulDecisionForm = () => {
+  const { register } = useFormContext<DecisionFormValues>();
 
   return (
-    <form>
-      <FieldGroup>
-        <Field>
-          <FieldLabel htmlFor="instruction">
-            What is your current instruction
-          </FieldLabel>
-          <Input {...register("instruction", { required: true })} />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="decisionPremise">
-            What is the premise of the decision
-          </FieldLabel>
-          <Input {...register("decisionPremise", { required: true })} />
-        </Field>
-      </FieldGroup>
-    </form>
+    <FieldGroup>
+      <Field>
+        <FieldLabel htmlFor="noul-instruction">
+          What is your current instruction?
+        </FieldLabel>
+        <Input
+          id="noul-instruction"
+          {...register("instruction", { required: true })}
+        />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="noul-premise">
+          What is the premise of the decision?
+        </FieldLabel>
+        <Input
+          id="noul-premise"
+          {...register("decisionPremise", { required: true })}
+        />
+      </Field>
+    </FieldGroup>
   );
 };
 

@@ -21,7 +21,6 @@ const ScoreResult = ({
   probabilities,
   legend,
 }: ScoreResultProps) => {
-  console.log(Object.entries(legend));
   return (
     <Item variant={"outline"}>
       <ItemContent>

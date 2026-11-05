@@ -4,48 +4,45 @@ import { Field, FieldGroup, FieldLabel } from "#components/ui/field";
 import { Input } from "#components/ui/input";
 import { Item } from "#components/ui/item";
 import { Textarea } from "#components/ui/textarea";
-import { useDebouncedFormState } from "#hooks/useDebouncedFormState";
 import { X } from "lucide-react";
-
-type Inputs = {
-  name: string;
-  description: string;
-};
+import { useFormContext } from "react-hook-form";
+import type { DecisionFormValues } from "../decision-form";
 
 interface ChoiceOptionProps {
-  values: { name: string; description: string };
-  setValues: (option: { name: string; description: string }) => void;
+  index: number;
   onDelete: () => void;
 }
 
-const ChoiceOption = ({ values, setValues, onDelete }: ChoiceOptionProps) => {
-  const { register } = useDebouncedFormState<Inputs>({
-    fieldsToWatch: ["name", "description"],
-    valuesFromFields: (watched) => ({
-      name: (watched["name"] as string) ?? "",
-      description: (watched["description"] as string) ?? "",
-    }),
-    delay: 0,
-    values,
-    setValues,
-  });
+const ChoiceOption = ({ index, onDelete }: ChoiceOptionProps) => {
+  const { register } = useFormContext<DecisionFormValues>();
 
   return (
-    <Item variant={"outline"} className="relative max-w-60">
+    <Item variant="outline" className="relative w-full max-w-60">
       <button
+        type="button"
         className="absolute right-2 top-2 text-muted-foreground hover:text-destructive"
         onClick={onDelete}
+        title="Remove option"
+        aria-label="Remove option"
       >
         <X className="size-4" />
       </button>
       <FieldGroup>
         <Field>
-          <FieldLabel htmlFor="name">Name</FieldLabel>
-          <Input {...register("name", { required: true })} />
+          <FieldLabel htmlFor={`choice-option-${index}-name`}>Name</FieldLabel>
+          <Input
+            id={`choice-option-${index}-name`}
+            {...register(`options.${index}.name`, { required: true })}
+          />
         </Field>
         <Field>
-          <FieldLabel htmlFor="description">Description</FieldLabel>
-          <Textarea {...register("description", { required: true })} />
+          <FieldLabel htmlFor={`choice-option-${index}-description`}>
+            Description
+          </FieldLabel>
+          <Textarea
+            id={`choice-option-${index}-description`}
+            {...register(`options.${index}.description`, { required: true })}
+          />
         </Field>
       </FieldGroup>
     </Item>

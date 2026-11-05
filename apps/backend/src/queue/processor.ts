@@ -7,12 +7,12 @@ import type {
   SystemOneScoreAnswer,
 } from "ollama";
 import { db } from "../schema/builder";
-import { queuedTasks, taskResults } from "../db";
+import { queuedTasks, taskResults, userSettings } from "../db";
 import { ollama } from "../ai/Ollama";
 import { setupQuestions } from "../schema/ai/ai-service";
 import { publishQueuedTaskEvent } from "./pubsub";
 
-const MODEL = "tev1:4b";
+const DEFAULT_MODEL = "tev1:4b";
 const MAX_STEPS_PER_RUN = 15;
 
 type QueuedRow = typeof queuedTasks.$inferSelect;
@@ -46,6 +46,16 @@ export async function resetStaleRunningTasks(): Promise<void> {
     );
     triggerQueue();
   }
+}
+
+async function modelForUser(userId: number): Promise<string> {
+  const [settings] = await db
+    .select({ defaultModelName: userSettings.defaultModelName })
+    .from(userSettings)
+    .where(eq(userSettings.userId, userId))
+    .limit(1);
+
+  return settings?.defaultModelName ?? DEFAULT_MODEL;
 }
 
 async function processQueue(): Promise<void> {
@@ -104,15 +114,14 @@ async function processStep(
     where: { id: task.decisionId },
   });
   if (!decision) {
-    await finishStep(
-      row.id,
-      "failed",
-      { note: `decision ${task.decisionId} not found` },
-    );
+    await finishStep(row.id, "failed", {
+      note: `decision ${task.decisionId} not found`,
+    });
     return;
   }
 
   let response: SystemOneResponse;
+  let model = DEFAULT_MODEL;
   try {
     const questions = setupQuestions([
       {
@@ -123,8 +132,9 @@ async function processStep(
         optionDescriptions: decision.optionDescriptions ?? undefined,
       },
     ]);
+    model = await modelForUser(row.queued_by);
     response = await ollama.systemone({
-      model: MODEL,
+      model,
       state: row.state,
       questions,
     });
@@ -153,7 +163,9 @@ async function processStep(
   // Results without a wired-up resultTaskId cannot continue the chain.
   const match = results.find(
     (r) =>
-      r.type === answer.type && r.resultTaskId != null && resultMatches(r, answer),
+      r.type === answer.type &&
+      r.resultTaskId != null &&
+      resultMatches(r, answer),
   );
 
   const summary = summarizeAnswer(task.name, answer);
@@ -187,6 +199,7 @@ async function processStep(
   const result = {
     answer,
     usage: response.usage,
+    model,
     branch,
     nextTaskId,
     summary,
@@ -209,10 +222,7 @@ async function processStep(
  * Checks one taskResult's thresholds against a SystemOne answer.
  * Every threshold that is set must pass.
  */
-function resultMatches(
-  r: TaskResultRow,
-  answer: SystemOneAnswer,
-): boolean {
+function resultMatches(r: TaskResultRow, answer: SystemOneAnswer): boolean {
   switch (answer.type) {
     case "choice": {
       const a = answer as SystemOneChoiceAnswer;
@@ -268,7 +278,8 @@ async function finishStep(
     .set({ status, result })
     .where(eq(queuedTasks.id, id))
     .returning();
-  if (updated) publish(updated, message ?? (result as { note?: string })?.note ?? status);
+  if (updated)
+    publish(updated, message ?? (result as { note?: string })?.note ?? status);
 }
 
 function publish(row: QueuedRow, message: string): void {

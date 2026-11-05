@@ -21,6 +21,7 @@ import { useMutation } from "@apollo/client/react";
 import { SubmitHandler, useForm } from "react-hook-form";
 import { Spinner } from "#components/ui/spinner";
 import { LOGIN } from "@repo/queries/user/user-mutations";
+import { useAuth } from "./auth-provider";
 
 type Inputs = {
   email: string;
@@ -32,11 +33,12 @@ export function LoginForm({
   ...props
 }: React.ComponentProps<"div">) {
   const [login, { loading, error }] = useMutation(LOGIN);
+  const { setToken } = useAuth();
 
   const {
     register,
     handleSubmit,
-    formState: { errors: formErrors },
+    formState: { errors },
   } = useForm<Inputs>();
 
   const onSubmit: SubmitHandler<Inputs> = async (inputs) => {
@@ -45,9 +47,8 @@ export function LoginForm({
     });
 
     if (res.data?.login) {
-      localStorage.setItem("auth_token", res.data.login);
+      await setToken(res.data.login);
     }
-    window.location.reload();
   };
 
   return (
@@ -64,22 +65,28 @@ export function LoginForm({
             <FieldGroup>
               <Field>
                 <FieldLabel htmlFor="email">Email</FieldLabel>
-                <Input {...register("email", { required: true })} />
+                <Input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  {...register("email", { required: "Email is required" })}
+                />
+                <FieldError errors={[errors.email]} />
               </Field>
               <Field>
-                <div className="flex items-center">
-                  <FieldLabel htmlFor="password">Password</FieldLabel>
-                  <a
-                    href="#"
-                    className="ml-auto inline-block text-sm underline-offset-4 hover:underline"
-                  >
-                    Forgot your password?
-                  </a>
-                </div>
-                <Input {...register("password", { required: true })} />
+                <FieldLabel htmlFor="password">Password</FieldLabel>
+                <Input
+                  id="password"
+                  type="password"
+                  autoComplete="current-password"
+                  {...register("password", {
+                    required: "Password is required",
+                  })}
+                />
+                <FieldError errors={[errors.password]} />
               </Field>
               <Field>
-                <FieldError errors={[error]}></FieldError>
+                <FieldError errors={[error]} />
                 <Button type="submit">{loading ? <Spinner /> : "Login"}</Button>
                 <FieldDescription className="text-center">
                   Don&apos;t have an account? <a href="/signUp">Sign up</a>

@@ -101,3 +101,18 @@ export const models = pgTable("models", {
   size_vram: bigint("size_vram", { mode: "bigint" }),
   capabilities: text("capabilities").array(),
 });
+
+export const userSettings = pgTable("userSettings", {
+  userId: integer("userId")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  defaultTaskId: integer("defaultTaskId").references(() => tasks.id, {
+    onDelete: "set null",
+  }),
+  defaultModelName: text("defaultModelName").references(() => models.name, {
+    onDelete: "set null",
+  }),
+  updatedAt: timestamp("updatedAt", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});

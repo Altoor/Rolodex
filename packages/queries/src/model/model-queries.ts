@@ -12,3 +12,13 @@ export const MODELS = gql(/* GraphQL */ `
     }
   }
 `);
+
+export const INSTALLED_MODELS = gql(/* GraphQL */ `
+  query GetInstalledModels {
+    installedModels {
+      name
+      description
+      pulled
+    }
+  }
+`);

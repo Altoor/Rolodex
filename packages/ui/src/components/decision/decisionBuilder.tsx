@@ -1,131 +1,104 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { FormProvider, useForm } from "react-hook-form";
+import { useLazyQuery, useMutation } from "@apollo/client/react";
 import DecisionCard from "./decisionCard/decisionCard";
 import StateCard from "./state/stateCard";
 import {
   DECISIONS,
   GET_DECISION,
 } from "@repo/queries/decisions/decision-queries";
-import { useLazyQuery, useMutation } from "@apollo/client/react";
-import { Spinner } from "#components/ui/spinner";
 import {
   CREATE_SYSTEM_ONE_PROMPT,
   UPDATE_SYSTEM_ONE_PROMPT,
 } from "@repo/queries/decisions/decision-mutations";
-import { DecisionType } from "@repo/queries/__generated__/graphql";
+import { ErrorState } from "#components/feedback/error-state";
+import { LoadingState } from "#components/feedback/loading-state";
+import {
+  decisionFormValuesToVariables,
+  decisionToFormValues,
+  emptyDecisionFormValues,
+  type DecisionFormValues,
+} from "./decision-form";
 
 interface DecisionBuilderProps {
   selectedDecisionId: number | undefined;
 }
 
 const DecisionBuilder = ({ selectedDecisionId }: DecisionBuilderProps) => {
-  const [getDecision, { loading, error, client }] = useLazyQuery(GET_DECISION);
-  const [
-    createDecision,
-    { loading: createDecisionLoading, error: createDecisionError },
-  ] = useMutation(CREATE_SYSTEM_ONE_PROMPT);
-  const [
-    updateDecision,
-    { loading: updateDecisionLoading, error: updateDecisionError },
-  ] = useMutation(UPDATE_SYSTEM_ONE_PROMPT);
-
-  const [formValues, setFormValues] = useState<
-    | {
-        decisionPremise: string;
-        instruction: string;
-        options?: Array<string>;
-        optionDescriptions?: Array<string>;
-        name: string;
-        type: DecisionType;
-      }
-    | undefined
-  >(undefined);
-
-  const [loadedValues, setLoadedValues] = useState<
-    | {
-        decisionPremise: string;
-        instruction: string;
-        options?: Array<string>;
-        optionDescriptions?: Array<string>;
-        name: string;
-        type: DecisionType;
-      }
-    | undefined
-  >(undefined);
+  const methods = useForm<DecisionFormValues>({
+    defaultValues: emptyDecisionFormValues,
+  });
+  const { handleSubmit, reset } = methods;
+  const [getDecision, { loading, error: loadError }] =
+    useLazyQuery(GET_DECISION);
+  const [createDecision, { loading: creating, error: createError }] =
+    useMutation(CREATE_SYSTEM_ONE_PROMPT, {
+      refetchQueries: [DECISIONS],
+      awaitRefetchQueries: true,
+    });
+  const [updateDecision, { loading: updating, error: updateError }] =
+    useMutation(UPDATE_SYSTEM_ONE_PROMPT, {
+      refetchQueries: [DECISIONS],
+      awaitRefetchQueries: true,
+    });
 
   useEffect(() => {
-    if (selectedDecisionId !== undefined) {
-      const getValues = async () => {
-        const decision = await getDecision({
-          variables: { id: selectedDecisionId },
-        });
+    let cancelled = false;
 
-        if (decision.data?.getDecision) {
-          setLoadedValues({
-            decisionPremise: decision.data?.getDecision.decisionPremise ?? "",
-            instruction: decision.data?.getDecision.instruction ?? "",
-            options: decision.data?.getDecision.options as string[] | undefined,
-            optionDescriptions: decision.data?.getDecision
-              .optionDescriptions as string[] | undefined,
-            name: decision.data?.getDecision.name ?? "",
-            type: (decision.data.getDecision.type as DecisionType) ?? "noul",
-          });
-        }
+    if (selectedDecisionId === undefined) {
+      reset(emptyDecisionFormValues);
+      return () => {
+        cancelled = true;
       };
+    }
 
-      getValues();
+    void getDecision({ variables: { id: selectedDecisionId } }).then(
+      ({ data }) => {
+        if (cancelled || !data?.getDecision) return;
+
+        reset(decisionToFormValues(data.getDecision));
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [getDecision, reset, selectedDecisionId]);
+
+  const saveDecision = handleSubmit(async (values) => {
+    const variables = decisionFormValuesToVariables(values);
+
+    if (selectedDecisionId !== undefined) {
+      await updateDecision({
+        variables: { ...variables, id: selectedDecisionId },
+      });
     } else {
-      setLoadedValues({
-        name: "",
-        instruction: "",
-        decisionPremise: "",
-        options: undefined,
-        optionDescriptions: undefined,
-        type: "noul" as DecisionType,
-      });
+      await createDecision({ variables });
     }
-  }, [getDecision, selectedDecisionId]);
+  });
 
-  const saveDecision = () => {
-    if (formValues) {
-      if (selectedDecisionId) {
-        updateDecision({
-          variables: { ...formValues, id: selectedDecisionId },
-        });
-      } else {
-        createDecision({ variables: { ...formValues } });
-      }
-      client.refetchQueries({
-        include: [DECISIONS],
-      });
-    }
-  };
+  if (selectedDecisionId !== undefined && loading) {
+    return <LoadingState label="Loading decision…" />;
+  }
 
   return (
-    <div className="flex flex-col gap-4">
-      {loading ? (
-        <Spinner />
-      ) : (
-        <>
-          <DecisionCard
-            setValues={(values) => {
-              if (values) {
-                setFormValues(values);
-              }
-            }}
-            values={loadedValues}
-            save={() => {
-              saveDecision();
-            }}
-          ></DecisionCard>
-          <StateCard
-            variables={formValues}
-            type={formValues?.type ?? "noul"}
-          ></StateCard>
-        </>
-      )}
-    </div>
+    <FormProvider {...methods}>
+      <div className="flex flex-col gap-4">
+        {loadError ? (
+          <ErrorState title="Could not load decision" error={loadError} />
+        ) : null}
+        {createError || updateError ? (
+          <ErrorState
+            title="Could not save decision"
+            error={createError ?? updateError}
+          />
+        ) : null}
+        <DecisionCard save={saveDecision} saving={creating || updating} />
+        <StateCard />
+      </div>
+    </FormProvider>
   );
 };
 

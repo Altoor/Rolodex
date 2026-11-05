@@ -1,18 +1,36 @@
 "use client";
 
-import { LoginForm } from "#components/auth/loginForm";
-import { useQuery } from "@apollo/client/react";
-
-import { ME } from "@repo/queries/user/users-queries";
+import { useAuth, type CurrentUser } from "../components/auth/auth-provider";
+import { AuthLayout } from "../components/auth/auth-layout";
+import { LoginForm } from "../components/auth/loginForm";
+import { LoadingState } from "#components/feedback/loading-state";
+import { buttonVariants } from "#components/ui/button";
 
 export default function LoginPage() {
-  const { data } = useQuery(ME);
+  const { user, loading } = useAuth();
 
   return (
-    <div className="flex h-full w-full items-center justify-center p-6 md:p-10">
-      <div className="w-full max-w-sm">
-        {data ? <div>Welcome {data.me?.name}</div> : <LoginForm />}
-      </div>
+    <AuthLayout>
+      {loading ? (
+        <LoadingState />
+      ) : user ? (
+        <LoggedInNotice user={user} />
+      ) : (
+        <LoginForm />
+      )}
+    </AuthLayout>
+  );
+}
+
+function LoggedInNotice({ user }: { user: CurrentUser }) {
+  return (
+    <div className="flex flex-col items-center gap-4 text-center">
+      <p>
+        You are logged in as <strong>{user.name}</strong>.
+      </p>
+      <a href="/user" className={buttonVariants()}>
+        Go to your account
+      </a>
     </div>
   );
 }

@@ -130,7 +130,7 @@ export const DELETE_TASKRESULT = gql(/* GraphQL */ `
 `);
 
 export const CREATE_QUEUED_TASK = gql(/* GraphQL */ `
-  mutation CreateQueuedTask($taskId: Int!, $state: String!) {
+  mutation CreateQueuedTask($taskId: Int, $state: String!) {
     createQueuedTask(taskId: $taskId, state: $state) {
       id
       taskId

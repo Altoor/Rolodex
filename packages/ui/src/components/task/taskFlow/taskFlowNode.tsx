@@ -46,7 +46,10 @@ const TaskFlowNode = ({ data, selected }: NodeProps<TaskFlowNode>) => {
       <Handle type="target" position={Position.Left} id="input" />
 
       <button
+        type="button"
         className="nodrag nopan absolute right-2 top-2 text-muted-foreground hover:text-destructive"
+        title="Delete task"
+        aria-label="Delete task"
         onClick={(event) => {
           event.stopPropagation();
           data.onTaskDelete?.(data.taskId);

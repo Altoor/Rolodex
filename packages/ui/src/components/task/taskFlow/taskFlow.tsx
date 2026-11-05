@@ -14,7 +14,6 @@ import {
   type NodeTypes,
   type XYPosition,
 } from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
 import {
   CREATE_TASK,
   DELETE_TASK,
@@ -153,14 +152,23 @@ const setResultTaskIdInCache = (
 interface TaskFlowProps {
   selectedTaskId?: number;
   onSelectTaskId?: (id: number | undefined) => void;
+  defaultTaskId?: number | null;
+  onDefaultTaskChange?: (id: number) => void;
 }
 
-const TaskFlow = ({ selectedTaskId, onSelectTaskId }: TaskFlowProps) => {
+const TaskFlow = ({
+  selectedTaskId,
+  onSelectTaskId,
+  defaultTaskId,
+  onDefaultTaskChange,
+}: TaskFlowProps) => {
   const { data, loading } = useQuery(TASKS);
-  const [updateTaskResult, { client }] = useMutation(UPDATE_TASKRESULT);
-  const [createTask] = useMutation(CREATE_TASK);
-  const [deleteTask] = useMutation(DELETE_TASK);
-  const [updateTask] = useMutation(UPDATE_TASK);
+  const [updateTaskResult] = useMutation(UPDATE_TASKRESULT, {
+    refetchQueries: [TASKS],
+  });
+  const [createTask] = useMutation(CREATE_TASK, { refetchQueries: [TASKS] });
+  const [deleteTask] = useMutation(DELETE_TASK, { refetchQueries: [TASKS] });
+  const [updateTask] = useMutation(UPDATE_TASK, { refetchQueries: [TASKS] });
 
   const tasks = useMemo<FlowTask[]>(
     () =>
@@ -175,21 +183,29 @@ const TaskFlow = ({ selectedTaskId, onSelectTaskId }: TaskFlowProps) => {
 
   const [nodes, setNodes, onNodesChange] = useNodesState<TaskFlowNode>([]);
   // The task chosen as the first (entry) node of the flow via the dropdown.
-  // Defaults to the first task until the user picks one.
+  // Prefer the user's saved default task, then their in-session choice, then
+  // the first task returned by the API.
   const [rootTask, setRootTask] = useState<number | undefined>(undefined);
-  const effectiveRootId = rootTask ?? tasks[0]?.id;
+  const validDefaultTaskId =
+    defaultTaskId != null && tasks.some((task) => task.id === defaultTaskId)
+      ? defaultTaskId
+      : undefined;
+  const effectiveRootId = rootTask ?? validDefaultTaskId ?? tasks[0]?.id;
 
   // Deleting a node deletes the underlying task (and, on the backend, all
   // of that task's TaskResults).
   const handleDeleteTask = useCallback(
     (taskId: number) => {
-      void deleteTask({ variables: { id: taskId } }).then(({ error }) => {
-        if (!error) {
-          client.refetchQueries({ include: [TASKS] });
-        }
-      });
+      if (
+        typeof window !== "undefined" &&
+        !window.confirm("Delete this task? This cannot be undone.")
+      ) {
+        return;
+      }
+
+      void deleteTask({ variables: { id: taskId } });
     },
-    [deleteTask, client],
+    [deleteTask],
   );
 
   // Keep react-flow nodes in sync with the tasks query.
@@ -297,10 +313,6 @@ const TaskFlow = ({ selectedTaskId, onSelectTaskId }: TaskFlowProps) => {
         void updateTask({
           variables: { id: taskId, fallbackTaskId: targetTaskId },
           update: (cache) => setFallbackInCache(cache, taskId, targetTaskId),
-        }).then(({ error }) => {
-          if (!error) {
-            client.refetchQueries({ include: [TASKS] });
-          }
         });
         return;
       }
@@ -310,13 +322,9 @@ const TaskFlow = ({ selectedTaskId, onSelectTaskId }: TaskFlowProps) => {
         variables: { id: resultId, resultTaskId: targetTaskId },
         update: (cache) =>
           setResultTaskIdInCache(cache, resultId, targetTaskId),
-      }).then(({ error }) => {
-        if (!error) {
-          client.refetchQueries({ include: [TASKS] });
-        }
       });
     },
-    [updateTask, updateTaskResult, client],
+    [updateTask, updateTaskResult],
   );
 
   // Deleting an edge clears the matching relationship (resultTaskId or
@@ -330,10 +338,6 @@ const TaskFlow = ({ selectedTaskId, onSelectTaskId }: TaskFlowProps) => {
           void updateTask({
             variables: { id: taskId, fallbackTaskId: null },
             update: (cache) => setFallbackInCache(cache, taskId, null),
-          }).then(({ error }) => {
-            if (!error) {
-              client.refetchQueries({ include: [TASKS] });
-            }
           });
           continue;
         }
@@ -342,14 +346,10 @@ const TaskFlow = ({ selectedTaskId, onSelectTaskId }: TaskFlowProps) => {
         void updateTaskResult({
           variables: { id: resultId, resultTaskId: null },
           update: (cache) => setResultTaskIdInCache(cache, resultId, null),
-        }).then(({ error }) => {
-          if (!error) {
-            client.refetchQueries({ include: [TASKS] });
-          }
         });
       }
     },
-    [updateTask, updateTaskResult, client],
+    [updateTask, updateTaskResult],
   );
 
   // Keyboard delete (Delete/Backspace on a selected node) also removes the
@@ -370,12 +370,8 @@ const TaskFlow = ({ selectedTaskId, onSelectTaskId }: TaskFlowProps) => {
         name: `New Task ${tasks.length + 1}`,
         type: "decision" as TaskType,
       },
-    }).then(({ error }) => {
-      if (!error) {
-        client.refetchQueries({ include: [TASKS] });
-      }
     });
-  }, [createTask, client, tasks.length]);
+  }, [createTask, tasks.length]);
 
   const onNodeClick = useCallback(
     (_event: React.MouseEvent, node: TaskFlowNode) => {
@@ -394,7 +390,11 @@ const TaskFlow = ({ selectedTaskId, onSelectTaskId }: TaskFlowProps) => {
         <span className="text-sm text-muted-foreground">First task</span>
         <Select
           value={effectiveRootId != null ? String(effectiveRootId) : ""}
-          onValueChange={(value) => setRootTask(Number(value))}
+          onValueChange={(value) => {
+            const taskId = Number(value);
+            setRootTask(taskId);
+            onDefaultTaskChange?.(taskId);
+          }}
         >
           <SelectTrigger className="w-[220px]">
             <SelectValue />

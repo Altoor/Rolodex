@@ -1,14 +1,18 @@
 "use client";
 
 import { Button } from "#components/ui/button";
-
 import {
   Field,
   FieldError,
   FieldGroup,
   FieldLabel,
 } from "#components/ui/field";
-import { SubmitHandler, useForm } from "react-hook-form";
+import {
+  SubmitHandler,
+  useForm,
+  useFormContext,
+  useWatch,
+} from "react-hook-form";
 import { Input } from "#components/ui/input";
 import { Spinner } from "#components/ui/spinner";
 import {
@@ -24,38 +28,57 @@ import ChoiceResult from "../choice/choiceResult";
 import { useLazyQuery } from "@apollo/client/react";
 import { SYSTEM_ONE_PROMPT } from "@repo/queries/decisions/decision-queries";
 import { useState } from "react";
-import { DecisionType } from "@repo/queries/__generated__/graphql";
+import type { DecisionFormValues } from "../decision-form";
+import { readSystemOneAnswer, type SystemOneAnswer } from "../decision-answer";
 
 type Inputs = {
   state: string;
 };
 
-interface StateCardProps {
-  variables?: {
-    decisionPremise: string;
-    instruction: string;
-    options?: Array<string> | string | null | undefined;
-    optionDescriptions?: Array<string> | string | null | undefined;
-  };
-  type: DecisionType;
-}
-
-const StateCard = ({ variables, type }: StateCardProps) => {
+const StateCard = () => {
+  const { control } = useFormContext<DecisionFormValues>();
+  const values = useWatch({ control });
   const [prompt, { loading, error, data }] = useLazyQuery(SYSTEM_ONE_PROMPT);
   const [currentDecisionPremise, setCurrentDecisionPremise] =
     useState<string>("");
 
   const { register, handleSubmit } = useForm<Inputs>();
 
-  const onSubmit: SubmitHandler<Inputs> = async (inputs) => {
-    if (variables) {
-      setCurrentDecisionPremise(variables?.decisionPremise);
-      prompt({ variables: { ...variables, state: inputs.state, type: type } });
-    }
+  const type = values.type ?? "noul";
+  const options =
+    type === "choice" || type === "score"
+      ? (values.options ?? []).flatMap((option) =>
+          option?.name ? [option.name] : [],
+        )
+      : undefined;
+  const optionDescriptions =
+    type === "choice"
+      ? (values.options ?? []).flatMap((option) =>
+          option?.description ? [option.description] : [],
+        )
+      : undefined;
+
+  const onSubmit: SubmitHandler<Inputs> = (inputs) => {
+    const variables = {
+      decisionPremise: values.decisionPremise ?? "",
+      instruction: values.instruction ?? "",
+      options,
+      optionDescriptions,
+    };
+
+    setCurrentDecisionPremise(variables.decisionPremise);
+    void prompt({
+      variables: { ...variables, state: inputs.state, type },
+    });
   };
 
+  const answer: SystemOneAnswer | undefined = readSystemOneAnswer(
+    data?.systemOnePrompt?.answer,
+    currentDecisionPremise,
+  );
+
   return (
-    <Card className="min-w-1/3">
+    <Card className="w-full">
       <CardHeader>
         <CardTitle>Try the prompt</CardTitle>
       </CardHeader>
@@ -64,83 +87,47 @@ const StateCard = ({ variables, type }: StateCardProps) => {
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="state">
-                What is your current state
+                What is your current state?
               </FieldLabel>
-              <Input {...register("state", { required: true })} />
+              <Input id="state" {...register("state", { required: true })} />
             </Field>
             <Field>
-              <FieldError errors={[error]}></FieldError>
-              <Button type="submit">{loading ? <Spinner /> : "Submit"}</Button>
+              <FieldError errors={[error]} />
+              <Button type="submit" disabled={loading}>
+                {loading ? <Spinner /> : "Submit"}
+              </Button>
             </Field>
           </FieldGroup>
         </form>
       </CardContent>
       <CardFooter>
-        {loading ? (
-          <Spinner />
-        ) : (
-          data && (
-            <>
-              {(data.systemOnePrompt?.answer as any)[currentDecisionPremise][
-                "noul"
-              ] !== undefined && (
-                <NoulResult
-                  decisionPremise={currentDecisionPremise}
-                  noul={
-                    (data.systemOnePrompt?.answer as any)[
-                      currentDecisionPremise
-                    ].noul
-                  }
-                ></NoulResult>
-              )}
-
-              {(data.systemOnePrompt?.answer as any)[currentDecisionPremise][
-                "choice"
-              ] !== undefined && (
-                <ChoiceResult
-                  decisionPremise={currentDecisionPremise}
-                  confidence={
-                    (data.systemOnePrompt?.answer as any)[
-                      currentDecisionPremise
-                    ].confidence
-                  }
-                  probabilities={
-                    (data.systemOnePrompt?.answer as any)[
-                      currentDecisionPremise
-                    ].probabilities
-                  }
-                ></ChoiceResult>
-              )}
-              {(data.systemOnePrompt?.answer as any)[currentDecisionPremise][
-                "score"
-              ] !== undefined && (
-                <ScoreResult
-                  decisionPremise={currentDecisionPremise}
-                  confidence={
-                    (data.systemOnePrompt?.answer as any)[
-                      currentDecisionPremise
-                    ].confidence
-                  }
-                  score={
-                    (data.systemOnePrompt?.answer as any)[
-                      currentDecisionPremise
-                    ].score
-                  }
-                  legend={
-                    (data.systemOnePrompt?.answer as any)[
-                      currentDecisionPremise
-                    ].legend
-                  }
-                  probabilities={
-                    (data.systemOnePrompt?.answer as any)[
-                      currentDecisionPremise
-                    ].probabilities
-                  }
-                ></ScoreResult>
-              )}
-            </>
-          )
-        )}
+        {loading ? <Spinner /> : null}
+        {!loading && answer ? (
+          <div className="flex w-full flex-wrap gap-2">
+            {answer.type === "noul" ? (
+              <NoulResult
+                decisionPremise={currentDecisionPremise}
+                noul={answer.noul}
+              />
+            ) : null}
+            {answer.type === "choice" ? (
+              <ChoiceResult
+                decisionPremise={currentDecisionPremise}
+                confidence={answer.confidence}
+                probabilities={answer.probabilities}
+              />
+            ) : null}
+            {answer.type === "score" ? (
+              <ScoreResult
+                decisionPremise={currentDecisionPremise}
+                confidence={answer.confidence}
+                score={answer.score}
+                legend={answer.legend}
+                probabilities={answer.probabilities}
+              />
+            ) : null}
+          </div>
+        ) : null}
       </CardFooter>
     </Card>
   );

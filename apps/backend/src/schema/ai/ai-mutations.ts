@@ -5,6 +5,7 @@ import { GraphQLError } from "graphql/error";
 import { DecisionType, SystemOnePrompt, SystemOneResponse } from "./ai";
 import { setupQuestions } from "./ai-service";
 import { ollama } from "../../ai/Ollama";
+import { requireUserId } from "../auth";
 
 builder.mutationType({
   fields: (t) => ({
@@ -31,15 +32,7 @@ builder.mutationType({
         },
         ctx,
       ) => {
-        const author_id = (ctx as any).user.id;
-
-        if (!author_id) {
-          throw new GraphQLError("Not logged in", {
-            extensions: {
-              code: "BAD_USER_INPUT",
-            },
-          });
-        }
+        const author_id = requireUserId(ctx);
 
         switch (type) {
           case "choice":
@@ -109,8 +102,9 @@ builder.mutationType({
         },
         ctx,
       ) => {
+        const authorId = requireUserId(ctx);
         const decision = await db.query.decisions.findFirst({
-          where: { AND: [{ authorId: (ctx as any).user.id }, { id: id }] },
+          where: { id: id },
         });
 
         switch (type) {
@@ -202,8 +196,9 @@ builder.mutationType({
         id: t.arg.int({ required: true }),
       },
       resolve: async (_root, { id }, ctx) => {
+        const authorId = requireUserId(ctx);
         const decision = await db.query.decisions.findFirst({
-          where: { AND: [{ authorId: (ctx as any).user.id }, { id: id }] },
+          where: { id: id },
         });
 
         if (!decision) {

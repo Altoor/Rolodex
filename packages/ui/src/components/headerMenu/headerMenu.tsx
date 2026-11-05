@@ -1,59 +1,71 @@
 "use client";
+
+import { cn } from "cn";
 import {
   NavigationMenu,
-  NavigationMenuContent,
   NavigationMenuItem,
   NavigationMenuLink,
   NavigationMenuList,
-  NavigationMenuButton,
-  NavigationMenuTrigger,
-  NavigationMenuPositioner,
 } from "#components/ui/navigation-menu";
 import { Spinner } from "#components/ui/spinner";
-import { useQuery } from "@apollo/client/react";
-import { ME } from "@repo/queries/user/users-queries";
+import { useAuth } from "../auth/auth-provider";
 
-export default function HeaderMenu() {
-  const { loading, data } = useQuery(ME);
+const NAV_ITEMS = [
+  { href: "/", label: "Main", requiresAuth: false },
+  { href: "/decisions", label: "Decisions", requiresAuth: true },
+  { href: "/task-queue", label: "Task queue", requiresAuth: true },
+  { href: "/models", label: "Models", requiresAuth: true },
+  { href: "/user", label: "User", requiresAuth: false },
+];
 
-  const logout = () => {
-    localStorage.removeItem("auth_token");
-    window.location.reload();
-  };
+const isActivePath = (href: string, currentPath?: string) => {
+  if (!currentPath) return false;
+  if (href === "/") return currentPath === "/";
+  return currentPath === href || currentPath.startsWith(`${href}/`);
+};
+
+interface HeaderMenuProps {
+  currentPath?: string;
+}
+
+export default function HeaderMenu({ currentPath }: HeaderMenuProps) {
+  const { user, loading } = useAuth();
+
+  const visibleItems = NAV_ITEMS.filter(
+    (item) => !item.requiresAuth || Boolean(user),
+  );
 
   return (
-    <div className="flex w-full p-6 md:p-10">
-      <NavigationMenu className="w-full flex flex-row ">
-        <NavigationMenuList className="w-full">
-          <NavigationMenuItem>
-            <NavigationMenuLink href="/">Main</NavigationMenuLink>
-          </NavigationMenuItem>
-          <NavigationMenuItem>
-            <NavigationMenuLink href="/decisions">Decisions</NavigationMenuLink>
-          </NavigationMenuItem>
-          <NavigationMenuItem>
-            <NavigationMenuLink className="text-nowrap" href="/task-queue">
-              Task queue
-            </NavigationMenuLink>
-          </NavigationMenuItem>
-          <NavigationMenuItem>
-            <NavigationMenuLink href="/models">Models</NavigationMenuLink>
-          </NavigationMenuItem>
-        </NavigationMenuList>
-        <NavigationMenuList>
-          <NavigationMenuItem>
-            {loading ? (
-              <Spinner />
-            ) : data ? (
-              <NavigationMenuButton onClick={logout}>
-                Logout
-              </NavigationMenuButton>
-            ) : (
-              <NavigationMenuLink href="login">Login</NavigationMenuLink>
-            )}
-          </NavigationMenuItem>
-        </NavigationMenuList>
-      </NavigationMenu>
-    </div>
+    <header className="border-b">
+      <div className="mx-auto flex w-full max-w-6xl items-center gap-2 px-4 py-3 md:px-6">
+        <NavigationMenu className="min-w-0 flex-1">
+          <NavigationMenuList className="w-full flex-wrap justify-start gap-1">
+            {visibleItems.map((item) => {
+              const active = isActivePath(item.href, currentPath);
+              const label =
+                item.href === "/user" && user
+                  ? `User · ${user.name}`
+                  : item.label;
+
+              return (
+                <NavigationMenuItem key={item.href}>
+                  <NavigationMenuLink
+                    href={item.href}
+                    className={cn(
+                      "max-w-48",
+                      active && "bg-muted font-semibold",
+                    )}
+                    aria-current={active ? "page" : undefined}
+                  >
+                    <span className="truncate">{label}</span>
+                  </NavigationMenuLink>
+                </NavigationMenuItem>
+              );
+            })}
+          </NavigationMenuList>
+        </NavigationMenu>
+        {loading ? <Spinner /> : null}
+      </div>
+    </header>
   );
 }

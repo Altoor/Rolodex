@@ -11,3 +11,16 @@ export const CREATEUSER = gql(/* GraphQL */ `
     createUser(email: $email, name: $name, password: $password)
   }
 `);
+
+export const UPDATE_USER_SETTINGS = gql(/* GraphQL */ `
+  mutation UpdateUserSettings($defaultTaskId: Int, $defaultModelName: String) {
+    updateUserSettings(
+      defaultTaskId: $defaultTaskId
+      defaultModelName: $defaultModelName
+    ) {
+      userId
+      defaultTaskId
+      defaultModelName
+    }
+  }
+`);

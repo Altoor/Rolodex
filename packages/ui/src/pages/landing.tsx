@@ -4,9 +4,13 @@ import { useMutation, useQuery, useSubscription } from "@apollo/client/react";
 import { CREATE_QUEUED_TASK } from "@repo/queries/tasks/task-mutations";
 import { QUEUED_TASK_EVENT } from "@repo/queries/tasks/task-subscriptions";
 import { TASKS } from "@repo/queries/tasks/task-queries";
-import { ME } from "@repo/queries/user/users-queries";
+import { useAuth } from "../components/auth/auth-provider";
+import { EmptyState } from "#components/feedback/empty-state";
+import { LoadingState } from "#components/feedback/loading-state";
+import { PageContainer } from "#components/layout/page-container";
+import { PageHeader } from "#components/layout/page-header";
 import { Circle, CircleAlert, CircleCheck, LoaderCircle } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { SubmitHandler, useForm } from "react-hook-form";
 
 import { Button } from "#components/ui/button";
@@ -61,12 +65,13 @@ interface QueuedTaskStep {
 }
 
 export default function LandingPage() {
-  const { data: meData } = useQuery(ME);
-  const user = meData?.me;
+  const { user, loading: authLoading } = useAuth();
   const loggedIn = !!user;
 
-  const { data: tasksData, loading: tasksLoading } = useQuery(TASKS);
-  const tasks = tasksData?.tasks ?? [];
+  const { data: tasksData, loading: tasksLoading } = useQuery(TASKS, {
+    skip: !loggedIn,
+  });
+  const tasks = useMemo(() => tasksData?.tasks ?? [], [tasksData]);
 
   const [createQueuedTask] = useMutation(CREATE_QUEUED_TASK);
 
@@ -87,16 +92,29 @@ export default function LandingPage() {
     getValues,
     formState: { isSubmitting },
   } = useForm<Inputs>({
-    defaultValues: { taskId: tasks[0]?.id?.toString() ?? "-1" },
+    defaultValues: { taskId: "-1", state: "" },
   });
 
+  const defaultTaskId = user?.settings?.defaultTaskId ?? null;
+
   useEffect(() => {
-    if (!tasksLoading && tasks.length > 0 && getValues("taskId") === "-1") {
-      reset({ ...getValues(), taskId: tasks[0]?.id?.toString() });
+    if (tasksLoading || tasks.length === 0) return;
+
+    const currentTaskId = getValues("taskId");
+    if (tasks.some((task) => String(task.id) === currentTaskId)) return;
+
+    const preferredTaskId =
+      defaultTaskId != null && tasks.some((task) => task.id === defaultTaskId)
+        ? defaultTaskId
+        : tasks[0]?.id;
+
+    if (preferredTaskId != null) {
+      reset({ ...getValues(), taskId: String(preferredTaskId) });
     }
-  }, [tasksLoading, tasks, control, reset, getValues]);
+  }, [tasksLoading, tasks, defaultTaskId, getValues, reset]);
 
   useSubscription(QUEUED_TASK_EVENT, {
+    skip: !loggedIn,
     onData: ({ data }) => {
       const event = data.data?.queuedTaskEvent?.queuedTask;
       if (!event || !event.runId) return;
@@ -138,7 +156,9 @@ export default function LandingPage() {
     reset({ state: "", taskId: inputs.taskId });
   };
 
-  const submit = handleSubmit(onSubmit);
+  const submit = () => {
+    void handleSubmit(onSubmit)();
+  };
 
   // Enter submits, Shift+Enter inserts a newline.
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -147,6 +167,31 @@ export default function LandingPage() {
       submit();
     }
   };
+
+  if (authLoading) {
+    return (
+      <PageContainer>
+        <LoadingState label="Checking your session…" />
+      </PageContainer>
+    );
+  }
+
+  if (!loggedIn) {
+    return (
+      <PageContainer>
+        <PageHeader
+          title="What do you want to do today?"
+          description="Rolodex runs decision-driven tasks with a local model."
+        />
+        <EmptyState
+          title="Sign in to queue a run"
+          description="Your tasks, decisions, and queue defaults are tied to your account."
+          actionHref="/user"
+          actionLabel="Go to account"
+        />
+      </PageContainer>
+    );
+  }
 
   const anyPending = steps.some(
     (s) => s.status === "queued" || s.status === "running",
@@ -162,148 +207,150 @@ export default function LandingPage() {
     id != null ? (tasks.find((t) => t.id === id)?.name ?? `task ${id}`) : null;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>What do you want to do today?</CardTitle>
-        <CardDescription>
-          {loggedIn
-            ? "Pick a starting task, describe the situation, and hit enter"
-            : "Log in to queue tasks"}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="min-h-32">
-        <form onSubmit={submit} className="flex flex-col gap-3">
-          <Field>
-            <FieldLabel>Starting task</FieldLabel>
-            <SelectController
-              name="taskId"
-              control={control}
-              rules={{ required: "select a starting task" }}
-            >
-              {(value, onChange) => (
-                <Select
-                  value={value}
-                  onValueChange={onChange}
-                  disabled={!loggedIn || isSubmitting}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select a starting task" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      {tasks.map((task) => (
-                        <SelectItem key={task.id} value={String(task.id)}>
-                          {task.name}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-              )}
-            </SelectController>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="state">State</FieldLabel>
-            <Textarea
-              id="state"
-              placeholder="Describe the situation…"
-              onKeyDown={onKeyDown}
-              disabled={!loggedIn || isSubmitting}
-              {...register("state", { required: "describe the situation" })}
-            />
-          </Field>
-          <Button type="submit" disabled={!loggedIn || isSubmitting}>
-            {isSubmitting ? <Spinner /> : "Submit"}
-          </Button>
-        </form>
-      </CardContent>
-      <CardFooter>
-        {activeRunId ? (
-          <ChainOfThought
-            open={anyPending ? true : cotOpen}
-            onOpenChange={setCotOpen}
-          >
-            <ChainOfThoughtHeader
-              status={headerStatus}
-              icon={
-                headerStatus === "error" ? (
-                  <CircleAlert />
-                ) : headerStatus === "running" ? (
-                  <LoaderCircle className="animate-spin" />
-                ) : (
-                  <CircleCheck />
-                )
-              }
-              title={
-                anyFailed
-                  ? "Run failed"
-                  : anyPending
-                    ? "Working"
-                    : `Finished in ${steps.length} step${
-                        steps.length === 1 ? "" : "s"
-                      }`
-              }
-            />
-            <ChainOfThoughtContent>
-              {steps.map((step) => {
-                const status: StepStatus =
-                  step.status === "running"
-                    ? "active"
-                    : step.status === "queued"
-                      ? "pending"
-                      : step.status === "failed"
-                        ? "error"
-                        : "complete";
-
-                const branch =
-                  step.result?.branch === "result"
-                    ? `next: ${taskName(step.result.nextTaskId)}`
-                    : step.result?.branch === "fallback"
-                      ? `fallback: ${taskName(step.result.nextTaskId)}`
-                      : undefined;
-
-                const detail =
-                  [step.result?.summary, step.result?.note]
-                    .filter((part): part is string => !!part)
-                    .join(" — ") || undefined;
-
-                return (
-                  <div
-                    key={step.id}
-                    className="flex flex-col items-start gap-0.5"
+    <PageContainer>
+      <Card>
+        <CardHeader>
+          <CardTitle>What do you want to do today?</CardTitle>
+          <CardDescription>
+            Pick a starting task, describe the situation, and hit enter.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="min-h-32">
+          <form onSubmit={submit} className="flex flex-col gap-3">
+            <Field>
+              <FieldLabel>Starting task</FieldLabel>
+              <SelectController
+                name="taskId"
+                control={control}
+                rules={{ required: "select a starting task" }}
+              >
+                {(value, onChange) => (
+                  <Select
+                    value={value}
+                    onValueChange={onChange}
+                    disabled={!loggedIn || isSubmitting}
                   >
-                    <ChainOfThoughtStep
-                      status={status}
-                      icon={
-                        status === "active" ? (
-                          <LoaderCircle className="animate-spin" />
-                        ) : status === "error" ? (
-                          <CircleAlert />
-                        ) : status === "complete" ? (
-                          <CircleCheck />
-                        ) : (
-                          <Circle />
-                        )
-                      }
-                      title={
-                        step.task?.name ?? `task ${step.taskId ?? step.id}`
-                      }
-                      description={branch}
-                    />
-                    {detail ? (
-                      <p className="ml-6 text-xs text-muted-foreground">
-                        {detail}
-                      </p>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </ChainOfThoughtContent>
-          </ChainOfThought>
-        ) : (
-          <p>Currently not doing anything</p>
-        )}
-      </CardFooter>
-    </Card>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select a starting task" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {tasks.map((task) => (
+                          <SelectItem key={task.id} value={String(task.id)}>
+                            {task.name}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                )}
+              </SelectController>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="state">State</FieldLabel>
+              <Textarea
+                id="state"
+                placeholder="Describe the situation…"
+                onKeyDown={onKeyDown}
+                disabled={!loggedIn || isSubmitting}
+                {...register("state", { required: "describe the situation" })}
+              />
+            </Field>
+            <Button type="submit" disabled={!loggedIn || isSubmitting}>
+              {isSubmitting ? <Spinner /> : "Submit"}
+            </Button>
+          </form>
+        </CardContent>
+        <CardFooter>
+          {activeRunId ? (
+            <ChainOfThought
+              open={anyPending ? true : cotOpen}
+              onOpenChange={setCotOpen}
+            >
+              <ChainOfThoughtHeader
+                status={headerStatus}
+                icon={
+                  headerStatus === "error" ? (
+                    <CircleAlert />
+                  ) : headerStatus === "running" ? (
+                    <LoaderCircle className="animate-spin" />
+                  ) : (
+                    <CircleCheck />
+                  )
+                }
+                title={
+                  anyFailed
+                    ? "Run failed"
+                    : anyPending
+                      ? "Working"
+                      : `Finished in ${steps.length} step${
+                          steps.length === 1 ? "" : "s"
+                        }`
+                }
+              />
+              <ChainOfThoughtContent>
+                {steps.map((step) => {
+                  const status: StepStatus =
+                    step.status === "running"
+                      ? "active"
+                      : step.status === "queued"
+                        ? "pending"
+                        : step.status === "failed"
+                          ? "error"
+                          : "complete";
+
+                  const branch =
+                    step.result?.branch === "result"
+                      ? `next: ${taskName(step.result.nextTaskId)}`
+                      : step.result?.branch === "fallback"
+                        ? `fallback: ${taskName(step.result.nextTaskId)}`
+                        : undefined;
+
+                  const detail =
+                    [step.result?.summary, step.result?.note]
+                      .filter((part): part is string => !!part)
+                      .join(" — ") || undefined;
+
+                  return (
+                    <div
+                      key={step.id}
+                      className="flex flex-col items-start gap-0.5"
+                    >
+                      <ChainOfThoughtStep
+                        status={status}
+                        icon={
+                          status === "active" ? (
+                            <LoaderCircle className="animate-spin" />
+                          ) : status === "error" ? (
+                            <CircleAlert />
+                          ) : status === "complete" ? (
+                            <CircleCheck />
+                          ) : (
+                            <Circle />
+                          )
+                        }
+                        title={
+                          step.task?.name ?? `task ${step.taskId ?? step.id}`
+                        }
+                        description={branch}
+                      />
+                      {detail ? (
+                        <p className="ml-6 text-xs text-muted-foreground">
+                          {detail}
+                        </p>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </ChainOfThoughtContent>
+            </ChainOfThought>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No run yet. Submit a state above to start one.
+            </p>
+          )}
+        </CardFooter>
+      </Card>
+    </PageContainer>
   );
 }
