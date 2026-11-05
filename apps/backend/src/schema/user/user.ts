@@ -6,6 +6,7 @@ export const User = builder.drizzleObject("users", {
     id: t.exposeInt("id"),
     name: t.exposeString("name"),
     email: t.exposeString("email"),
+    settings: t.relation("settings", { nullable: true }),
   }),
 });
 

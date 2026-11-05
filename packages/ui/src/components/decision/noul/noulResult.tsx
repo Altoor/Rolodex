@@ -3,7 +3,6 @@ import {
   ItemContent,
   ItemDescription,
   ItemHeader,
-  ItemTitle,
 } from "#components/ui/item";
 
 interface NoulResultProps {

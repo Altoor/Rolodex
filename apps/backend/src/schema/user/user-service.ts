@@ -1,7 +1,7 @@
 import { GraphQLError } from "graphql";
 import { db } from "../builder";
 import bcrypt from "bcrypt";
-import { users } from "../../db";
+import { users, userSettings } from "../../db";
 import { eq } from "drizzle-orm";
 
 export const getUser = async (id: number) => {
@@ -62,6 +62,11 @@ export const createUser = async (
       },
     );
   }
+
+  await db
+    .insert(userSettings)
+    .values({ userId: user[0].id })
+    .onConflictDoNothing();
 
   return user[0];
 };

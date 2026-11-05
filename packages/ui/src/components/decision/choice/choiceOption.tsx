@@ -4,38 +4,44 @@ import { Field, FieldGroup, FieldLabel } from "#components/ui/field";
 import { Input } from "#components/ui/input";
 import { Item } from "#components/ui/item";
 import { Textarea } from "#components/ui/textarea";
-import { useForm } from "react-hook-form";
-
-type Inputs = {
-  name: string;
-  description: string;
-};
+import { X } from "lucide-react";
+import { useFormContext } from "react-hook-form";
+import type { DecisionFormValues } from "../decision-form";
 
 interface ChoiceOptionProps {
-  defaultValues: { name: string; description: string };
-  setValues: (option: { name: string; description: string }) => void;
+  index: number;
+  onDelete: () => void;
 }
 
-const ChoiceOption = ({ defaultValues, setValues }: ChoiceOptionProps) => {
-  const { register, getValues } = useForm<Inputs>();
+const ChoiceOption = ({ index, onDelete }: ChoiceOptionProps) => {
+  const { register } = useFormContext<DecisionFormValues>();
 
   return (
-    <Item variant={"outline"} className="max-w-60">
+    <Item variant="outline" className="relative w-full max-w-60">
+      <button
+        type="button"
+        className="absolute right-2 top-2 text-muted-foreground hover:text-destructive"
+        onClick={onDelete}
+        title="Remove option"
+        aria-label="Remove option"
+      >
+        <X className="size-4" />
+      </button>
       <FieldGroup>
         <Field>
-          <FieldLabel htmlFor="name">Name</FieldLabel>
+          <FieldLabel htmlFor={`choice-option-${index}-name`}>Name</FieldLabel>
           <Input
-            {...register("name", { required: true })}
-            onChange={() => setValues(getValues())}
-            defaultValue={defaultValues.name}
+            id={`choice-option-${index}-name`}
+            {...register(`options.${index}.name`, { required: true })}
           />
         </Field>
         <Field>
-          <FieldLabel htmlFor="description">Description</FieldLabel>
+          <FieldLabel htmlFor={`choice-option-${index}-description`}>
+            Description
+          </FieldLabel>
           <Textarea
-            {...register("description", { required: true })}
-            onChange={() => setValues(getValues())}
-            defaultValue={defaultValues.description}
+            id={`choice-option-${index}-description`}
+            {...register(`options.${index}.description`, { required: true })}
           />
         </Field>
       </FieldGroup>

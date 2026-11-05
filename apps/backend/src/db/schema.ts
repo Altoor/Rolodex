@@ -1,4 +1,5 @@
 import { boolean } from "drizzle-orm/cockroach-core";
+import { sql } from "drizzle-orm";
 import {
   integer,
   text,
@@ -7,6 +8,9 @@ import {
   date,
   bigint,
   json,
+  real,
+  timestamp,
+  uuid,
 } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
@@ -25,17 +29,63 @@ export const todos = pgTable("todos", {
   actorId: integer("actor_id").notNull(),
 });
 
-export const decisionTypesEnum = pgEnum("type", ["choice", "noul", "score"]);
+export const decisionType = pgEnum("decisionType", ["choice", "noul", "score"]);
 
 export const decisions = pgTable("decisions", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   name: text("name").notNull(),
-  type: decisionTypesEnum().default("choice").notNull(),
+  type: decisionType().default("choice").notNull(),
   decisionPremise: text("decisionPremise").notNull(),
   instruction: text("instruction").notNull(),
   options: text("options").array(),
   optionDescriptions: text("optionDescriptions").array(),
   authorId: integer("authorId").notNull(),
+});
+
+export const taskResults = pgTable("taskResults", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  taskId: integer("taskId").notNull(),
+  type: decisionType().default("choice").notNull(),
+  option: text("option"),
+  scoreThreshold: real("scoreThreshold"),
+  probabilityThreshold: real("probabilityThreshold"),
+  confidenceThreshold: real("confidenceThreshold"),
+  resultTaskId: integer("resultTaskId"),
+  appendState: boolean("appendState").default(false).notNull(),
+});
+
+export const TaskType = pgEnum("TaskType", ["decision", "textPrompt", "tool"]);
+
+export const tasks = pgTable("tasks", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  name: text("name").notNull(),
+  type: TaskType().default("decision").notNull(),
+  decisionId: integer("decisionId"),
+  fallbackTaskId: integer("fallbackTaskId"),
+});
+
+export const queuedTaskStatus = pgEnum("queuedTaskStatus", [
+  "queued",
+  "running",
+  "completed",
+  "failed",
+]);
+
+export const queuedTasks = pgTable("queuedTasks", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  taskId: integer("taskId").notNull(),
+  state: text("state").notNull(),
+  status: queuedTaskStatus().default("queued").notNull(),
+  // Groups all steps that belong to one chain run.
+  runId: uuid("runId")
+    .default(sql`gen_random_uuid()`)
+    .notNull(),
+  // The step's SystemOne answer, chosen branch and any note.
+  result: json("result"),
+  queued_at: timestamp("queued_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  queued_by: integer("queued_by").notNull(),
 });
 
 export const models = pgTable("models", {
@@ -50,4 +100,19 @@ export const models = pgTable("models", {
   expires_at: date("expires_at"),
   size_vram: bigint("size_vram", { mode: "bigint" }),
   capabilities: text("capabilities").array(),
+});
+
+export const userSettings = pgTable("userSettings", {
+  userId: integer("userId")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  defaultTaskId: integer("defaultTaskId").references(() => tasks.id, {
+    onDelete: "set null",
+  }),
+  defaultModelName: text("defaultModelName").references(() => models.name, {
+    onDelete: "set null",
+  }),
+  updatedAt: timestamp("updatedAt", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
 });

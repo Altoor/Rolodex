@@ -1,136 +1,61 @@
+"use client";
+
 import { Button } from "#components/ui/button";
-
 import { Field, FieldGroup, FieldLabel } from "#components/ui/field";
-import { useForm } from "react-hook-form";
 import { Input } from "#components/ui/input";
-import { useCallback, useEffect, useState } from "react";
-import ScoreOption from "./scoreOption";
 import { Plus } from "lucide-react";
-import { debounce } from "#lib/debounce";
+import { useFieldArray, useFormContext } from "react-hook-form";
+import ScoreOption from "./scoreOption";
+import type { DecisionFormValues } from "../decision-form";
 
-type Inputs = {
-  instruction: string;
-  decisionPremise: string;
-};
-
-interface scoreDecisionFormProps {
-  values:
-    | {
-        decisionPremise: string;
-        instruction: string;
-        options?: Array<string> | string | null | undefined;
-        optionDescriptions?: Array<string> | string | null | undefined;
-      }
-    | undefined;
-  setValues: (variables: {
-    instruction: string;
-    decisionPremise: string;
-    options: { name: string }[];
-  }) => void;
-}
-
-const ScoreDecisionForm = ({ values, setValues }: scoreDecisionFormProps) => {
-  const { register, watch, reset } = useForm<Inputs>();
-  const [options, setOptions] = useState(new Map<number, { name: string }>());
-
-  const debouncedSetValues = useCallback(
-    (variables: {
-      instruction: string;
-      decisionPremise: string;
-      options: { name: string }[];
-    }) => {
-      debounce(() => {
-        setValues(variables);
-      }, 500)();
-    },
-    [watch],
-  );
-
-  useEffect(() => {
-    if (values) {
-      reset({
-        instruction: values.instruction,
-        decisionPremise: values.decisionPremise,
-      });
-
-      // Load options state
-      const optionsMap = new Map();
-      if (values.options) {
-        (values.options as string[]).forEach((option, index) =>
-          optionsMap.set(index, { name: option }),
-        );
-      }
-      setOptions(optionsMap);
-    }
-  }, [values, reset]);
-
-  useEffect(() => {
-    const { unsubscribe } = watch(({ instruction, decisionPremise }) => {
-      const currentValues = {
-        instruction: instruction ?? "",
-        decisionPremise: decisionPremise ?? "",
-        options: Array.from(options.entries()).map(([_, item]) => ({
-          name: item.name,
-        })),
-      };
-
-      debouncedSetValues(currentValues);
-    });
-    return () => unsubscribe();
-  }, [watch, options, debouncedSetValues]);
+const ScoreDecisionForm = () => {
+  const { register, control } = useFormContext<DecisionFormValues>();
+  const { fields, append, remove } = useFieldArray({
+    control,
+    name: "options",
+  });
 
   return (
-    <form>
+    <div className="flex flex-col gap-4">
       <FieldGroup>
         <Field>
-          <FieldLabel htmlFor="instruction">
-            What is your current instruction
+          <FieldLabel htmlFor="score-instruction">
+            What is your current instruction?
           </FieldLabel>
-          <Input {...register("instruction", { required: true })} />
+          <Input
+            id="score-instruction"
+            {...register("instruction", { required: true })}
+          />
         </Field>
         <Field>
-          <FieldLabel htmlFor="decisionPremise">
-            What is the premise of the decision
+          <FieldLabel htmlFor="score-premise">
+            What is the premise of the decision?
           </FieldLabel>
-          <Input {...register("decisionPremise", { required: true })} />
+          <Input
+            id="score-premise"
+            {...register("decisionPremise", { required: true })}
+          />
         </Field>
-
-        <div className="flex flex-row flex-wrap gap-2">
-          {Array.from(options.entries()).map(([index, option]) => (
-            <ScoreOption
-              defaultValues={option}
-              setValues={(values) => {
-                const newOptions = new Map(options);
-
-                const changedOption = newOptions.get(index);
-
-                if (changedOption) {
-                  changedOption.name = values.name;
-                  newOptions.set(index, changedOption);
-                }
-
-                debounce(() => {
-                  setOptions(newOptions);
-                }, 500)();
-              }}
-              key={index}
-            />
-          ))}
-        </div>
-        <Button
-          className="w-min"
-          onClick={() => {
-            const newIndex = options.size;
-            const newOption = { name: "", description: "" };
-            const newOptionsMap = new Map(options);
-            newOptionsMap.set(newIndex, newOption);
-            setOptions(newOptionsMap);
-          }}
-        >
-          <Plus></Plus>
-        </Button>
       </FieldGroup>
-    </form>
+      <div className="flex flex-row flex-wrap gap-2">
+        {fields.map((field, index) => (
+          <ScoreOption
+            key={field.id}
+            index={index}
+            onDelete={() => remove(index)}
+          />
+        ))}
+      </div>
+      <Button
+        type="button"
+        className="w-min"
+        onClick={() => append({ name: "", description: "" })}
+        title="Add option"
+        aria-label="Add option"
+      >
+        <Plus />
+      </Button>
+    </div>
   );
 };
 

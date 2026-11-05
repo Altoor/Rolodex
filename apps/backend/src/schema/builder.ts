@@ -3,14 +3,13 @@ import SchemaBuilder from "@pothos/core";
 import DrizzlePlugin from "@pothos/plugin-drizzle";
 import { getTableConfig } from "drizzle-orm/pg-core";
 import * as schema from "../db";
-import { User } from "./user";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { DateTimeResolver, GraphQLJSON, GraphQLLong } from "graphql-scalars";
 import { relations } from "../db";
 
 export interface PothosTypes {
   DrizzleRelations: typeof schema.relations;
-  Context: { user: typeof User };
+  Context: { user: typeof schema.users.$inferSelect | null };
   Scalars: {
     DateTime: {
       Input: Date;

@@ -6,6 +6,10 @@ export const ME = gql(/* GraphQL */ `
       email
       id
       name
+      settings {
+        defaultTaskId
+        defaultModelName
+      }
     }
   }
 `);

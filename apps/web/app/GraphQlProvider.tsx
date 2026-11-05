@@ -55,7 +55,7 @@ class SSELink extends ApolloLink {
     this.operationsByRequest.set(request, operation);
     return new Observable((sink) => {
       return this.client.subscribe<ApolloLink.Result>(request, {
-        next: (payload: any) => sink.next(payload as ApolloLink.Result),
+        next: (payload: unknown) => sink.next(payload as ApolloLink.Result),
         complete: sink.complete.bind(sink),
         error: sink.error.bind(sink),
       });
@@ -65,7 +65,8 @@ class SSELink extends ApolloLink {
 export const link = new SSELink({
   url: "http://localhost:4000/graphql",
   headers: () => {
-    const token = localStorage.getItem("auth_token");
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
     return {
       Authorization: token ? `Bearer ${token}` : "",
     };
@@ -73,7 +74,7 @@ export const link = new SSELink({
 });
 
 const client = new ApolloClient({
-  ssrMode: true,
+  ssrMode: typeof window === "undefined",
   link: link,
   cache: new InMemoryCache(),
 });

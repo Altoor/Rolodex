@@ -18,7 +18,7 @@ import { useMutation, useSubscription } from "@apollo/client/react";
 import { UPDATE_MODEL_DESCRIPTION } from "@repo/queries/model/model-mutations";
 import { PULL_MODEL } from "@repo/queries/model/model-subscriptions";
 import { Check, Download, Pencil, RotateCcw, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { SubmitHandler, useForm } from "react-hook-form";
 
 interface ModelCardProps {
@@ -40,32 +40,44 @@ export default function ModelCard({
   pulled,
   capabilities,
 }: ModelCardProps) {
-  const [pullStatus, setPullStatus] = useState(false);
+  const [pullRequested, setPullRequested] = useState(false);
   const [showRefresh, setShowRefresh] = useState(false);
   const [showDescriptionField, setShowDescriptionField] = useState(false);
-  const [updateModelDescription] = useMutation(UPDATE_MODEL_DESCRIPTION);
-
-  const { data, error, loading } = useSubscription(PULL_MODEL, {
-    variables: { name: name },
-    skip: !pullStatus,
-  });
+  const [updateModelDescription, { error: updateError }] = useMutation(
+    UPDATE_MODEL_DESCRIPTION,
+  );
 
   const {
-    register,
-    handleSubmit,
-    formState: { errors: formErrors },
-    setValue,
-  } = useForm<Inputs>();
+    data,
+    error: pullError,
+    loading,
+  } = useSubscription(PULL_MODEL, {
+    variables: { name },
+    skip: !pullRequested,
+    onComplete: () => setPullRequested(false),
+  });
 
-  if (description) setValue("description", description);
+  const { register, handleSubmit, reset } = useForm<Inputs>({
+    defaultValues: { description: description ?? "" },
+  });
+
+  useEffect(() => {
+    reset({ description: description ?? "" });
+  }, [description, reset]);
 
   const onSubmit: SubmitHandler<Inputs> = async (inputs) => {
     await updateModelDescription({
-      variables: { name: name, description: inputs.description },
+      variables: { name, description: inputs.description },
     });
 
     setShowDescriptionField(false);
   };
+
+  const status = data?.installModel?.status;
+  const pulling = pullRequested && (loading || status === "pulling");
+  const pullFailed = Boolean(pullError) || status === "error";
+  const pullCompleted = pulled || status === "success";
+  const error = pullError ?? updateError;
 
   return (
     <div>
@@ -73,91 +85,99 @@ export default function ModelCard({
         <ItemContent>
           <ItemTitle className="line-clamp-1">
             {name}
-            {data && (
-              <>
-                <span className="text-muted-foreground">
-                  - {data.installModel?.status}
-                </span>
-              </>
-            )}
+            {status ? (
+              <span className="text-muted-foreground"> — {status}</span>
+            ) : null}
           </ItemTitle>
-          {data?.installModel?.status === "success" || pulled ? (
+          {pullCompleted && status !== "pulling" ? (
             <ItemDescription>
-              {error
-                ? error.message
-                : size
-                  ? "size: " + sizeOfBytes(size, 1)
-                  : null}
+              {size ? `size: ${sizeOfBytes(size, 1)}` : null}
             </ItemDescription>
           ) : (
             <ItemDescription>
-              {error
-                ? error.message
-                : data?.installModel?.completed && data?.installModel?.total
-                  ? "getting: " +
-                    sizeOfBytes(data?.installModel?.completed as bigint, 1) +
-                    " of " +
-                    sizeOfBytes(data?.installModel?.total as bigint, 1)
-                  : null}
+              {data?.installModel?.completed && data?.installModel?.total
+                ? `getting: ${sizeOfBytes(
+                    data.installModel.completed as bigint,
+                    1,
+                  )} of ${sizeOfBytes(data.installModel.total as bigint, 1)}`
+                : null}
             </ItemDescription>
           )}
         </ItemContent>
-        {pulled ? (
-          <>
-            <ItemActions
-              onMouseEnter={() => setShowRefresh(true)}
-              onMouseLeave={() => setShowRefresh(false)}
-            >
-              <Button onClick={() => setPullStatus(true)}>
-                {loading ? (
-                  <Spinner />
-                ) : showRefresh ? (
-                  <RotateCcw />
-                ) : (
-                  <Check />
-                )}
-              </Button>
-            </ItemActions>
-          </>
-        ) : (
-          <ItemActions>
-            <Button onClick={() => setPullStatus(true)}>
-              {loading ? <Spinner /> : <Download />}
-            </Button>
-          </ItemActions>
-        )}
+        <ItemActions
+          onMouseEnter={() => setShowRefresh(true)}
+          onMouseLeave={() => setShowRefresh(false)}
+        >
+          <Button
+            type="button"
+            title={pulled ? "Re-pull model" : "Pull model"}
+            aria-label={pulled ? "Re-pull model" : "Pull model"}
+            disabled={pulling}
+            onClick={() => setPullRequested(true)}
+          >
+            {pulling ? (
+              <Spinner />
+            ) : pullFailed ? (
+              <RotateCcw />
+            ) : pullCompleted ? (
+              showRefresh ? (
+                <RotateCcw />
+              ) : (
+                <Check />
+              )
+            ) : (
+              <Download />
+            )}
+          </Button>
+        </ItemActions>
         <ItemActions>
           <Button
+            type="button"
             onClick={() => setShowDescriptionField(!showDescriptionField)}
-            variant={"link"}
+            variant="ghost"
+            size="icon-sm"
+            title={
+              showDescriptionField ? "Close description" : "Edit description"
+            }
+            aria-label={
+              showDescriptionField ? "Close description" : "Edit description"
+            }
           >
             {showDescriptionField ? <X /> : <Pencil />}
           </Button>
         </ItemActions>
       </Item>
-      <div className="p-3 gap-3">
+      <div className="flex flex-col gap-3 p-3">
         {showDescriptionField ? (
-          <form onSubmit={handleSubmit(onSubmit)}>
+          <form
+            onSubmit={handleSubmit(onSubmit)}
+            className="flex flex-col gap-3"
+          >
             <Field>
-              <FieldLabel htmlFor="description">Description</FieldLabel>
-              <Input {...register("description")} />
+              <FieldLabel htmlFor={`model-${name}-description`}>
+                Description
+              </FieldLabel>
+              <Input
+                id={`model-${name}-description`}
+                {...register("description")}
+              />
             </Field>
             <Field>
-              <FieldError errors={[error]}></FieldError>
-              <Button type="submit">
-                {loading ? <Spinner /> : "update description"}
+              <FieldError errors={error ? [error] : []} />
+              <Button type="submit" className="w-fit">
+                Update description
               </Button>
             </Field>
           </form>
         ) : (
           <ItemDescription>
-            {error ? error.message : description}
+            {error ? error.message : description || "No description yet."}
           </ItemDescription>
         )}
         {capabilities ? (
           <div className="flex w-full flex-wrap justify-start gap-2">
             {capabilities.map((capability) => (
-              <Badge key={name + capability} variant="secondary">
+              <Badge key={`${name}-${capability}`} variant="secondary">
                 {capability}
               </Badge>
             ))}

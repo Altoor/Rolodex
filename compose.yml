@@ -12,19 +12,22 @@ services:
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
-    ports: ["11434:11434"]
+    ports:
+      - "11434:11434"
     volumes:
-      - model_files:/var/lib/models # Mount the directory with the trained models
-    pull_policy: always
+      - model_files:/root/.ollama
+      - /usr/lib/wsl/lib:/usr/lib/wsl/lib
+    environment:
+      - OLLAMA_KEEP_ALIVE=30m
+      - OLLAMA_NUM_PARALLEL=2
+      - OLLAMA_CONTEXT_LENGTH=64000
+      - LD_LIBRARY_PATH=/usr/lib/wsl/lib
+    devices:
+      - /dev/dxg:/dev/dxg
+    ipc: host
+    privileged: true
     tty: true
     restart: unless-stopped
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all # alternatively, use `count: all` for all GPUs
-              capabilities: [gpu]
 
 volumes:
   postgres_data:
