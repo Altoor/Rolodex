@@ -84,5 +84,9 @@ export const relations = defineRelations(schema, (r) => ({
       from: r.userSettings.defaultModelName,
       to: r.models.name,
     }),
+    defaultDecisionModel: r.one.models({
+      from: r.userSettings.defaultDecisionModelName,
+      to: r.models.name,
+    }),
   },
 }));

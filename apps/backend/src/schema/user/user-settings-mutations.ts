@@ -10,6 +10,7 @@ builder.mutationType({
       args: {
         defaultTaskId: t.arg.int(),
         defaultModelName: t.arg.string(),
+        defaultDecisionModelName: t.arg.string(),
       },
       resolve: async (_root, args, ctx) => {
         const user = (ctx as any).user;
@@ -23,6 +24,7 @@ builder.mutationType({
         return updateSettings(user.id, {
           defaultTaskId: args.defaultTaskId,
           defaultModelName: args.defaultModelName,
+          defaultDecisionModelName: args.defaultDecisionModelName,
         });
       },
     }),

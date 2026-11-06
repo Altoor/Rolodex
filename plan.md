@@ -35,18 +35,28 @@ explicitly.
 - **Tasks reference a tool by key.** Add `toolKey` (nullable text) and
   `toolConfig` (nullable JSON) to `tasks`. `toolKey` is a stable identifier such
   as `prompt` or `find_todo`.
-- **Tasks can specify a model.** Add nullable `model` to `tasks`. This is the
-  model selected while setting up the task.
-- **Queued steps can override the model.** Add nullable `model` to
-  `queuedTasks`. The `model_selector` tool writes a `nextModel` into the next
-  queued step, which overrides the next task's configured model.
-- **Prompt does not use the default model.** `prompt` requires an explicit
-  model from either:
-  - `toolConfig.model` / JSON state supplied to the prompt tool, or
-  - the incoming queued step's model (set by `model_selector` or by the task's
-    `model` field).
-    If no model is available, the prompt tool fails with a clear error. It must
-    not silently fall back to `userSettings.defaultModelName`.
+- **Tasks can specify two model roles.** Add nullable `model` (generation
+  model) and `decisionModel` (System One decision model) to `tasks`.
+  `model` is used by prompt-style tools and todo field extraction;
+  `decisionModel` is used by decision tasks and todo selection.
+- **Queued steps can override both model roles.** Add nullable `model` and
+  `decisionModel` to `queuedTasks`. The `model_selector` tool writes
+  `nextModel` or `nextDecisionModel` into the next queued step, which overrides
+  the next task's configured model for that role.
+- **Models are not stored in `toolConfig`.** `toolConfig` is static per-tool
+  configuration. Models are execution context: they are inherited across the
+  run and can be changed by `model_selector`. Moving them into `toolConfig`
+  would break inheritance and make per-run overrides awkward. Tools may still
+  accept `model` / `decisionModel` keys as explicit local overrides.
+- **Generation tools fall back to the user's default generation model.**
+  `prompt` and todo field extraction resolve their model as
+  `toolConfig.model` → inherited queued/task `model` → `getModelForUser`.
+  They do not silently use the decision default.
+- **Decision tools fall back to the user's default decision model.** Decision
+  tasks and todo selection resolve their model as `toolConfig.decisionModel` →
+  inherited queued/task `decisionModel` → `getDecisionModelForUser`. The
+  decision default does not fall back to `defaultModelName`, because a
+  generation model may not be a valid System One model.
 - **Todo search uses local embeddings, not OpenAI.** Generate embeddings through
   the existing Ollama instance (`ollama.embed`) with an Ollama embedding model,
   e.g. `nomic-embed-text`, and store them in a pgvector column. Use
@@ -57,9 +67,10 @@ explicitly.
   must be chosen for `find_todo`, `update_todo`, `mark_todo_done`, or
   `delete_todo`, build a choice question with one option per todo and call
   `ollama.systemone`, exactly like a decision task. Model precedence is
-  `toolConfig.model` → queued step/task model → `getModelForUser`. Do not ask
-  `runPrompt` to return a todo id as free-form JSON. `runPrompt` is still used
-  for structured todo-field extraction when a name/description is missing.
+  `toolConfig.decisionModel` → queued/task `decisionModel` →
+  `getDecisionModelForUser`. Do not ask `runPrompt` to return a todo id as
+  free-form JSON. `runPrompt` is still used for structured todo-field
+  extraction when a name/description is missing.
 - **Tool input comes from two places:**
   1. The queued task's `state` string (what the user types on the landing page).
   2. The task's `toolConfig` JSON (defaults/fixed arguments).
@@ -160,10 +171,15 @@ export interface ToolRunContext {
   /** The task's `toolConfig` JSON, or null. */
   config: ToolConfig | null;
   /**
-   * Model inherited from the queued step or task, if any. This may be null.
-   * The prompt tool must not fall back to the user's default model.
+   * Generation model inherited from the queued step or task, if any. May be
+   * null; tools that call `runPrompt` fall back to the user's default.
    */
   model: string | null;
+  /**
+   * System One decision model inherited from the queued step or task, if any.
+   * May be null; decision-based tools fall back to the user's decision default.
+   */
+  decisionModel: string | null;
 }
 
 export interface ToolExecution {
@@ -180,8 +196,10 @@ export interface ToolExecution {
   appendState?: boolean;
   /** Optional explicit next task; otherwise the queue uses fallbackTaskId. */
   nextTaskId?: number | null;
-  /** If set, the next queued step inherits this model. */
+  /** If set, the next queued step inherits this generation model. */
   nextModel?: string | null;
+  /** If set, the next queued step inherits this decision model. */
+  nextDecisionModel?: string | null;
 }
 
 export interface Tool {
@@ -242,10 +260,17 @@ Move the existing `DEFAULT_MODEL` and `modelForUser` logic out of
 
 ```ts
 export const DEFAULT_MODEL = "tev1:4b";
+export const DEFAULT_DECISION_MODEL = DEFAULT_MODEL;
 
 export async function getModelForUser(userId: number): Promise<string> {
-  // Same query as the current modelForUser(): read userSettings.defaultModelName,
-  // fall back to DEFAULT_MODEL.
+  // Read userSettings.defaultModelName, fall back to DEFAULT_MODEL.
+}
+
+export async function getDecisionModelForUser(
+  userId: number,
+): Promise<string> {
+  // Read userSettings.defaultDecisionModelName, fall back to
+  // DEFAULT_DECISION_MODEL. Do not fall back to defaultModelName.
 }
 
 export async function assertPulledModel(name: string): Promise<void> {
@@ -261,9 +286,9 @@ Then:
   - Replace calls to `modelForUser(row.queued_by)` with
     `getModelForUser(row.queued_by)`.
 
-The prompt tool will not use `getModelForUser`; it uses the explicit/inherited
-model from its run context. `getModelForUser` remains the fallback for decision
-tasks.
+The prompt tool falls back to `getModelForUser` when neither `toolConfig.model`
+nor an inherited generation model is present. Decision tasks and todo selection
+use `getDecisionModelForUser` instead.
 
 ### 1.4 FIRST TOOL: prompt
 
@@ -309,8 +334,8 @@ Define `promptTool: Tool` with this definition:
 - Input schema properties:
   - `prompt` (`string`): optional; defaults to the queued task's `state`.
   - `system` (`string`): optional system prompt.
-  - `model` (`string`): optional override. It takes precedence over the model
-    inherited by the run context.
+  - `model` (`string`): optional generation model override. It takes
+    precedence over the inherited generation model.
   - `format` (`object`): optional JSON schema passed to Ollama for structured
     output.
 - `outputDescription: "The model answer as text, plus the model name and optional thinking text."`
@@ -321,10 +346,9 @@ Define `promptTool: Tool` with this definition:
 1. `const input = mergeToolInput(context)`.
 2. `const prompt = readString(input, "prompt") ?? context.state`.
 3. Throw `ToolInputError("prompt is required")` if both are blank.
-4. `const model = readString(input, "model") ?? context.model`.
-5. Throw
-   `ToolInputError("prompt tool requires a model; select one on the task or run the model_selector tool first")`
-   when `model` is null/blank. **Do not use the user's default model.**
+4. `const model = readString(input, "model") ?? context.model ?? (await getModelForUser(context.userId))`.
+5. Throw `ToolInputError("prompt tool requires a model")` only if the resolved
+   value is blank.
 6. Call `runPrompt({ prompt, system, model, format })`.
 7. Return:
 
@@ -403,9 +427,9 @@ and regenerate the vector column migration.
     - `query` (`string`): optional search text; defaults to the queued state.
     - `id` (`number`): optional direct todo id.
     - `limit` (`number`): optional number of candidates, default `5`.
-    - `model` (`string`): optional model used by the decision-model fallback;
-      defaults to the task/inherited model, then the user's default decision
-      model.
+    - `decisionModel` (`string`): optional decision model used by the
+      fallback selector; defaults to the task/inherited decision model, then
+      the user's default decision model.
   - Output: `{ todo, score, candidates }`.
   - Example config:
     `{ "query": "pick up Johnny", "limit": 5 }`
@@ -451,7 +475,7 @@ and regenerate the vector column migration.
      fall back to case-insensitive text search on `todos.name` and
      `todos.description` using `ilike` and the same ownership filter.
   7. If the text search also returns no rows, resolve the model as
-     `readString(input, "model") ?? context.model ?? (await getModelForUser(userId))`,
+     `readString(input, "decisionModel") ?? readString(input, "model") ?? context.decisionModel ?? (await getDecisionModelForUser(userId))`,
      load all user todos, and call
      `selectTodoWithDecision(userTodos, queryText, model)` from
      `todo/selection.ts`. That helper builds a `choice` question with one
@@ -493,26 +517,24 @@ and regenerate the vector column migration.
 - Definition:
   - `key: "model_selector"`
   - `name: "Model selector"`
-  - `description: "Choose the model that the next tool or decision should use."`
+  - `description: "Choose the generation or decision model that the next tool or task should use."`
   - `category: "ai"`
   - `inputMode: "json"`
   - Input schema properties:
     - `model` (`string`, required): an installed/pulled Ollama model name.
-  - Output: `{ model }`.
-  - Example config: `{ "model": "gemma4:e2b" }`
+    - `kind` (`string`): `"generation"` (default) or `"decision"`.
+  - Output: `{ kind, model }`.
+  - Example config: `{ "model": "tev1:4b", "kind": "decision" }`
 - Execute:
   1. `const model = requireNonEmptyString(readString(mergeToolInput(context), "model"), "model")`.
-  2. `await assertPulledModel(model)`.
-  3. Return:
-     ```ts
-     {
-       output: { model },
-       summary: `Next step will use model "${model}"`,
-       nextModel: model,
-     }
-     ```
-- The queue stores `nextModel` on the next queued step. The next tool receives
-  it as `context.model`; the next decision uses it as the model override.
+  2. `const kind = readString(input, "kind") ?? "generation"`; validate against
+     `generation | decision`.
+  3. `await assertPulledModel(model)`.
+  4. Return `nextModel: model` for generation, or
+     `nextDecisionModel: model` for decision.
+- The queue stores `nextModel` / `nextDecisionModel` on the next queued step.
+  The next tool receives them as `context.model` / `context.decisionModel`; the
+  next decision task uses `decisionModel` as its model override.
 - This tool does not modify the task definition. To make the choice stick for a
   whole run, put the `model_selector` task before the tasks that need it and
   chain them with the fallback/next edge.
@@ -538,8 +560,9 @@ from `apps/backend/src/db`.
   - Read `name` and `description` from `input`.
   - If both are present, return them.
   - Otherwise resolve
-    `const model = readString(input, "model") ?? context.model;` and throw
-    `ToolInputError("todo extraction requires a model")` when it is null.
+    `const model = readString(input, "model") ?? context.model ?? (await getModelForUser(userId));`
+    and throw `ToolInputError("todo extraction requires a model")` only when it
+    is blank.
   - Call `runPrompt({ model, prompt, format })` with a prompt that asks for a
     structured `{ name, description }` from `context.state` (and any supplied
     partial fields). Pass an Ollama JSON `format` schema:
@@ -553,8 +576,9 @@ from `apps/backend/src/db`.
       required: ["name", "description"],
     }
     ```
-  - The model must be explicit/inherited, exactly like the prompt tool. It never
-    falls back to the user's default model.
+  - This uses the same generation-model fallback as the prompt tool: explicit
+    tool config, then inherited generation model, then the user's default
+    generation model.
   - Parse the JSON text. If parsing fails or fields are blank, throw
     `ToolInputError("could not determine todo name/description")`.
   - This is the requirement that lets the prompt helper fill in todo fields.
@@ -580,10 +604,10 @@ from `apps/backend/src/db`.
   - If there are no todos, throw `ToolInputError("no todos found")`.
   - If there is exactly one, use it.
   - Otherwise resolve the model as
-    `readString(input, "model") ?? context.model ?? (await getModelForUser(userId))`
+    `readString(input, "decisionModel") ?? readString(input, "model") ?? context.decisionModel ?? (await getDecisionModelForUser(userId))`
     and call `selectTodoWithDecision(userTodos, context.state, model)`. This
     mirrors decision-task model precedence: explicit tool config, then the
-    queued step/task model, then the user's default decision model.
+    queued step/task decision model, then the user's default decision model.
   - This helper is not duplicated code from `find_todo`: `find_todo` performs
     vector/lexical search and returns candidate metadata, while `resolveTodoId`
     targets exactly one todo for mutations. Both share the explicit-id lookup
@@ -607,8 +631,9 @@ from `apps/backend/src/db`.
   - `category: "todo"`
   - `inputMode: "json"`
   - Input schema: optional `name` (`string`), optional `description`
-    (`string`), optional `model` (`string`, used for prompt-assisted
-    extraction when name/description are missing).
+    (`string`), optional `model` (`string`, generation model used for
+    prompt-assisted extraction when name/description are missing; defaults to
+    the user's default generation model).
   - Output: the created `Todo`.
   - Example config: `{ "name": "Pick up Johnny from daycare", "description": "Pick him up this afternoon." }`
 - Execute:
@@ -637,8 +662,10 @@ from `apps/backend/src/db`.
   - `category: "todo"`
   - `inputMode: "json"`
   - Input schema: optional `id` (`number`), optional `name` (`string`),
-    optional `description` (`string`), optional `model` (`string`, used for
-    prompt-assisted field extraction or decision-model selection).
+    optional `description` (`string`), optional `model` (`string`, generation
+    model used for prompt-assisted field extraction), optional `decisionModel`
+    (`string`, decision model used to select the todo). Both default to the
+    matching user setting.
   - Output: the updated `Todo`.
   - Example config: `{ "id": 3, "name": "Updated name", "description": "Updated description" }`
 - Execute:
@@ -660,8 +687,8 @@ from `apps/backend/src/db`.
   - `category: "todo"`
   - `inputMode: "json"`
   - Input schema: optional `id` (`number`), optional `done` (`boolean`,
-    default `true`), optional `model` (`string`, used only if the todo must be
-    resolved by the decision model).
+    default `true`), optional `decisionModel` (`string`, decision model used to
+    select the todo; defaults to the user's default decision model).
   - Output: the updated `Todo`.
   - Example config: `{ "id": 3, "done": true }`
 - Execute:
@@ -680,8 +707,9 @@ from `apps/backend/src/db`.
   - `description: "Delete a todo. The todo can be selected by id, by find_todo output, or inferred from state."`
   - `category: "todo"`
   - `inputMode: "json"`
-  - Input schema: optional `id` (`number`), optional `model` (`string`, used
-    only if the todo must be resolved by the decision model).
+  - Input schema: optional `id` (`number`), optional `decisionModel` (`string`,
+    decision model used to select the todo; defaults to the user's default
+    decision model).
   - Output: `{ id, name }` of the deleted todo.
   - Example config: `{ "id": 3 }`
 - Execute:
@@ -728,10 +756,7 @@ Do not re-export every todo helper unless needed. Embeddings live in
 
 ---
 
-## 2. Database changes
-
-> Status: sections 2.1–2.5 are implemented and applied to the development
-> database. Section 2.6 (embedding backfill) remains.
+## 2. Database changes — DONE
 
 ### 2.1 Task columns
 
@@ -743,13 +768,15 @@ In the `tasks` table definition, add:
 toolKey: text("toolKey"),
 toolConfig: json("toolConfig"),
 model: text("model"),
+decisionModel: text("decisionModel"),
 ```
 
-All three are nullable so existing tasks keep working. Do not add a `tools`
-table; tool metadata comes from the code registry. Validate `model` against the
-`models` table in the GraphQL mutation (see 3.6).
+All four are nullable so existing tasks keep working. `model` is the generation
+model; `decisionModel` is the System One decision model. Do not add a `tools`
+table; tool metadata comes from the code registry. Validate both models against
+the `models` table in the GraphQL mutation (see 3.6).
 
-### 2.2 Queued-task model override
+### 2.2 Queued-task model overrides
 
 **File:** `apps/backend/src/db/schema.ts` — `[EDIT]` `[DB]`
 
@@ -757,10 +784,30 @@ In the `queuedTasks` table definition, add:
 
 ```ts
 model: text("model"),
+decisionModel: text("decisionModel"),
 ```
 
-This is the per-step model chosen by `model_selector` or by the task. It stays
-null unless a model was selected/inherited.
+These are the per-step overrides chosen by `model_selector` or by the task. They
+stay null unless a model was selected/inherited.
+
+### 2.2.1 User default decision model
+
+**File:** `apps/backend/src/db/schema.ts` — `[EDIT]` `[DB]`
+
+Add to `userSettings`:
+
+```ts
+defaultDecisionModelName: text("defaultDecisionModelName").references(
+  () => models.name,
+  { onDelete: "set null" },
+),
+```
+
+Add the matching `defaultDecisionModel` relation in
+`apps/backend/src/db/relations/relations.ts`. The existing
+`defaultModelName` remains the default generation model; the new column is the
+default System One decision model. It deliberately does not fall back to
+`defaultModelName`.
 
 ### 2.3 Rename todo content to description and add embedding
 
@@ -855,7 +902,11 @@ the generated migration. This has been done for
   5. `ALTER TABLE "tasks" ADD COLUMN "toolKey" text;`
   6. `ALTER TABLE "tasks" ADD COLUMN "toolConfig" json;`
   7. `ALTER TABLE "tasks" ADD COLUMN "model" text;`
-  8. `ALTER TABLE "queuedTasks" ADD COLUMN "model" text;`
+  8. `ALTER TABLE "tasks" ADD COLUMN "decisionModel" text;`
+  9. `ALTER TABLE "queuedTasks" ADD COLUMN "model" text;`
+  10. `ALTER TABLE "queuedTasks" ADD COLUMN "decisionModel" text;`
+  11. `ALTER TABLE "userSettings" ADD COLUMN "defaultDecisionModelName" text;`
+  12. The `defaultDecisionModelName → models.name` foreign key.
 - Apply it using the project's existing workflow:
   - `pnpm --filter backend push` for a dev database, or the team's normal
     `drizzle-kit migrate` command if migrations are applied explicitly.
@@ -891,7 +942,7 @@ search and the decision-model selector when no embeddings exist.
 
 ---
 
-## 3. GraphQL changes
+## 3. GraphQL changes — DONE
 
 ### 3.1 Tool objects
 
@@ -969,8 +1020,14 @@ testTool: t.field({
     key: t.arg.string({ required: true }),
     state: t.arg.string({ required: true }),
     toolConfig: t.arg({ type: "JSON" }),
+    model: t.arg.string(),
+    decisionModel: t.arg.string(),
   },
-  resolve: async (_root, { key, state, toolConfig }, ctx) => {
+  resolve: async (
+    _root,
+    { key, state, toolConfig, model: modelArg, decisionModel: decisionArg },
+    ctx,
+  ) => {
     const userId = requireUserId(ctx);
     const tool = getTool(key);
 
@@ -981,6 +1038,17 @@ testTool: t.field({
     }
 
     const config = (toolConfig as Record<string, unknown> | null) ?? null;
+    const model =
+      modelArg ??
+      (typeof config?.model === "string" ? config.model : null) ??
+      (await getModelForUser(userId));
+    const decisionModel =
+      decisionArg ??
+      (typeof config?.decisionModel === "string"
+        ? config.decisionModel
+        : null) ??
+      (await getDecisionModelForUser(userId));
+
     const execution = await tool.execute({
       userId,
       runId: "test",
@@ -988,9 +1056,8 @@ testTool: t.field({
       queuedTaskId: -1,
       state,
       config,
-      // Allow the test form to provide a model through toolConfig.model.
-      model:
-        typeof config?.model === "string" ? config.model : null,
+      model,
+      decisionModel,
     });
 
     return { output: execution.output, summary: execution.summary };
@@ -998,6 +1065,10 @@ testTool: t.field({
 }),
 ```
 
+- The optional `model` and `decisionModel` arguments override the user's
+  defaults for this test run. The tools page exposes both fields.
+- Tool errors are wrapped in `GraphQLError`; `ToolInputError` maps to
+  `BAD_USER_INPUT` so the tools page can display the message.
 - This bypasses the queue but uses the same tool code and the same user
   ownership rules.
 - Tests that create/update/delete todos really change data. The UI must warn
@@ -1032,6 +1103,7 @@ Add `import "./tool/index";` alongside the other schema imports.
     resolve: (parent) => parent.toolConfig ?? null,
   }),
   model: t.exposeString("model", { nullable: true }),
+  decisionModel: t.exposeString("decisionModel", { nullable: true }),
   tool: t.field({
     type: Tool,
     nullable: true,
@@ -1040,11 +1112,13 @@ Add `import "./tool/index";` alongside the other schema imports.
   }),
   ```
 - Keep the existing `type`, `decision`, `taskResults`, `fallbackTask` fields.
-- Add `model` to the `QueuedTask` GraphQL object:
+- Add both overrides to the `QueuedTask` GraphQL object:
   ```ts
   model: t.exposeString("model", { nullable: true }),
+  decisionModel: t.exposeString("decisionModel", { nullable: true }),
   ```
-  so the landing page can show which model a step used/selected.
+  so the landing page can show which generation/decision model a step
+  used/selected.
 
 ### 3.5 Extend task mutations
 
@@ -1057,6 +1131,7 @@ Add `import "./tool/index";` alongside the other schema imports.
   toolKey: t.arg.string(),
   toolConfig: t.arg({ type: "JSON" }),
   model: t.arg.string(),
+  decisionModel: t.arg.string(),
   ```
 - Include them in the inserted object:
   ```ts
@@ -1068,6 +1143,7 @@ Add `import "./tool/index";` alongside the other schema imports.
     toolKey: toolKey ?? null,
     toolConfig: toolConfig ?? null,
     model: model ?? null,
+    decisionModel: decisionModel ?? null,
   }
   ```
 - Remove the empty `switch (type)` block.
@@ -1076,13 +1152,17 @@ Add `import "./tool/index";` alongside the other schema imports.
     `getToolDefinition(toolKey)`. Throw `GraphQLError` with
     `BAD_USER_INPUT` when missing/unknown.
   - If `type !== "tool"`, allow `toolKey` to be omitted or null.
-  - If `model` is provided, call `assertPulledModel(model)`.
+  - If `toolConfig` is present, require a JSON object (reject arrays and
+    primitives).
+  - If `model` or `decisionModel` is provided, call `assertPulledModel(...)`.
 - A shared helper is recommended:
   ```ts
   async function assertValidTaskConfig(input: {
     type: string;
     toolKey: string | null;
+    toolConfig?: unknown;
     model: string | null;
+    decisionModel: string | null;
   }) {
     if (input.type === "tool") {
       if (!input.toolKey) {
@@ -1092,8 +1172,17 @@ Add `import "./tool/index";` alongside the other schema imports.
         throw new GraphQLError(`Unknown tool "${input.toolKey}"`, ...);
       }
     }
-    if (input.model) {
-      await assertPulledModel(input.model);
+    if (
+      input.toolConfig !== undefined &&
+      input.toolConfig !== null &&
+      (typeof input.toolConfig !== "object" || Array.isArray(input.toolConfig))
+    ) {
+      throw new GraphQLError("toolConfig must be a JSON object", ...);
+    }
+    for (const model of [input.model, input.decisionModel]) {
+      if (model) {
+        await assertPulledModel(model);
+      }
     }
   }
   ```
@@ -1105,17 +1194,38 @@ Add `import "./tool/index";` alongside the other schema imports.
   toolKey: t.arg.string(),
   toolConfig: t.arg({ type: "JSON" }),
   model: t.arg.string(),
+  decisionModel: t.arg.string(),
   ```
 - Use explicit-null-aware merge semantics, like `fallbackTaskId`:
   ```ts
   toolKey: toolKey !== undefined ? toolKey : task.toolKey,
   toolConfig: toolConfig !== undefined ? toolConfig : task.toolConfig,
   model: model !== undefined ? model : task.model,
+  decisionModel:
+    decisionModel !== undefined ? decisionModel : task.decisionModel,
   ```
-  This allows the UI to clear a tool/model by sending `null`.
-- Determine the effective type, tool key, and model after the merge, then call
-  `assertValidTaskConfig(...)`.
+  This allows the UI to clear a model by sending `null`.
+- Determine the effective type, tool key, tool config, and both models after the
+  merge, then call `assertValidTaskConfig(...)`.
 - Remove the empty `switch (type)` block.
+
+### 3.5.1 User model settings
+
+**File:** `apps/backend/src/schema/user/user-settings.ts` — `[EDIT]` `[GRAPHQL]`
+
+- Expose `defaultDecisionModelName` (nullable string).
+- Add a `defaultDecisionModel` relation.
+
+**File:** `apps/backend/src/schema/user/user-settings-mutations.ts` — `[EDIT]` `[GRAPHQL]`
+
+- Add `defaultDecisionModelName: t.arg.string()`.
+- Pass it through to `updateUserSettings`.
+
+**File:** `apps/backend/src/schema/user/user-settings-service.ts` — `[EDIT]`
+
+- Add `defaultDecisionModelName` to `UpdateSettingsInput`.
+- Validate that selected models exist and are pulled.
+- Persist it with explicit-null-aware updates.
 
 ### 3.6 Rename todo content to description in GraphQL
 
@@ -1165,13 +1275,15 @@ Update any client code or documentation that still uses `content`.
 
 ---
 
-## 4. Queue execution for tool tasks
+## 4. Queue execution for tool tasks — DONE
 
 **File:** `apps/backend/src/queue/processor.ts` — `[EDIT]` `[QUEUE]`
 
 ### 4.1 Import the tool runtime
 
-Add imports for `getTool`, `ToolInputError`, and the shared tool config type.
+Add imports for `getTool`, `ToolInputError`, the shared tool config type, and
+the generation/decision model helpers (`getModelForUser`,
+`getDecisionModelForUser`).
 
 ### 4.2 Branch before the decision check
 
@@ -1211,11 +1323,15 @@ model = await modelForUser(row.queued_by);
 with:
 
 ```ts
-model = row.model ?? task.model ?? (await getModelForUser(row.queued_by));
+model =
+  row.decisionModel ??
+  task.decisionModel ??
+  (await getDecisionModelForUser(row.queued_by));
 ```
 
-So a model selected by `model_selector` (`row.model`) wins, then the task's
-configured model, then the user's default as the last resort.
+So a decision model selected by `model_selector` (`row.decisionModel`) wins,
+then the task's configured `decisionModel`, then the user's default decision
+model as the last resort. Generation models are not used for decisions.
 
 ### 4.4 Add `processToolStep`
 
@@ -1249,6 +1365,13 @@ async function processToolStep(
     (task.toolConfig as Record<string, unknown> | null) ?? null;
 
   try {
+    const model =
+      row.model ?? task.model ?? (await getModelForUser(row.queued_by));
+    const decisionModel =
+      row.decisionModel ??
+      task.decisionModel ??
+      (await getDecisionModelForUser(row.queued_by));
+
     const execution = await tool.execute({
       userId: row.queued_by,
       runId: row.runId,
@@ -1256,9 +1379,10 @@ async function processToolStep(
       queuedTaskId: row.id,
       state: row.state,
       config: toolConfig,
-      // Selector override > task model. No user default here: the prompt tool
-      // must require an explicit/inherited model.
-      model: row.model ?? task.model ?? null,
+      // Selector override > task model > user default, independently for each
+      // model role.
+      model,
+      decisionModel,
     });
 
     const steps = (stepsByRun.get(row.runId) ?? 0) + 1;
@@ -1294,8 +1418,10 @@ async function processToolStep(
         state: nextState,
         runId: row.runId,
         queued_by: row.queued_by,
-        // model_selector sets nextModel; otherwise keep the inherited override.
+        // model_selector sets nextModel/nextDecisionModel; otherwise keep the
+        // inherited overrides.
         model: execution.nextModel ?? row.model,
+        decisionModel: execution.nextDecisionModel ?? row.decisionModel,
       });
     }
   } catch (err) {
@@ -1319,12 +1445,13 @@ Notes:
   next step. The prompt and find_todo tools opt in themselves via
   `execution.appendState = true`.
 - Tool tasks with no `fallbackTaskId` finish the run (`nextTaskId = null`).
-- `model_selector` only needs to return `nextModel`; it automatically affects
-  the next tool or decision because the next queued row gets `model`.
+- `model_selector` returns `nextModel` for generation or `nextDecisionModel`
+  for decision; the next queued row receives the matching field. The two roles
+  are independent.
 
 ---
 
-## 5. GraphQL documents in `packages/queries`
+## 5. GraphQL documents in `packages/queries` — DONE
 
 ### 5.1 Tool documents
 
@@ -1370,8 +1497,20 @@ export const GET_TOOL = gql(/* GraphQL */ `
 import { gql } from "../__generated__";
 
 export const TEST_TOOL = gql(/* GraphQL */ `
-  mutation TestTool($key: String!, $state: String!, $toolConfig: JSON) {
-    testTool(key: $key, state: $state, toolConfig: $toolConfig) {
+  mutation TestTool(
+    $key: String!
+    $state: String!
+    $toolConfig: JSON
+    $model: String
+    $decisionModel: String
+  ) {
+    testTool(
+      key: $key
+      state: $state
+      toolConfig: $toolConfig
+      model: $model
+      decisionModel: $decisionModel
+    ) {
       output
       summary
     }
@@ -1388,6 +1527,7 @@ export const TEST_TOOL = gql(/* GraphQL */ `
   toolKey
   toolConfig
   model
+  decisionModel
   tool {
     key
     name
@@ -1395,9 +1535,10 @@ export const TEST_TOOL = gql(/* GraphQL */ `
   }
   ```
 - In `GET_TASK`, add the same fields.
-- In `QUEUED_TASK`, add `model` and `toolKey`:
+- In `QUEUED_TASK`, add `model`, `decisionModel`, and `toolKey`:
   ```graphql
   model
+  decisionModel
   task {
     id
     name
@@ -1407,32 +1548,46 @@ export const TEST_TOOL = gql(/* GraphQL */ `
   ```
 - `ACTIVE_QUEUED_TASKS` (`activeQueuedTasks`) powers the landing page's
   multi-run chain-of-thought and restores in-flight runs after a refresh. Keep
-  its selection in sync with `QUEUED_TASK`, including `model` and `toolKey`, so
-  active runs display the same details as live subscription events.
+  its selection in sync with `QUEUED_TASK`, including `model`,
+  `decisionModel`, and `toolKey`, so active runs display the same details as
+  live subscription events.
 
 **File:** `packages/queries/src/tasks/task-mutations.ts` — `[EDIT]` `[QUERIES]`
 
 - `CREATE_QUEUED_TASK` selects the newly created step (`task`, `result`,
-  `queued_at`, and the new `model`) so the landing page can show the run
+  `queued_at`, `model`, `decisionModel`) so the landing page can show the run
   immediately, before the processor emits its first subscription event.
 - `CREATE_TASK`:
-  - Add variables `$toolKey: String`, `$toolConfig: JSON`, `$model: String`.
-  - Pass `toolKey: $toolKey`, `toolConfig: $toolConfig`, `model: $model`.
-  - Select `toolKey`, `toolConfig`, `model`, and
+  - Add variables `$toolKey: String`, `$toolConfig: JSON`, `$model: String`,
+    `$decisionModel: String`.
+  - Pass the matching arguments to `createTask`.
+  - Select `toolKey`, `toolConfig`, `model`, `decisionModel`, and
     `tool { key name description }`.
 - `UPDATE_TASK`:
   - Same new variables and arguments.
-  - Select `toolKey`, `toolConfig`, `model`, and
+  - Select `toolKey`, `toolConfig`, `model`, `decisionModel`, and
     `tool { key name description }`.
 
 **File:** `packages/queries/src/tasks/task-subscriptions.ts` — `[EDIT]` `[QUERIES]`
 
 - In `queuedTask.task`, add `toolKey`.
-- Add `model` to `queuedTask` so the chain-of-thought can show the model used.
+- Add `model` and `decisionModel` to `queuedTask` so the chain-of-thought can
+  show which model was used/selected for each role.
 - The backend already filters `queuedTaskEvent` to the current user's steps;
   no subscription document changes are needed for the multi-run COT.
 
-### 5.3 Regenerate generated GraphQL files
+### 5.4 User settings documents
+
+**File:** `packages/queries/src/user/users-queries.ts` — `[EDIT]` `[QUERIES]`
+
+- Add `defaultDecisionModelName` to the `settings` selection in `ME`.
+
+**File:** `packages/queries/src/user/user-mutations.ts` — `[EDIT]` `[QUERIES]`
+
+- Add `$defaultDecisionModelName: String` to `UpdateUserSettings`.
+- Pass it to the mutation and select it in the result.
+
+### 5.5 Regenerate generated GraphQL files
 
 **Type:** `[CODEGEN]`
 
@@ -1455,7 +1610,7 @@ Do not hand-edit generated files. The typed documents must include `GetTools`,
 
 ---
 
-## 6. Tools page (frontend)
+## 6. Tools page (frontend) — DONE
 
 ### 6.1 Tool card with info + test form
 
@@ -1463,8 +1618,8 @@ Do not hand-edit generated files. The typed documents must include `GetTools`,
 
 Create a card that both displays and tests a tool. Use the existing UI
 primitives (`Card`, `CardContent`, `CardHeader`, `Badge`, `Separator`,
-`Field`, `FieldLabel`, `FieldDescription`, `FieldError`, `Textarea`, `Button`,
-`Spinner`).
+`Field`, `FieldLabel`, `FieldDescription`, `FieldError`, `Textarea`, `Input`,
+`Button`, `Spinner`).
 
 Props:
 
@@ -1489,11 +1644,17 @@ Render:
   - `state` — `Textarea`, required.
   - `toolConfig` — `Textarea`, prefilled with the tool's `exampleConfig`
     pretty-printed, optional.
+  - `model` — optional generation model override (`Input`); blank uses the
+    user's default generation model.
+  - `decisionModel` — optional decision model override (`Input`); blank uses
+    the user's default decision model.
   - A warning: "Running a tool can create, update, or delete real data."
   - A "Run tool" button.
   - On submit:
     1. Parse the config text as a JSON object; reject arrays/null.
-    2. Call `useMutation(TEST_TOOL)` with `{ key, state, toolConfig }`.
+    2. Call `useMutation(TEST_TOOL)` with
+       `{ key, state, toolConfig, model, decisionModel }`, sending null for
+       blank model fields.
     3. Show the returned `summary` and pretty-printed `output`.
     4. Show `error.message` on failure.
   - Keep the loading state on the button (use `Spinner`).
@@ -1537,6 +1698,53 @@ Add to `NAV_ITEMS`, probably after Task queue or Models:
 { href: "/tools", label: "Tools", requiresAuth: true },
 ```
 
+### 6.5 Account defaults for both model roles — DONE
+
+This revision supersedes the earlier single-model wording throughout the plan.
+
+**Decision:** models remain task/queued-step fields, not `toolConfig` entries.
+`toolConfig` is static per-tool configuration, while models are execution
+context that is inherited through a run and can be changed by `model_selector`.
+Each role gets its own field:
+
+- `model` — generation model used by `prompt` and todo field extraction.
+- `decisionModel` — System One model used by decision tasks and todo selection.
+
+**Database files:**
+
+- `apps/backend/src/db/schema.ts` — add `tasks.decisionModel`,
+  `queuedTasks.decisionModel`, `userSettings.defaultDecisionModelName`.
+- `apps/backend/src/db/relations/relations.ts` — add
+  `userSettings.defaultDecisionModel`.
+
+**Backend runtime:**
+
+- `apps/backend/src/ai/model.ts` — add `DEFAULT_DECISION_MODEL` and
+  `getDecisionModelForUser`.
+- `apps/backend/src/tools/types.ts` — add `decisionModel` to `ToolRunContext`
+  and `nextDecisionModel` to `ToolExecution`.
+- `apps/backend/src/queue/processor.ts`:
+  - Decision tasks use `decisionModel`.
+  - Tool steps resolve both roles and pass both to the tool.
+  - Next steps inherit `execution.nextModel` / `execution.nextDecisionModel`.
+- `apps/backend/src/tools/prompt/prompt.ts` — fall back to the user's default
+  generation model.
+- `apps/backend/src/tools/todo/*` — todo extraction uses the generation
+  default; todo selection uses the decision default.
+- `apps/backend/src/tools/modelSelector/modelSelector.ts` — add `kind`
+  (`generation` | `decision`) and write `nextModel` or `nextDecisionModel`.
+- `apps/backend/src/schema/tool/tool-mutations.ts` — `testTool` accepts optional
+  `model` / `decisionModel` and resolves user defaults when omitted.
+
+**UI files:**
+
+- `packages/ui/src/components/auth/auth-provider.tsx` — include
+  `defaultDecisionModelName` in `CurrentUser`.
+- `packages/ui/src/pages/user.tsx` — pass the new setting and include it in the
+  remount key.
+- `packages/ui/src/components/user/user-settings-form.tsx` — add a second
+  model select for the decision default.
+
 ---
 
 ## 7. Task queue UI for tool tasks
@@ -1555,6 +1763,7 @@ Extend `TaskFormValues` with:
 toolKey: string | null;
 toolConfigText: string;
 model: string | null;
+decisionModel: string | null;
 ```
 
 Update:
@@ -1564,6 +1773,7 @@ Update:
   toolKey: null,
   toolConfigText: "",
   model: null,
+  decisionModel: null,
   ```
 - `taskToFormValues`:
   ```ts
@@ -1572,6 +1782,7 @@ Update:
     ? JSON.stringify(task.toolConfig, null, 2)
     : "",
   model: task.model ?? null,
+  decisionModel: task.decisionModel ?? null,
   ```
 
 Using a text field (`toolConfigText`) avoids react-hook-form needing nested
@@ -1612,6 +1823,7 @@ object validation; parse it only when saving.
   toolKey: values.type === "tool" ? values.toolKey : null,
   toolConfig,
   model: values.model || null,
+  decisionModel: values.decisionModel || null,
   ```
 - If `values.type === "tool"` and `values.toolKey` is empty, do not save; show
   a validation message.
@@ -1640,10 +1852,12 @@ object validation; parse it only when saving.
   models: string[];
   ```
 - `const type = useWatch({ control, name: "type" })` already exists.
-- Render a model `SelectController` bound to `model` for all task types:
-  - Options: "Use user default" (empty value) plus every model name.
+- Render two model `SelectController`s for all task types:
+  - Generation model bound to `model`.
+  - Decision model bound to `decisionModel`.
+  - Each has "Use user default" (empty value) plus every model name.
   - For `type === "tool"` and `toolKey === "prompt"`, add helper text:
-    "Prompt requires a model here or a Model selector task before it."
+    "Prompt uses the generation model. Leave it empty to use your default."
 - When `type === "tool"`, render:
   - A `SelectController` for `toolKey` with
     `rules={{ required: "select a tool" }}`. Options from `tools`.
@@ -1661,8 +1875,8 @@ object validation; parse it only when saving.
 
 **File:** `packages/ui/src/components/task/taskFlow/taskFlowTypes.ts` — `[EDIT]` `[UI]`
 
-- Add `toolKey: string | null` and `model: string | null` to
-  `TaskFlowNodeData`.
+- Add `toolKey: string | null`, `model: string | null`, and
+  `decisionModel: string | null` to `TaskFlowNodeData`.
 
 **File:** `packages/ui/src/components/task/taskFlow/taskFlow.tsx` — `[EDIT]` `[UI]`
 
@@ -1670,6 +1884,7 @@ object validation; parse it only when saving.
   ```ts
   toolKey: task.toolKey ?? null,
   model: task.model ?? null,
+  decisionModel: task.decisionModel ?? null,
   ```
 - No edge changes are needed: tool tasks already get a fallback output handle,
   and that edge is the normal next-task edge for tools.
@@ -1680,7 +1895,8 @@ object validation; parse it only when saving.
   task title, e.g. `Tool · find_todo`.
 - For tool tasks, label the fallback handle "Next / fallback" so it is clear
   that connecting it chains the tool to the next step.
-- Optionally show the configured model when `data.model` is non-null.
+- Optionally show the configured generation/decision models when their fields
+  are non-null.
 
 ### 7.5 Landing / run UI
 
@@ -1707,8 +1923,8 @@ object validation; parse it only when saving.
 - The tool `summary` already appears through the existing
   `step.result.summary` rendering. Optionally show a compact JSON preview of
   `step.result.output` when it is present.
-- The queued-task subscription now includes `model`; optionally show it in the
-  step detail so users can see when `model_selector` changed the model.
+- The queued-task subscription now includes `model` and `decisionModel`;
+  optionally show them in the step detail so users can see which role changed.
 - No new submission form is required: users select a tool task and type the
   free-text state as before. Model/tool arguments are configured on the task.
 
@@ -1731,8 +1947,8 @@ Run with state:
 
 > "Summarize this situation in one sentence."
 
-The prompt tool uses the task's `model`. If no task model and no inherited
-model exist, the step fails instead of using the user's default.
+The prompt tool uses the task's `model`; if neither it nor an inherited
+generation model is set, it falls back to the user's default generation model.
 
 ### 8.2 Model selector → prompt/decision chain
 
@@ -1740,21 +1956,21 @@ Task 1:
 
 - `type: "tool"`
 - `toolKey: "model_selector"`
-- `toolConfig: { "model": "gemma4:e2b" }`
+- `toolConfig: { "model": "tev1:4b", "kind": "decision" }`
 - `fallbackTaskId: <task 2 id>` (next edge)
 
 Task 2:
 
-- `type: "tool"` and `toolKey: "prompt"`, or `type: "decision"`.
-- No model configured on the task.
+- `type: "decision"`.
+- No decision model configured on the task.
 
 Flow:
 
-1. `model_selector` validates that `gemma4:e2b` is pulled.
-2. Its result contains `nextModel: "gemma4:e2b"`.
-3. The queue inserts the next step with `model: "gemma4:e2b"`.
-4. The next tool receives `context.model = "gemma4:e2b"`, or the next decision
-   uses `row.model` as its model override.
+1. `model_selector` validates that `tev1:4b` is pulled.
+2. Its result contains `nextDecisionModel: "tev1:4b"`.
+3. The queue inserts the next step with `decisionModel: "tev1:4b"`.
+4. The next decision task uses `row.decisionModel` as its model override.
+   For a prompt tool, use `kind: "generation"` and `nextModel` instead.
 
 ### 8.3 Prompt → create todo chain
 
@@ -1834,11 +2050,13 @@ Flow:
   it reaches the queue.
 - Invalid `toolConfig` JSON in the UI → block the save and show an error.
 - `toolConfig` must be a JSON object, not an array or primitive.
-- `model` validation:
-  - Task mutations validate that a provided model exists and is pulled.
+- `model` / `decisionModel` validation:
+  - Task mutations validate that provided models exist and are pulled.
   - `model_selector` validates its selected model before updating the chain.
-  - The prompt tool requires an explicit/inherited model and never falls back
-    to the user default.
+  - `prompt` and todo field extraction fall back to the user's default
+    generation model when no explicit/inherited generation model is set.
+  - Decision tasks and todo selection fall back to the user's default decision
+    model. They never use the generation default.
 - Missing/invalid tool input → throw `ToolInputError`; the queue catches it and
   marks the step `failed` with `note: "tool error: ..."`.
 - Todo operations must always be limited to todos where
@@ -1872,8 +2090,10 @@ Run these after implementation:
      task columns, queued-task model.
    - `pnpm --filter backend push` (or the project's migration command).
    - Confirm `todos.description`, `todos."descriptionEmbedding"`,
-     `tasks."toolKey"`, `tasks."toolConfig"`, `tasks."model"`, and
-     `queuedTasks."model"` exist.
+     `tasks."toolKey"`, `tasks."toolConfig"`, `tasks."model"`,
+     `tasks."decisionModel"`, `queuedTasks."model"`,
+     `queuedTasks."decisionModel"`, and
+     `userSettings."defaultDecisionModelName"` exist.
 2. **Embedding model**
    - Pull `nomic-embed-text` through the Models page or Ollama.
    - Run `pnpm --filter backend backfill-embeddings`.
@@ -1887,29 +2107,40 @@ Run these after implementation:
    - Start the backend.
    - Run `pnpm --filter @repo/queries codegen`.
    - Confirm generated types include `GetTools`, `GetTool`, `TestTool`,
-     `Task.toolKey`, `Task.toolConfig`, `Task.model`, `Task.tool`, and
-     `QueuedTask.model`.
+     `Task.toolKey`, `Task.toolConfig`, `Task.model`, `Task.decisionModel`,
+     `Task.tool`, `QueuedTask.model`, `QueuedTask.decisionModel`, and
+     `UserSettings.defaultDecisionModelName`.
 5. **Tools page**
    - Visit `/tools`.
    - Confirm all seven tools appear with descriptions, input schemas, output
      descriptions, and example configs.
-   - Test `model_selector` with a valid and invalid model.
-   - Test `prompt` with an explicit model in the test config; confirm it fails
-     without a model.
+   - Test `model_selector` with a valid and invalid model, for both
+     `generation` and `decision` kinds.
+   - Test `prompt` with no model fields; confirm it uses the default generation
+     model.
+   - Test a todo mutation that needs field extraction with blank model fields;
+     confirm it uses the default generation model.
+   - Test a todo selection path with blank model fields; confirm it uses the
+     default decision model instead of failing with "requires a model".
    - Test `find_todo` against existing todos; confirm it returns the expected
      todo.
    - Test `create_todo`, `update_todo`, `mark_todo_done` (both states), and
      `delete_todo`; confirm the data changes.
-6. **Task builder / task queue**
-   - Create a task with `type = Tool`, select each tool, select a model, and
-     save. Confirm `toolKey`, `toolConfig`, and `model` persist.
-   - Create a `prompt` task without a model and confirm the queue step fails
-     with the "requires a model" error.
-   - Chain a `model_selector` task to a `prompt`/decision task and confirm the
-     next step uses the selected model.
+6. **Account defaults**
+   - Visit `/user` and set both the generation and decision model defaults.
+   - Confirm the settings persist after a refresh and are used by tool tests.
+7. **Task builder / task queue**
+   - Create a task with `type = Tool`, select each tool, select a generation
+     model and a decision model, and save. Confirm `toolKey`, `toolConfig`,
+     `model`, and `decisionModel` persist.
+   - Create a `prompt` task without a generation model and confirm it uses the
+     user's default generation model.
+   - Chain a `model_selector` task with `kind: "decision"` to a decision task,
+     and a `kind: "generation"` selector to a prompt task; confirm each next
+     step uses the matching model.
    - Chain `find_todo` to `update_todo` and `delete_todo` via the flow's
      fallback/next edge and confirm the todo id is passed through state.
-7. **Queue execution**
+8. **Queue execution**
    - Run a `prompt` task from the landing page and confirm the answer appears
      in the chain-of-thought result.
    - Refresh the landing page while one or more runs are still queued/running
@@ -1921,7 +2152,7 @@ Run these after implementation:
      changes.
    - Confirm tool tasks chain through `fallbackTaskId`, and prompt output is
      appended to the next state.
-8. **Failure cases**
+9. **Failure cases**
    - Create a tool task without a tool key (via direct mutation) and confirm it
      fails validation.
    - Send malformed JSON state/config and confirm the queued step fails with a

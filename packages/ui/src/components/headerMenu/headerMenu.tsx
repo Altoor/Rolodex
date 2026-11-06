@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { href: "/", label: "Main", requiresAuth: false },
   { href: "/decisions", label: "Decisions", requiresAuth: true },
   { href: "/task-queue", label: "Task queue", requiresAuth: true },
+  { href: "/tools", label: "Tools", requiresAuth: true },
   { href: "/models", label: "Models", requiresAuth: true },
   { href: "/user", label: "User", requiresAuth: false },
 ];

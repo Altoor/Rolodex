@@ -78,7 +78,10 @@ export const tasks = pgTable("tasks", {
   fallbackTaskId: integer("fallbackTaskId"),
   toolKey: text("toolKey"),
   toolConfig: json("toolConfig"),
+  // Generation model used by prompt-style tools.
   model: text("model"),
+  // System One decision model used by decision tasks and todo selection.
+  decisionModel: text("decisionModel"),
 });
 
 export const queuedTaskStatus = pgEnum("queuedTaskStatus", [
@@ -103,7 +106,10 @@ export const queuedTasks = pgTable("queuedTasks", {
     .defaultNow()
     .notNull(),
   queued_by: integer("queued_by").notNull(),
+  // Per-step generation model override.
   model: text("model"),
+  // Per-step decision model override.
+  decisionModel: text("decisionModel"),
 });
 
 export const models = pgTable("models", {
@@ -130,6 +136,12 @@ export const userSettings = pgTable("userSettings", {
   defaultModelName: text("defaultModelName").references(() => models.name, {
     onDelete: "set null",
   }),
+  defaultDecisionModelName: text("defaultDecisionModelName").references(
+    () => models.name,
+    {
+      onDelete: "set null",
+    },
+  ),
   updatedAt: timestamp("updatedAt", { withTimezone: true })
     .defaultNow()
     .notNull(),

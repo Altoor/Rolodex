@@ -1,4 +1,5 @@
 import { ollama } from "../../ai/Ollama";
+import { getModelForUser } from "../../ai/model";
 import { mergeToolInput, readString } from "../input";
 import {
   ToolInputError,
@@ -72,7 +73,7 @@ const definition: ToolDefinition = {
       model: {
         type: "string",
         description:
-          "Optional model override. Takes precedence over the model inherited by the run context.",
+          "Optional generation model override. Defaults to the model inherited by the run context, then the user's default generation model.",
       },
       format: {
         type: "object",
@@ -101,11 +102,13 @@ export const promptTool: Tool = {
       throw new ToolInputError("prompt is required");
     }
 
-    const model = readString(input, "model") ?? context.model;
-    if (!model || !model.trim()) {
-      throw new ToolInputError(
-        "prompt tool requires a model; select one on the task or run the model_selector tool first",
-      );
+    const model =
+      readString(input, "model") ??
+      context.model ??
+      (await getModelForUser(context.userId));
+
+    if (!model.trim()) {
+      throw new ToolInputError("prompt tool requires a model");
     }
 
     const system = readString(input, "system");

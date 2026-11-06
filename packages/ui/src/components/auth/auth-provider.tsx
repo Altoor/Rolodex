@@ -11,6 +11,7 @@ export interface CurrentUser {
   settings: {
     defaultTaskId: number | null;
     defaultModelName: string | null;
+    defaultDecisionModelName: string | null;
   } | null;
 }
 

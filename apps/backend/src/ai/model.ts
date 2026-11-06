@@ -3,6 +3,7 @@ import { db } from "../schema/builder";
 import { models, userSettings } from "../db";
 
 export const DEFAULT_MODEL = "tev1:4b";
+export const DEFAULT_DECISION_MODEL = DEFAULT_MODEL;
 
 export async function getModelForUser(userId: number): Promise<string> {
   const [settings] = await db
@@ -12,6 +13,20 @@ export async function getModelForUser(userId: number): Promise<string> {
     .limit(1);
 
   return settings?.defaultModelName ?? DEFAULT_MODEL;
+}
+
+export async function getDecisionModelForUser(userId: number): Promise<string> {
+  const [settings] = await db
+    .select({
+      defaultDecisionModelName: userSettings.defaultDecisionModelName,
+    })
+    .from(userSettings)
+    .where(eq(userSettings.userId, userId))
+    .limit(1);
+
+  // Deliberately do not fall back to defaultModelName: generation models may
+  // not be System One decision models.
+  return settings?.defaultDecisionModelName ?? DEFAULT_DECISION_MODEL;
 }
 
 export async function assertPulledModel(name: string): Promise<void> {

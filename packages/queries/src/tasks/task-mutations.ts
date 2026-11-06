@@ -6,15 +6,33 @@ export const CREATE_TASK = gql(/* GraphQL */ `
     $type: TaskType!
     $decisionId: Int
     $fallbackTaskId: Int
+    $toolKey: String
+    $toolConfig: JSON
+    $model: String
+    $decisionModel: String
   ) {
     createTask(
       name: $name
       type: $type
       decisionId: $decisionId
       fallbackTaskId: $fallbackTaskId
+      toolKey: $toolKey
+      toolConfig: $toolConfig
+      model: $model
+      decisionModel: $decisionModel
     ) {
       id
       name
+      type
+      toolKey
+      toolConfig
+      model
+      decisionModel
+      tool {
+        key
+        name
+        description
+      }
       decision {
         id
         options
@@ -31,6 +49,10 @@ export const UPDATE_TASK = gql(/* GraphQL */ `
     $type: TaskType
     $decisionId: Int
     $fallbackTaskId: Int
+    $toolKey: String
+    $toolConfig: JSON
+    $model: String
+    $decisionModel: String
   ) {
     updateTask(
       id: $id
@@ -38,10 +60,23 @@ export const UPDATE_TASK = gql(/* GraphQL */ `
       type: $type
       decisionId: $decisionId
       fallbackTaskId: $fallbackTaskId
+      toolKey: $toolKey
+      toolConfig: $toolConfig
+      model: $model
+      decisionModel: $decisionModel
     ) {
       id
       name
       type
+      toolKey
+      toolConfig
+      model
+      decisionModel
+      tool {
+        key
+        name
+        description
+      }
       decision {
         id
         options
@@ -140,10 +175,13 @@ export const CREATE_QUEUED_TASK = gql(/* GraphQL */ `
       queued_by
       queued_at
       result
+      model
+      decisionModel
       task {
         id
         name
         type
+        toolKey
       }
     }
   }

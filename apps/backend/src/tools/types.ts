@@ -39,10 +39,17 @@ export interface ToolRunContext {
   /** The task's `toolConfig` JSON, or null. */
   config: ToolConfig | null;
   /**
-   * Model inherited from the queued step or task, if any. This may be null.
-   * The prompt tool must not fall back to the user's default model.
+   * Generation model inherited from the queued step or task, if any. Tools
+   * that call `runPrompt` fall back to the user's default generation model
+   * when this is null.
    */
   model: string | null;
+  /**
+   * System One decision model inherited from the queued step or task, if any.
+   * Tools that select with `ollama.systemone` fall back to the user's default
+   * decision model when this is null.
+   */
+  decisionModel: string | null;
 }
 
 export interface ToolExecution {
@@ -59,8 +66,10 @@ export interface ToolExecution {
   appendState?: boolean;
   /** Optional explicit next task; otherwise the queue uses fallbackTaskId. */
   nextTaskId?: number | null;
-  /** If set, the next queued step inherits this model. */
+  /** If set, the next queued step inherits this generation model. */
   nextModel?: string | null;
+  /** If set, the next queued step inherits this decision model. */
+  nextDecisionModel?: string | null;
 }
 
 export interface Tool {

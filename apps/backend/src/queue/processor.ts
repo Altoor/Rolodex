@@ -7,11 +7,16 @@ import type {
   SystemOneScoreAnswer,
 } from "ollama";
 import { db } from "../schema/builder";
-import { queuedTasks, taskResults } from "../db";
+import { queuedTasks, taskResults, tasks } from "../db";
 import { ollama } from "../ai/Ollama";
-import { DEFAULT_MODEL, getModelForUser } from "../ai/model";
+import {
+  DEFAULT_MODEL,
+  getDecisionModelForUser,
+  getModelForUser,
+} from "../ai/model";
 import { setupQuestions } from "../schema/ai/ai-service";
 import { publishQueuedTaskEvent } from "./pubsub";
+import { getTool, type ToolConfig } from "../tools";
 
 const MAX_STEPS_PER_RUN = 15;
 
@@ -92,8 +97,12 @@ async function processStep(
     .returning();
   if (running) publish(running, `running task "${task.name}"`);
 
+  if (task.type === "tool") {
+    await processToolStep(row, task, stepsByRun);
+    return;
+  }
+
   if (task.type !== "decision" || task.decisionId == null) {
-    // Only "decision" tasks can be executed for now.
     await finishStep(row.id, "completed", {
       note: `skipped: task type "${task.type}" is not runnable yet`,
     });
@@ -122,7 +131,10 @@ async function processStep(
         optionDescriptions: decision.optionDescriptions ?? undefined,
       },
     ]);
-    model = await getModelForUser(row.queued_by);
+    model =
+      row.decisionModel ??
+      task.decisionModel ??
+      (await getDecisionModelForUser(row.queued_by));
     response = await ollama.systemone({
       model,
       state: row.state,
@@ -204,6 +216,99 @@ async function processStep(
       state: nextState,
       runId: row.runId,
       queued_by: row.queued_by,
+    });
+  }
+}
+
+async function processToolStep(
+  row: QueuedRow,
+  task: typeof tasks.$inferSelect,
+  stepsByRun: Map<string, number>,
+): Promise<void> {
+  if (!task.toolKey) {
+    await finishStep(row.id, "failed", {
+      toolKey: null,
+      note: "tool task has no toolKey",
+    });
+    return;
+  }
+
+  const tool = getTool(task.toolKey);
+  if (!tool) {
+    await finishStep(row.id, "failed", {
+      toolKey: task.toolKey,
+      note: `unknown tool "${task.toolKey}"`,
+    });
+    return;
+  }
+
+  const toolConfig = (task.toolConfig as ToolConfig | null) ?? null;
+
+  try {
+    const model =
+      row.model ?? task.model ?? (await getModelForUser(row.queued_by));
+    const decisionModel =
+      row.decisionModel ??
+      task.decisionModel ??
+      (await getDecisionModelForUser(row.queued_by));
+
+    const execution = await tool.execute({
+      userId: row.queued_by,
+      runId: row.runId,
+      taskId: task.id,
+      queuedTaskId: row.id,
+      state: row.state,
+      config: toolConfig,
+      // Selector override > task model > user default, independently for each
+      // model role.
+      model,
+      decisionModel,
+    });
+
+    const steps = (stepsByRun.get(row.runId) ?? 0) + 1;
+    stepsByRun.set(row.runId, steps);
+
+    let nextTaskId = execution.nextTaskId ?? task.fallbackTaskId ?? null;
+    let note: string | undefined;
+
+    if (nextTaskId != null && steps >= MAX_STEPS_PER_RUN) {
+      nextTaskId = null;
+      note = `max chain depth (${MAX_STEPS_PER_RUN}) reached — run stopped`;
+    }
+
+    const result = {
+      toolKey: task.toolKey,
+      output: execution.output,
+      summary: execution.summary,
+      branch: nextTaskId != null ? "tool" : "none",
+      nextTaskId,
+      ...(note ? { note } : {}),
+    };
+
+    await finishStep(row.id, "completed", result, execution.summary);
+
+    if (nextTaskId != null) {
+      const append = execution.appendState ?? Boolean(toolConfig?.appendState);
+      const nextState = append
+        ? `${row.state}\n\n${execution.stateAppend ?? execution.summary}`
+        : row.state;
+
+      await db.insert(queuedTasks).values({
+        taskId: nextTaskId,
+        state: nextState,
+        runId: row.runId,
+        queued_by: row.queued_by,
+        // model_selector sets nextModel/nextDecisionModel; otherwise keep the
+        // inherited overrides.
+        model: execution.nextModel ?? row.model,
+        decisionModel: execution.nextDecisionModel ?? row.decisionModel,
+      });
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await finishStep(row.id, "failed", {
+      toolKey: task.toolKey,
+      note: `tool error: ${message}`,
     });
   }
 }

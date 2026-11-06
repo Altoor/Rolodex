@@ -37,6 +37,7 @@
   "scripts": {
     "api": "pnpm tsx watch server.ts -w",
     "generate": "drizzle-kit generate",
-    "push": "drizzle-kit push"
+    "push": "drizzle-kit push",
+    "backfill-embeddings": "tsx src/scripts/backfillTodoEmbeddings.ts"
   }
 }

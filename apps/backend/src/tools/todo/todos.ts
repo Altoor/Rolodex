@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../../schema/builder";
 import { todos } from "../../db";
 import { tryEmbedText, todoEmbeddingText } from "../../ai/embeddings";
-import { getModelForUser } from "../../ai/model";
+import { getDecisionModelForUser, getModelForUser } from "../../ai/model";
 import {
   mergeToolInput,
   parseJsonObject,
@@ -59,8 +59,6 @@ export async function extractTodoFields(
   userId: number,
   context: ToolRunContext,
 ): Promise<{ name: string; description: string }> {
-  void userId;
-
   const input = mergeToolInput(context);
   const suppliedName = readString(input, "name");
   const suppliedDescription = readString(input, "description");
@@ -74,8 +72,12 @@ export async function extractTodoFields(
     return { name: suppliedName, description: suppliedDescription };
   }
 
-  const model = readString(input, "model") ?? context.model;
-  if (!model || !model.trim()) {
+  const model =
+    readString(input, "model") ??
+    context.model ??
+    (await getModelForUser(userId));
+
+  if (!model.trim()) {
     throw new ToolInputError("todo extraction requires a model");
   }
 
@@ -137,9 +139,10 @@ export async function resolveTodoId(
   }
 
   const model =
+    readString(input, "decisionModel") ??
     readString(input, "model") ??
-    context.model ??
-    (await getModelForUser(context.userId));
+    context.decisionModel ??
+    (await getDecisionModelForUser(context.userId));
 
   return selectTodoWithDecision(userTodos, context.state, model);
 }
@@ -179,7 +182,7 @@ const createTodoDefinition: ToolDefinition = {
       model: {
         type: "string",
         description:
-          "Optional model used to infer missing name/description fields.",
+          "Optional generation model used to infer missing name/description fields. Defaults to the user's default generation model.",
       },
     },
   },
@@ -248,7 +251,12 @@ const updateTodoDefinition: ToolDefinition = {
       model: {
         type: "string",
         description:
-          "Optional model used when the todo or fields must be inferred.",
+          "Optional generation model used to infer missing name/description fields. Defaults to the user's default generation model.",
+      },
+      decisionModel: {
+        type: "string",
+        description:
+          "Optional decision model used to select the todo. Defaults to the user's default decision model.",
       },
     },
   },
@@ -319,10 +327,10 @@ const markTodoDoneDefinition: ToolDefinition = {
         description: "Whether the todo should be done. Defaults to true.",
         default: true,
       },
-      model: {
+      decisionModel: {
         type: "string",
         description:
-          "Optional model used only if the todo must be resolved by the decision model.",
+          "Optional decision model used to select the todo. Defaults to the user's default decision model.",
       },
     },
   },
@@ -370,10 +378,10 @@ const deleteTodoDefinition: ToolDefinition = {
         type: "number",
         description: "Optional todo id.",
       },
-      model: {
+      decisionModel: {
         type: "string",
         description:
-          "Optional model used only if the todo must be resolved by the decision model.",
+          "Optional decision model used to select the todo. Defaults to the user's default decision model.",
       },
     },
   },

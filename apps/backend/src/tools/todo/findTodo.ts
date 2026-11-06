@@ -2,7 +2,7 @@ import { and, cosineDistance, eq, ilike, isNotNull, or } from "drizzle-orm";
 import { db } from "../../schema/builder";
 import { todos } from "../../db";
 import { tryEmbedText } from "../../ai/embeddings";
-import { getModelForUser } from "../../ai/model";
+import { getDecisionModelForUser } from "../../ai/model";
 import {
   mergeToolInput,
   readNumber,
@@ -44,10 +44,10 @@ const definition: ToolDefinition = {
         description: "Number of candidates to return. Defaults to 5.",
         default: 5,
       },
-      model: {
+      decisionModel: {
         type: "string",
         description:
-          "Optional model used by the decision-model fallback. Defaults to the task/inherited model, then the user's default decision model.",
+          "Optional decision model used by the fallback selector. Defaults to the task/inherited decision model, then the user's default decision model.",
       },
     },
   },
@@ -157,9 +157,10 @@ export const findTodoTool: Tool = {
 
     if (candidates.length === 0) {
       const model =
+        readString(input, "decisionModel") ??
         readString(input, "model") ??
-        context.model ??
-        (await getModelForUser(context.userId));
+        context.decisionModel ??
+        (await getDecisionModelForUser(context.userId));
 
       const userTodos = await listUserTodos(context.userId);
       if (userTodos.length === 0) {

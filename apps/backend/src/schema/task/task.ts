@@ -1,4 +1,6 @@
 import { builder } from "../builder";
+import { Tool } from "../tool";
+import { getToolDefinition } from "../../tools/registry";
 
 export const TaskType = builder.enumType("TaskType", {
   values: ["decision", "textPrompt", "tool"],
@@ -11,6 +13,20 @@ export const Task = builder.drizzleObject("tasks", {
     name: t.exposeString("name"),
     type: t.exposeString("type"),
     fallbackTaskId: t.exposeInt("fallbackTaskId"),
+    toolKey: t.exposeString("toolKey", { nullable: true }),
+    toolConfig: t.field({
+      type: "JSON",
+      nullable: true,
+      resolve: (parent) => parent.toolConfig ?? null,
+    }),
+    model: t.exposeString("model", { nullable: true }),
+    decisionModel: t.exposeString("decisionModel", { nullable: true }),
+    tool: t.field({
+      type: Tool,
+      nullable: true,
+      resolve: (parent) =>
+        parent.toolKey ? getToolDefinition(parent.toolKey) : null,
+    }),
     decision: t.relation("decision"),
     taskResults: t.relation("taskResults"),
     fallbackTask: t.relation("fallbackTask"),
@@ -60,6 +76,8 @@ export const QueuedTask = builder.drizzleObject("queuedTasks", {
       nullable: true,
     }),
     queued_by: t.exposeInt("queued_by"),
+    model: t.exposeString("model", { nullable: true }),
+    decisionModel: t.exposeString("decisionModel", { nullable: true }),
     task: t.relation("task"),
   }),
 });

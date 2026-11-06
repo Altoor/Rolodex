@@ -8,6 +8,52 @@ import { DecisionType } from "../ai";
 import { triggerQueue } from "../../queue";
 import { requireUserId } from "../auth";
 import { getUserSettings } from "../user/user-settings-service";
+import { assertPulledModel } from "../../ai/model";
+import { getToolDefinition } from "../../tools/registry";
+
+async function assertValidTaskConfig(input: {
+  type: string;
+  toolKey: string | null;
+  toolConfig?: unknown;
+  model: string | null;
+  decisionModel: string | null;
+}): Promise<void> {
+  if (input.type === "tool") {
+    if (!input.toolKey) {
+      throw new GraphQLError("toolKey is required for tool tasks", {
+        extensions: { code: "BAD_USER_INPUT" },
+      });
+    }
+
+    if (!getToolDefinition(input.toolKey)) {
+      throw new GraphQLError(`Unknown tool "${input.toolKey}"`, {
+        extensions: { code: "BAD_USER_INPUT" },
+      });
+    }
+  }
+
+  if (
+    input.toolConfig !== undefined &&
+    input.toolConfig !== null &&
+    (typeof input.toolConfig !== "object" || Array.isArray(input.toolConfig))
+  ) {
+    throw new GraphQLError("toolConfig must be a JSON object", {
+      extensions: { code: "BAD_USER_INPUT" },
+    });
+  }
+
+  for (const model of [input.model, input.decisionModel]) {
+    if (!model) continue;
+
+    try {
+      await assertPulledModel(model);
+    } catch (err) {
+      throw new GraphQLError(err instanceof Error ? err.message : String(err), {
+        extensions: { code: "BAD_USER_INPUT" },
+      });
+    }
+  }
+}
 
 builder.mutationType({
   fields: (t) => ({
@@ -18,33 +64,47 @@ builder.mutationType({
         decisionId: t.arg.int(),
         fallbackTaskId: t.arg.int(),
         type: t.arg({ type: TaskType, required: true }),
+        toolKey: t.arg.string(),
+        toolConfig: t.arg({ type: "JSON" }),
+        model: t.arg.string(),
+        decisionModel: t.arg.string(),
       },
       resolve: async (
         _query,
         _root,
-        { name, decisionId, fallbackTaskId, type },
+        {
+          name,
+          decisionId,
+          fallbackTaskId,
+          type,
+          toolKey,
+          toolConfig,
+          model,
+          decisionModel,
+        },
         ctx,
       ) => {
         const author_id = requireUserId(ctx);
-
-        switch (type) {
-          case "decision":
-            break;
-          case "textPrompt":
-            break;
-
-          case "tool":
-            break;
-          default:
-            break;
-        }
 
         const task = {
           name,
           type,
           decisionId,
           fallbackTaskId,
+          toolKey: toolKey ?? null,
+          toolConfig: toolConfig ?? null,
+          model: model ?? null,
+          decisionModel: decisionModel ?? null,
         };
+
+        await assertValidTaskConfig({
+          type: task.type,
+          toolKey: task.toolKey,
+          toolConfig: task.toolConfig,
+          model: task.model,
+          decisionModel: task.decisionModel,
+        });
+
         const createdTask = await db.insert(tasks).values(task).returning();
 
         return createdTask[0];
@@ -59,11 +119,25 @@ builder.mutationType({
         decisionId: t.arg.int(),
         fallbackTaskId: t.arg.int(),
         type: t.arg({ type: TaskType }),
+        toolKey: t.arg.string(),
+        toolConfig: t.arg({ type: "JSON" }),
+        model: t.arg.string(),
+        decisionModel: t.arg.string(),
       },
       resolve: async (
         _query,
         _root,
-        { id, name, type, decisionId, fallbackTaskId },
+        {
+          id,
+          name,
+          type,
+          decisionId,
+          fallbackTaskId,
+          toolKey,
+          toolConfig,
+          model,
+          decisionModel,
+        },
         ctx,
       ) => {
         const author_id = requireUserId(ctx);
@@ -78,25 +152,34 @@ builder.mutationType({
           });
         }
 
-        switch (type) {
-          case "decision":
-            break;
-          case "textPrompt":
-            break;
+        const nextType = type ?? task.type;
+        const nextToolKey = toolKey !== undefined ? toolKey : task.toolKey;
+        const nextToolConfig =
+          toolConfig !== undefined ? toolConfig : task.toolConfig;
+        const nextModel = model !== undefined ? model : task.model;
+        const nextDecisionModel =
+          decisionModel !== undefined ? decisionModel : task.decisionModel;
 
-          case "tool":
-            break;
-          default:
-            break;
-        }
+        await assertValidTaskConfig({
+          type: nextType,
+          toolKey: nextToolKey,
+          toolConfig: nextToolConfig,
+          model: nextModel,
+          decisionModel: nextDecisionModel,
+        });
 
         const taskDto = {
           name: name ?? task.name,
-          type: type ?? task.type,
+          type: nextType,
           decisionId: decisionId ?? task.decisionId,
           // An explicit null clears the fallback task.
           fallbackTaskId:
             fallbackTaskId !== undefined ? fallbackTaskId : task.fallbackTaskId,
+          // Explicit nulls clear the tool/model configuration.
+          toolKey: nextToolKey,
+          toolConfig: nextToolConfig,
+          model: nextModel,
+          decisionModel: nextDecisionModel,
         };
 
         const updatedTask = await db
