@@ -237,6 +237,9 @@ const TaskFlow = ({
           name: task.name ?? "Untitled task",
           type: task.type,
           decisionType: task.decision?.type ?? null,
+          toolKey: task.toolKey ?? null,
+          model: task.model ?? null,
+          decisionModel: task.decisionModel ?? null,
           taskResults: (task.taskResults ?? []).filter(
             (result) => result != null,
           ),

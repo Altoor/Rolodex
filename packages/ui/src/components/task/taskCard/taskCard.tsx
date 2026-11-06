@@ -8,7 +8,13 @@ import {
   CardContent,
   CardAction,
 } from "#components/ui/card";
-import { Field, FieldGroup, FieldLabel } from "#components/ui/field";
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "#components/ui/field";
 import { Input } from "#components/ui/input";
 import { Button } from "#components/ui/button";
 import { Spinner } from "#components/ui/spinner";
@@ -22,9 +28,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "#components/ui/select";
+import { Textarea } from "#components/ui/textarea";
+import {
+  ToolDetails,
+  type ToolDetailsData,
+} from "#components/tools/toolDetails";
 import type { FieldArrayWithId } from "react-hook-form";
 import { useFormContext, useWatch } from "react-hook-form";
-import type { TaskFormValues } from "../task-form";
+import { USE_USER_DEFAULT_MODEL, type TaskFormValues } from "../task-form";
 import TaskResultOption from "../taskResultOption/taskResultOption";
 import { TaskType } from "@repo/queries/__generated__/graphql";
 
@@ -36,6 +47,8 @@ const TASK_TYPES = [
 
 interface TaskCardProps {
   resultFields: FieldArrayWithId<TaskFormValues, "taskResults", "id">[];
+  tools: ToolDetailsData[];
+  models: string[];
   save: () => void;
   saving?: boolean;
   canEditResults: boolean;
@@ -46,6 +59,8 @@ interface TaskCardProps {
 
 const TaskCard = ({
   resultFields,
+  tools,
+  models,
   save,
   saving = false,
   canEditResults,
@@ -53,9 +68,15 @@ const TaskCard = ({
   onSaveResult,
   onDeleteResult,
 }: TaskCardProps) => {
-  const { register, control } = useFormContext<TaskFormValues>();
+  const {
+    register,
+    control,
+    formState: { errors },
+  } = useFormContext<TaskFormValues>();
   const type = useWatch({ control, name: "type" });
   const decision = useWatch({ control, name: "decision" });
+  const toolKey = useWatch({ control, name: "toolKey" });
+  const selectedTool = tools.find((tool) => tool.key === toolKey);
 
   return (
     <Card className="w-full">
@@ -109,7 +130,133 @@ const TaskCard = ({
         </CardAction>
       </CardHeader>
 
-      <CardContent>
+      <CardContent className="flex flex-col gap-5">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field>
+            <FieldLabel>Generation model</FieldLabel>
+            <SelectController name="model" control={control}>
+              {(value, onChange) => (
+                <Select
+                  value={value ?? USE_USER_DEFAULT_MODEL}
+                  onValueChange={onChange}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value={USE_USER_DEFAULT_MODEL}>
+                        Use user default
+                      </SelectItem>
+                      {models.map((model) => (
+                        <SelectItem key={model} value={model}>
+                          {model}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              )}
+            </SelectController>
+            <FieldDescription>
+              Used by the prompt tool and todo field extraction.
+            </FieldDescription>
+          </Field>
+
+          <Field>
+            <FieldLabel>Decision model</FieldLabel>
+            <SelectController name="decisionModel" control={control}>
+              {(value, onChange) => (
+                <Select
+                  value={value ?? USE_USER_DEFAULT_MODEL}
+                  onValueChange={onChange}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value={USE_USER_DEFAULT_MODEL}>
+                        Use user default
+                      </SelectItem>
+                      {models.map((model) => (
+                        <SelectItem key={model} value={model}>
+                          {model}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              )}
+            </SelectController>
+            <FieldDescription>
+              Used by decision tasks and todo selection.
+            </FieldDescription>
+          </Field>
+        </div>
+
+        {type === "tool" ? (
+          <div className="flex flex-col gap-4 rounded-lg border p-4">
+            <Field>
+              <FieldLabel>Tool</FieldLabel>
+              <SelectController
+                name="toolKey"
+                control={control}
+                rules={{ required: "select a tool" }}
+              >
+                {(value, onChange) => (
+                  <Select value={value} onValueChange={onChange}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select a tool" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {tools.map((tool) => (
+                          <SelectItem
+                            key={tool.key ?? tool.name}
+                            value={tool.key ?? ""}
+                          >
+                            {tool.name ?? tool.key}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                )}
+              </SelectController>
+              <FieldError errors={[errors.toolKey]} />
+            </Field>
+
+            <Field>
+              <FieldLabel htmlFor="task-tool-config">
+                Tool config (JSON)
+              </FieldLabel>
+              <Textarea
+                id="task-tool-config"
+                placeholder='Optional JSON, for example {"id": 3, "done": true}.'
+                {...register("toolConfigText")}
+              />
+              <FieldDescription>
+                Optional JSON. The queued task state is also passed to the tool.
+              </FieldDescription>
+              <FieldError errors={[errors.toolConfigText]} />
+            </Field>
+
+            {toolKey === "prompt" ? (
+              <FieldDescription>
+                Prompt uses the generation model. Leave it empty to use your
+                default.
+              </FieldDescription>
+            ) : null}
+
+            {selectedTool ? (
+              <div className="rounded-lg bg-muted/40 p-4">
+                <ToolDetails tool={selectedTool} />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         {type === "decision" ? (
           <div className="flex flex-col gap-3">
             <CardTitle>Results</CardTitle>

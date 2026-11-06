@@ -26,13 +26,23 @@ export type TaskFormValues = {
   type: TaskType;
   taskResults: TaskResultFormValues[];
   decision: TaskDecisionFormValue | null;
+  toolKey: string | null;
+  toolConfigText: string;
+  model: string | null;
+  decisionModel: string | null;
 };
+
+export const USE_USER_DEFAULT_MODEL = "__user_default_model__";
 
 export const emptyTaskFormValues: TaskFormValues = {
   name: "",
   type: "decision",
   taskResults: [],
   decision: null,
+  toolKey: null,
+  toolConfigText: "",
+  model: null,
+  decisionModel: null,
 };
 
 type TaskRecord = NonNullable<GetTaskQuery["getTask"]>;
@@ -59,4 +69,10 @@ export const taskToFormValues = (task: TaskRecord): TaskFormValues => ({
         options: task.decision.options ?? [],
       }
     : null,
+  toolKey: task.toolKey ?? null,
+  toolConfigText: task.toolConfig
+    ? JSON.stringify(task.toolConfig, null, 2)
+    : "",
+  model: task.model ?? null,
+  decisionModel: task.decisionModel ?? null,
 });

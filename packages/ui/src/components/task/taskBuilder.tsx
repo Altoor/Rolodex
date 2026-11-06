@@ -4,8 +4,10 @@ import DecisionBuilder from "#components/decision/decisionBuilder";
 import DecisionList from "#components/decision/decisionList/decisionList";
 import { ErrorState } from "#components/feedback/error-state";
 import { Button } from "#components/ui/button";
-import { useLazyQuery, useMutation } from "@apollo/client/react";
+import { useLazyQuery, useMutation, useQuery } from "@apollo/client/react";
 import { GET_DECISION } from "@repo/queries/decisions/decision-queries";
+import { MODELS } from "@repo/queries/model/model-queries";
+import { TOOLS } from "@repo/queries/tools/tool-queries";
 import {
   CREATE_TASK,
   CREATE_TASKRESULT,
@@ -17,11 +19,17 @@ import { GET_TASK, TASKS } from "@repo/queries/tasks/task-queries";
 import { DecisionType } from "@repo/queries/__generated__/graphql";
 import { Pencil } from "lucide-react";
 import { useEffect, useState } from "react";
-import { FormProvider, useFieldArray, useForm } from "react-hook-form";
+import {
+  FormProvider,
+  useFieldArray,
+  useForm,
+  useWatch,
+} from "react-hook-form";
 import TaskCard from "./taskCard/taskCard";
 import {
   emptyTaskFormValues,
   taskToFormValues,
+  USE_USER_DEFAULT_MODEL,
   type TaskFormValues,
 } from "./task-form";
 
@@ -34,10 +42,18 @@ const TaskBuilder = ({ selectedTaskId }: TaskBuilderProps) => {
     defaultValues: emptyTaskFormValues,
   });
   const { getValues, reset, setValue, control } = methods;
+  const type = useWatch({ control, name: "type" });
   const { fields, append, remove } = useFieldArray({
     control,
     name: "taskResults",
   });
+
+  const { data: toolsData } = useQuery(TOOLS);
+  const { data: modelsData } = useQuery(MODELS);
+  const tools = toolsData?.tools ?? [];
+  const models = (modelsData?.models ?? []).flatMap((model) =>
+    model.pulled && model.name ? [model.name] : [],
+  );
 
   const [getTask, { error: loadError }] = useLazyQuery(GET_TASK);
   const [getDecision] = useLazyQuery(GET_DECISION);
@@ -120,13 +136,44 @@ const TaskBuilder = ({ selectedTaskId }: TaskBuilderProps) => {
   }, [getDecision, getValues, selectedDecisionId, setValue]);
 
   const saveTask = methods.handleSubmit(async (values) => {
+    if (values.type === "tool" && !values.toolKey) {
+      methods.setError("toolKey", { message: "select a tool" });
+      return;
+    }
+
+    let toolConfig: Record<string, unknown> | null = null;
+
+    if (values.type === "tool" && values.toolConfigText.trim()) {
+      try {
+        const parsed: unknown = JSON.parse(values.toolConfigText);
+        if (
+          parsed === null ||
+          typeof parsed !== "object" ||
+          Array.isArray(parsed)
+        ) {
+          throw new Error("toolConfig must be a JSON object");
+        }
+        toolConfig = parsed as Record<string, unknown>;
+      } catch (err) {
+        methods.setError("toolConfigText", {
+          message: err instanceof Error ? err.message : String(err),
+        });
+        return;
+      }
+    }
+
     const taskVariables = {
       name: values.name,
       type: values.type,
-      decisionId: selectedDecisionId,
+      decisionId: values.type === "decision" ? selectedDecisionId : undefined,
+      toolKey: values.type === "tool" ? values.toolKey : null,
+      toolConfig,
+      model: values.model === USE_USER_DEFAULT_MODEL ? null : values.model,
+      decisionModel:
+        values.decisionModel === USE_USER_DEFAULT_MODEL
+          ? null
+          : values.decisionModel,
     };
-
-    console.log(values);
 
     if (taskId !== undefined) {
       await updateTask({ variables: { ...taskVariables, id: taskId } });
@@ -218,6 +265,8 @@ const TaskBuilder = ({ selectedTaskId }: TaskBuilderProps) => {
         ) : null}
         <TaskCard
           resultFields={fields}
+          tools={tools}
+          models={models}
           save={saveTask}
           saving={creatingTask || updatingTask}
           canEditResults={taskId !== undefined}
@@ -225,29 +274,31 @@ const TaskBuilder = ({ selectedTaskId }: TaskBuilderProps) => {
           onSaveResult={saveTaskResult}
           onDeleteResult={deleteTaskResultAt}
         />
-        {selectedDecisionId !== undefined ? (
-          <>
-            <Button
-              type="button"
-              variant="outline"
-              className="w-fit"
-              onClick={() => {
-                setSelectedDecisionId(undefined);
-              }}
-            >
-              Select another decision <Pencil />
-            </Button>
-            <DecisionBuilder selectedDecisionId={selectedDecisionId} />
-          </>
-        ) : (
-          <>
-            <DecisionList
-              selectedDecisionId={undefined}
-              setSelectedDecisionId={setSelectedDecisionId}
-            />
-            <DecisionBuilder selectedDecisionId={undefined} />
-          </>
-        )}
+        {type === "decision" ? (
+          selectedDecisionId !== undefined ? (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-fit"
+                onClick={() => {
+                  setSelectedDecisionId(undefined);
+                }}
+              >
+                Select another decision <Pencil />
+              </Button>
+              <DecisionBuilder selectedDecisionId={selectedDecisionId} />
+            </>
+          ) : (
+            <>
+              <DecisionList
+                selectedDecisionId={undefined}
+                setSelectedDecisionId={setSelectedDecisionId}
+              />
+              <DecisionBuilder selectedDecisionId={undefined} />
+            </>
+          )
+        ) : null}
       </div>
     </FormProvider>
   );

@@ -23,19 +23,8 @@ import { Separator } from "#components/ui/separator";
 import { Spinner } from "#components/ui/spinner";
 import { Textarea } from "#components/ui/textarea";
 import { Input } from "#components/ui/input";
+import { ToolDetails } from "#components/tools/toolDetails";
 import { SubmitHandler, useForm } from "react-hook-form";
-
-interface ToolInputProperty {
-  type?: string;
-  description?: string;
-  enum?: string[];
-  default?: unknown;
-}
-
-interface ToolInputSchema {
-  properties?: Record<string, ToolInputProperty>;
-  required?: string[];
-}
 
 interface ToolCardProps {
   tool: NonNullable<GetToolsQuery["tools"]>[number];
@@ -77,10 +66,6 @@ export default function ToolCard({ tool }: ToolCardProps) {
     },
   });
 
-  const schema = (tool.inputSchema ?? {}) as ToolInputSchema;
-  const properties = Object.entries(schema.properties ?? {});
-  const required = new Set(schema.required ?? []);
-
   const onSubmit: SubmitHandler<Inputs> = async (inputs) => {
     let toolConfig: Record<string, unknown> | null;
 
@@ -121,62 +106,7 @@ export default function ToolCard({ tool }: ToolCardProps) {
       </CardHeader>
 
       <CardContent className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1 text-sm">
-          <p>
-            <span className="font-medium">Input mode:</span> {tool.inputMode}
-          </p>
-          <p>
-            <span className="font-medium">Output:</span>{" "}
-            {tool.outputDescription}
-          </p>
-        </div>
-
-        {properties.length > 0 ? (
-          <div className="flex flex-col gap-2">
-            <p className="text-sm font-medium">Input schema</p>
-            <ul className="flex flex-col gap-2 text-sm">
-              {properties.map(([name, property]) => (
-                <li key={name} className="rounded-md border px-3 py-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-xs font-medium">
-                      {name}
-                    </span>
-                    <Badge variant="outline">
-                      {property.type ?? "unknown"}
-                    </Badge>
-                    {required.has(name) ? (
-                      <Badge variant="destructive">required</Badge>
-                    ) : null}
-                  </div>
-                  {property.description ? (
-                    <p className="mt-1 text-muted-foreground">
-                      {property.description}
-                    </p>
-                  ) : null}
-                  {property.enum ? (
-                    <p className="mt-1 font-mono text-xs text-muted-foreground">
-                      enum: {property.enum.join(", ")}
-                    </p>
-                  ) : null}
-                  {property.default !== undefined ? (
-                    <p className="mt-1 font-mono text-xs text-muted-foreground">
-                      default: {JSON.stringify(property.default)}
-                    </p>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-
-        <div className="flex flex-col gap-2">
-          <p className="text-sm font-medium">Example config</p>
-          <pre className="overflow-x-auto rounded-md bg-muted p-3 text-xs">
-            {tool.exampleConfig
-              ? JSON.stringify(tool.exampleConfig, null, 2)
-              : "No example config"}
-          </pre>
-        </div>
+        <ToolDetails tool={tool} showDescription={false} />
 
         <Separator />
 

@@ -49,10 +49,11 @@ type Inputs = {
 
 /** The executor stores this on each step's `result` column. */
 interface StepResult {
-  branch?: "result" | "fallback" | "none";
+  branch?: "result" | "fallback" | "tool" | "none";
   nextTaskId?: number | null;
   summary?: string;
   note?: string;
+  output?: unknown;
 }
 
 interface QueuedTaskStep {
@@ -61,6 +62,8 @@ interface QueuedTaskStep {
   status: "queued" | "running" | "completed" | "failed";
   runId: string;
   result: StepResult | null;
+  model: string | null;
+  decisionModel: string | null;
   task: { id: number | null; name: string | null; type: string | null } | null;
 }
 
@@ -70,6 +73,8 @@ interface QueuedTaskRow {
   status: "queued" | "running" | "completed" | "failed" | null;
   runId: string | null;
   result: unknown;
+  model: string | null;
+  decisionModel: string | null;
   task: { id: number | null; name: string | null; type: string | null } | null;
 }
 
@@ -82,6 +87,8 @@ function toStep(row: QueuedTaskRow): QueuedTaskStep | null {
     status: row.status ?? "queued",
     runId: row.runId,
     result: (row.result as StepResult | null) ?? null,
+    model: row.model ?? null,
+    decisionModel: row.decisionModel ?? null,
     task: row.task ?? null,
   };
 }
@@ -391,10 +398,21 @@ export default function LandingPage() {
                           ? `next: ${taskName(step.result.nextTaskId)}`
                           : step.result?.branch === "fallback"
                             ? `fallback: ${taskName(step.result.nextTaskId)}`
-                            : undefined;
+                            : step.result?.branch === "tool"
+                              ? step.result.nextTaskId != null
+                                ? `next: ${taskName(step.result.nextTaskId)}`
+                                : "tool result"
+                              : undefined;
 
                       const detail =
-                        [step.result?.summary, step.result?.note]
+                        [
+                          step.result?.summary,
+                          step.result?.note,
+                          step.model ? `generation: ${step.model}` : null,
+                          step.decisionModel
+                            ? `decision: ${step.decisionModel}`
+                            : null,
+                        ]
                           .filter((part): part is string => !!part)
                           .join(" — ") || undefined;
 
@@ -417,7 +435,8 @@ export default function LandingPage() {
                               )
                             }
                             title={
-                              step.task?.name ?? `task ${step.taskId ?? step.id}`
+                              step.task?.name ??
+                              `task ${step.taskId ?? step.id}`
                             }
                             description={branch}
                           />
@@ -425,6 +444,16 @@ export default function LandingPage() {
                             <p className="ml-6 text-xs text-muted-foreground">
                               {detail}
                             </p>
+                          ) : null}
+                          {step.result?.output != null ? (
+                            <details className="ml-6 text-xs text-muted-foreground">
+                              <summary className="cursor-pointer select-none">
+                                Tool output
+                              </summary>
+                              <pre className="mt-1 max-h-56 overflow-auto rounded-md bg-muted p-2 text-xs">
+                                {JSON.stringify(step.result.output, null, 2)}
+                              </pre>
+                            </details>
                           ) : null}
                         </div>
                       );

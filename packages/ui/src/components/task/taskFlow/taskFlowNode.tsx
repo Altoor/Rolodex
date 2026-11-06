@@ -59,15 +59,30 @@ const TaskFlowNode = ({ data, selected }: NodeProps<TaskFlowNode>) => {
       </button>
 
       <p className="text-xs tracking-wide text-muted-foreground uppercase">
-        Task
+        {data.type === "tool" ? "Tool" : "Task"}
       </p>
-      <p className="mb-2 text-sm font-medium">{data.name}</p>
+      <p className="text-sm font-medium">{data.name}</p>
+      {data.type === "tool" && data.toolKey ? (
+        <p className="text-xs text-muted-foreground">Tool · {data.toolKey}</p>
+      ) : null}
+      {data.model ? (
+        <p className="text-xs text-muted-foreground">Model · {data.model}</p>
+      ) : null}
+      {data.decisionModel ? (
+        <p className="text-xs text-muted-foreground">
+          Decision · {data.decisionModel}
+        </p>
+      ) : null}
 
       {/* One output per TaskResult this task has. Each row is positioned so
           the (absolute) handle is centered on its own row instead of on the
           whole node. */}
-      <div className="flex flex-col gap-1">
-        {data.taskResults.length > 0 ? (
+      <div className="mt-2 flex flex-col gap-1">
+        {data.type === "tool" ? (
+          <p className="text-xs text-muted-foreground/60">
+            Chains through the next/fallback edge.
+          </p>
+        ) : data.taskResults.length > 0 ? (
           data.taskResults.map((result, index) => (
             <div
               key={result.id ?? index}
@@ -90,7 +105,7 @@ const TaskFlowNode = ({ data, selected }: NodeProps<TaskFlowNode>) => {
         )}
         {/* Every task also has a fallback output */}
         <div className="relative flex items-center justify-between gap-2 rounded border px-2 py-1 text-xs text-muted-foreground">
-          <span>Fallback</span>
+          <span>{data.type === "tool" ? "Next / fallback" : "Fallback"}</span>
           <Handle
             type="source"
             position={Position.Right}
