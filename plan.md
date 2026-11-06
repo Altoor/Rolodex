@@ -45,8 +45,8 @@ explicitly.
   - `toolConfig.model` / JSON state supplied to the prompt tool, or
   - the incoming queued step's model (set by `model_selector` or by the task's
     `model` field).
-  If no model is available, the prompt tool fails with a clear error. It must
-  not silently fall back to `userSettings.defaultModelName`.
+    If no model is available, the prompt tool fails with a clear error. It must
+    not silently fall back to `userSettings.defaultModelName`.
 - **Todo search uses local embeddings, not OpenAI.** Generate embeddings through
   the existing Ollama instance (`ollama.embed`) with an Ollama embedding model,
   e.g. `nomic-embed-text`, and store them in a pgvector column. Use
@@ -56,9 +56,9 @@ explicitly.
 - **Tool input comes from two places:**
   1. The queued task's `state` string (what the user types on the landing page).
   2. The task's `toolConfig` JSON (defaults/fixed arguments).
-  If `state` is valid JSON, its values override `toolConfig`. If `state` is
-  plain text, tools use it as free-form input and/or use the `prompt` helper to
-  extract structured fields from it.
+     If `state` is valid JSON, its values override `toolConfig`. If `state` is
+     plain text, tools use it as free-form input and/or use the `prompt` helper to
+     extract structured fields from it.
 - **Tool tasks continue through `fallbackTaskId`.** Tool tasks do not use
   `TaskResult` rows. For a tool task, the existing fallback edge is the normal
   "next task" edge. Tool execution can also return an explicit `nextTaskId`.
@@ -289,7 +289,7 @@ Define `promptTool: Tool` with this definition:
   - `format` (`object`): optional JSON schema passed to Ollama for structured
     output.
 - `outputDescription: "The model answer as text, plus the model name and optional thinking text."`
-- `exampleConfig: { "model": "llama3.2", "system": "You are a helpful assistant.", "appendState": true }`
+- `exampleConfig: { "model": "gemma4:e2b", "system": "You are a helpful assistant.", "appendState": true }`
 
 `execute` behavior:
 
@@ -472,7 +472,7 @@ and regenerate the vector column migration.
   - Input schema properties:
     - `model` (`string`, required): an installed/pulled Ollama model name.
   - Output: `{ model }`.
-  - Example config: `{ "model": "llama3.2" }`
+  - Example config: `{ "model": "gemma4:e2b" }`
 - Execute:
   1. `const model = requireNonEmptyString(readString(mergeToolInput(context), "model"), "model")`.
   2. `await assertPulledModel(model)`.
@@ -634,7 +634,7 @@ from `apps/backend/src/db`.
   1. `const todo = await resolveTodoId(context.userId, context)`.
   2. `const done = readBoolean(mergeToolInput(context), "done") ?? true`.
   3. Update `{ done }`. No re-embedding needed.
-  4. Return `{ output: { todo: updated }, summary: done ? `Marked todo "${updated.name}" as done` : `Marked todo "${updated.name}" as not done` }`.
+  4. Return `{ output: { todo: updated }, summary: done ? `Marked todo "${updated.name}" as done`:`Marked todo "${updated.name}" as not done` }`.
 
 ### 1.10 Seventh tool: delete_todo
 
@@ -855,28 +855,26 @@ search and LLM selection when no embeddings exist.
   `../builder`.
 - Create:
   ```ts
-  export const Tool = builder
-    .objectRef<ToolDefinition>("Tool")
-    .implement({
-      description: "A runnable tool available to tool tasks.",
-      fields: (t) => ({
-        key: t.exposeString("key"),
-        name: t.exposeString("name"),
-        description: t.exposeString("description"),
-        category: t.exposeString("category"),
-        inputMode: t.exposeString("inputMode"),
-        inputSchema: t.field({
-          type: "JSON",
-          resolve: (parent) => parent.inputSchema,
-        }),
-        outputDescription: t.exposeString("outputDescription"),
-        exampleConfig: t.field({
-          type: "JSON",
-          nullable: true,
-          resolve: (parent) => parent.exampleConfig ?? null,
-        }),
+  export const Tool = builder.objectRef<ToolDefinition>("Tool").implement({
+    description: "A runnable tool available to tool tasks.",
+    fields: (t) => ({
+      key: t.exposeString("key"),
+      name: t.exposeString("name"),
+      description: t.exposeString("description"),
+      category: t.exposeString("category"),
+      inputMode: t.exposeString("inputMode"),
+      inputSchema: t.field({
+        type: "JSON",
+        resolve: (parent) => parent.inputSchema,
       }),
-    });
+      outputDescription: t.exposeString("outputDescription"),
+      exampleConfig: t.field({
+        type: "JSON",
+        nullable: true,
+        resolve: (parent) => parent.exampleConfig ?? null,
+      }),
+    }),
+  });
   ```
 - Add a result type for direct tool tests:
   ```ts
@@ -1167,10 +1165,7 @@ model = await modelForUser(row.queued_by);
 with:
 
 ```ts
-model =
-  row.model ??
-  task.model ??
-  (await getModelForUser(row.queued_by));
+model = row.model ?? task.model ?? (await getModelForUser(row.queued_by));
 ```
 
 So a model selected by `model_selector` (`row.model`) wins, then the task's
@@ -1243,8 +1238,7 @@ async function processToolStep(
     await finishStep(row.id, "completed", result, execution.summary);
 
     if (nextTaskId != null) {
-      const append =
-        execution.appendState ?? Boolean(toolConfig?.appendState);
+      const append = execution.appendState ?? Boolean(toolConfig?.appendState);
       const nextState = append
         ? `${row.state}\n\n${execution.stateAppend ?? execution.summary}`
         : row.state;
@@ -1542,7 +1536,11 @@ object validation; parse it only when saving.
   if (values.type === "tool" && values.toolConfigText.trim()) {
     try {
       const parsed = JSON.parse(values.toolConfigText);
-      if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      if (
+        parsed === null ||
+        typeof parsed !== "object" ||
+        Array.isArray(parsed)
+      ) {
         throw new Error("toolConfig must be a JSON object");
       }
       toolConfig = parsed;
@@ -1664,7 +1662,7 @@ Task:
 
 - `type: "tool"`
 - `toolKey: "prompt"`
-- `model: "llama3.2"` (selected while setting up the task)
+- `model: "gemma4:e2b"` (selected while setting up the task)
 - `toolConfig: { "system": "You are a helpful assistant.", "appendState": true }`
 
 Run with state:
@@ -1680,7 +1678,7 @@ Task 1:
 
 - `type: "tool"`
 - `toolKey: "model_selector"`
-- `toolConfig: { "model": "llama3.2" }`
+- `toolConfig: { "model": "gemma4:e2b" }`
 - `fallbackTaskId: <task 2 id>` (next edge)
 
 Task 2:
@@ -1690,10 +1688,10 @@ Task 2:
 
 Flow:
 
-1. `model_selector` validates that `llama3.2` is pulled.
-2. Its result contains `nextModel: "llama3.2"`.
-3. The queue inserts the next step with `model: "llama3.2"`.
-4. The next tool receives `context.model = "llama3.2"`, or the next decision
+1. `model_selector` validates that `gemma4:e2b` is pulled.
+2. Its result contains `nextModel: "gemma4:e2b"`.
+3. The queue inserts the next step with `model: "gemma4:e2b"`.
+4. The next tool receives `context.model = "gemma4:e2b"`, or the next decision
    uses `row.model` as its model override.
 
 ### 8.3 Prompt → create todo chain
@@ -1702,7 +1700,7 @@ Task 1:
 
 - `type: "tool"`
 - `toolKey: "prompt"`
-- `model: "llama3.2"`
+- `model: "gemma4:e2b"`
 - `toolConfig: { "system": "Extract a todo name and description from the user text. Return JSON.", "appendState": true }`
 - `fallbackTaskId: <task 2 id>`
 
@@ -1710,7 +1708,7 @@ Task 2:
 
 - `type: "tool"`
 - `toolKey: "create_todo"`
-- `model: "llama3.2"` (used by the prompt helper to infer fields)
+- `model: "gemma4:e2b"` (used by the prompt helper to infer fields)
 - `toolConfig: {}`
 
 Run with state:
@@ -1753,7 +1751,7 @@ Flow:
 
 ### 8.5 Direct create/update/mark/delete
 
-- Create: `toolKey: "create_todo"`, `model: "llama3.2"`, `toolConfig: {}`,
+- Create: `toolKey: "create_todo"`, `model: "gemma4:e2b"`, `toolConfig: {}`,
   state: "Buy milk and bread tonight."
 - Update: `toolKey: "update_todo"`,
   `toolConfig: { "id": 3, "name": "Buy groceries", "description": "Milk, bread, eggs" }`
