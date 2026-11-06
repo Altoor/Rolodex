@@ -2,12 +2,11 @@ import { eq } from "drizzle-orm";
 import { db } from "../../schema/builder";
 import { todos } from "../../db";
 import { tryEmbedText, todoEmbeddingText } from "../../ai/embeddings";
-import { getDecisionModelForUser, getModelForUser } from "../../ai/model";
+import { getModelForUser } from "../../ai/model";
 import {
   mergeToolInput,
   parseJsonObject,
   readBoolean,
-  readNumber,
   readString,
 } from "../input";
 import {
@@ -17,34 +16,7 @@ import {
   type ToolRunContext,
 } from "../types";
 import { runPrompt } from "../prompt/prompt";
-import { selectTodoWithDecision } from "./selection";
-
-type TodoRow = typeof todos.$inferSelect;
-
-export async function listUserTodos(userId: number): Promise<TodoRow[]> {
-  return db.query.todos.findMany({
-    where: {
-      OR: [{ authorId: userId }, { actorId: userId }],
-    },
-  });
-}
-
-export async function loadUserTodo(
-  userId: number,
-  id: number,
-): Promise<TodoRow> {
-  const todo = await db.query.todos.findFirst({
-    where: {
-      AND: [{ OR: [{ authorId: userId }, { actorId: userId }] }, { id }],
-    },
-  });
-
-  if (!todo) {
-    throw new ToolInputError(`todo ${id} not found`);
-  }
-
-  return todo;
-}
+import { findTodoMatches, type TodoCandidate } from "./search";
 
 const todoFieldsFormat = {
   type: "object",
@@ -118,33 +90,10 @@ export async function extractTodoFields(
 }
 
 export async function resolveTodoId(
-  userId: number,
   context: ToolRunContext,
-): Promise<TodoRow> {
-  const input = mergeToolInput(context);
-  const explicitId = readNumber(input, "id") ?? readNumber(input, "todoId");
-
-  if (explicitId !== undefined) {
-    return loadUserTodo(userId, explicitId);
-  }
-
-  const userTodos = await listUserTodos(userId);
-
-  if (userTodos.length === 0) {
-    throw new ToolInputError("no todos found");
-  }
-
-  if (userTodos.length === 1) {
-    return userTodos[0]!;
-  }
-
-  const model =
-    readString(input, "decisionModel") ??
-    readString(input, "model") ??
-    context.decisionModel ??
-    (await getDecisionModelForUser(context.userId));
-
-  return selectTodoWithDecision(userTodos, context.state, model);
+): Promise<TodoCandidate> {
+  const { todo } = await findTodoMatches(context);
+  return todo;
 }
 
 export async function saveTodoWithEmbedding(todo: {
@@ -281,7 +230,7 @@ export const updateTodoTool: Tool = {
   definition: updateTodoDefinition,
 
   async execute(context) {
-    const todo = await resolveTodoId(context.userId, context);
+    const todo = await resolveTodoId(context);
     const input = mergeToolInput(context);
     let name = readString(input, "name");
     let description = readString(input, "description");
@@ -360,7 +309,7 @@ export const markTodoDoneTool: Tool = {
   definition: markTodoDoneDefinition,
 
   async execute(context) {
-    const todo = await resolveTodoId(context.userId, context);
+    const todo = await resolveTodoId(context);
     const done = readBoolean(mergeToolInput(context), "done") ?? true;
 
     const [updated] = await db
@@ -419,7 +368,7 @@ export const deleteTodoTool: Tool = {
   definition: deleteTodoDefinition,
 
   async execute(context) {
-    const todo = await resolveTodoId(context.userId, context);
+    const todo = await resolveTodoId(context);
 
     await db.delete(todos).where(eq(todos.id, todo.id));
 
