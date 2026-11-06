@@ -8,10 +8,12 @@ import {
   markTodoDoneTool,
   updateTodoTool,
 } from "./todo/todos";
+import { findTodosTool } from "./todo/findTodos";
 
 export const tools: Tool[] = [
   promptTool,
   findTodoTool,
+  findTodosTool,
   modelSelectorTool,
   createTodoTool,
   updateTodoTool,
