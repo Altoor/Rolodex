@@ -51,8 +51,15 @@ explicitly.
   the existing Ollama instance (`ollama.embed`) with an Ollama embedding model,
   e.g. `nomic-embed-text`, and store them in a pgvector column. Use
   `cosineDistance` from Drizzle. If embedding generation is unavailable, fall
-  back to case-insensitive text search and then to an LLM choice over the
-  user's todo list.
+  back to case-insensitive text search and then to the same System One decision
+  model used by decision tasks.
+- **Todo selection uses a decision model, not the prompt tool.** When a todo
+  must be chosen for `find_todo`, `update_todo`, `mark_todo_done`, or
+  `delete_todo`, build a choice question with one option per todo and call
+  `ollama.systemone`, exactly like a decision task. Model precedence is
+  `toolConfig.model` → queued step/task model → `getModelForUser`. Do not ask
+  `runPrompt` to return a todo id as free-form JSON. `runPrompt` is still used
+  for structured todo-field extraction when a name/description is missing.
 - **Tool input comes from two places:**
   1. The queued task's `state` string (what the user types on the landing page).
   2. The task's `toolConfig` JSON (defaults/fixed arguments).
@@ -84,7 +91,25 @@ explicitly.
 
 ---
 
-## 1. Backend tool runtime
+## 1. Backend tool runtime — DONE
+
+Current file layout (after cleanup):
+
+```text
+apps/backend/src/tools/
+  index.ts
+  input.ts
+  registry.ts
+  types.ts
+  modelSelector/modelSelector.ts
+  prompt/prompt.ts
+  todo/findTodo.ts
+  todo/selection.ts
+  todo/todos.ts
+```
+
+`todo/selection.ts` contains the shared decision-model todo selector used by
+both `find_todo` and the todo CRUD tools.
 
 ### 1.1 Add tool types
 
@@ -242,7 +267,7 @@ tasks.
 
 ### 1.4 FIRST TOOL: prompt
 
-**File:** `apps/backend/src/tools/prompt.ts` — `[NEW]`
+**File:** `apps/backend/src/tools/prompt/prompt.ts` — `[NEW]`
 
 Export a reusable function and the tool object:
 
@@ -366,27 +391,28 @@ and regenerate the vector column migration.
 
 #### 1.5.2 find_todo tool
 
-**File:** `apps/backend/src/tools/findTodo.ts` — `[NEW]`
+**File:** `apps/backend/src/tools/todo/findTodo.ts` — `[NEW]`
 
 - Definition:
   - `key: "find_todo"`
   - `name: "Find todo"`
-  - `description: "Find one of the user's todos by name/description using vector similarity, with lexical and LLM fallbacks."`
+  - `description: "Find one of the user's todos by name/description using vector similarity, with lexical and decision-model fallbacks."`
   - `category: "todo"`
   - `inputMode: "json"`
   - Input schema properties:
     - `query` (`string`): optional search text; defaults to the queued state.
     - `id` (`number`): optional direct todo id.
     - `limit` (`number`): optional number of candidates, default `5`.
-    - `model` (`string`): optional model used by the LLM fallback; defaults to
-      the task/inherited model.
+    - `model` (`string`): optional model used by the decision-model fallback;
+      defaults to the task/inherited model, then the user's default decision
+      model.
   - Output: `{ todo, score, candidates }`.
   - Example config:
     `{ "query": "pick up Johnny", "limit": 5 }`
 - Execute:
   1. `const input = mergeToolInput(context)`.
   2. If `id`/`todoId` is present, load that user-owned todo (see shared
-     `loadUserTodo` helper in `todos.ts`) and return it with `score: 1`,
+     `loadUserTodo` helper in `todo/todos.ts`) and return it with `score: 1`,
      `candidates: []`.
   3. `const queryText = readString(input, "query") ?? context.state`.
      Throw `ToolInputError("find_todo requires a query or state")` when blank.
@@ -424,13 +450,14 @@ and regenerate the vector column migration.
   6. If there are no vector rows (embedding unavailable or no embeddings yet),
      fall back to case-insensitive text search on `todos.name` and
      `todos.description` using `ilike` and the same ownership filter.
-  7. If the text search also returns no rows, resolve
-     `const model = readString(input, "model") ?? context.model;` and throw
-     `ToolInputError("find_todo LLM fallback requires a model")` when it is
-     null. Then load all user todos and call
-     `runPrompt({ model, prompt, format })` with a JSON schema selecting
-     `{ id: number }` from the list, using `context.state`/`query` as the
-     intent. Validate the selected id.
+  7. If the text search also returns no rows, resolve the model as
+     `readString(input, "model") ?? context.model ?? (await getModelForUser(userId))`,
+     load all user todos, and call
+     `selectTodoWithDecision(userTodos, queryText, model)` from
+     `todo/selection.ts`. That helper builds a `choice` question with one
+     option per todo plus a `none` option and calls `ollama.systemone` with the
+     same decision model used by decision tasks. Do **not** use `runPrompt` for
+     todo-id selection.
   8. If nothing matches, throw `ToolInputError("no matching todo found")`.
   9. Let `best` be the highest-scoring row. Return:
      ```ts
@@ -461,7 +488,7 @@ and regenerate the vector column migration.
 
 ### 1.6 THIRD TOOL: model_selector
 
-**File:** `apps/backend/src/tools/modelSelector.ts` — `[NEW]`
+**File:** `apps/backend/src/tools/modelSelector/modelSelector.ts` — `[NEW]`
 
 - Definition:
   - `key: "model_selector"`
@@ -492,9 +519,9 @@ and regenerate the vector column migration.
 
 ### 1.7 Fourth tool: create_todo
 
-**File:** `apps/backend/src/tools/todos.ts` — `[NEW]`
+**File:** `apps/backend/src/tools/todo/todos.ts` — `[NEW]`
 
-All todo tools live here so they can share helpers. They use the existing
+All todo CRUD tools live here so they can share helpers. They use the existing
 Drizzle `db` from `apps/backend/src/schema/builder.ts` and the `todos` table
 from `apps/backend/src/db`.
 
@@ -531,6 +558,18 @@ from `apps/backend/src/db`.
   - Parse the JSON text. If parsing fails or fields are blank, throw
     `ToolInputError("could not determine todo name/description")`.
   - This is the requirement that lets the prompt helper fill in todo fields.
+- `selectTodoWithDecision(userTodos, request, model)` — in
+  `apps/backend/src/tools/todo/selection.ts`.
+  - Builds one `choice` criterion per todo, keyed `todo:<id>`, with a `none`
+    criterion for "no match".
+  - Calls `ollama.systemone` with the same decision-model mechanism used by
+    decision tasks. The answer's `choice` is a todo id, so no free-form JSON is
+    parsed.
+  - Throws `ToolInputError("no matching todo found")` for `none`,
+    `ToolInputError("todo selection requires a model")` without a model, and a
+    clear error if the returned id is not in the candidate list.
+  - Shared by `find_todo` and `resolveTodoId`; this removes the duplicated
+    prompt-based selection logic.
 - `resolveTodoId(userId: number, context: ToolRunContext)`
   - Read an explicit `id`/`todoId` number from `mergeToolInput(context)`.
   - If present, call `loadUserTodo` and return it.
@@ -540,20 +579,15 @@ from `apps/backend/src/db`.
   - Otherwise load all user todos.
   - If there are no todos, throw `ToolInputError("no todos found")`.
   - If there is exactly one, use it.
-  - Otherwise resolve
-    `const model = readString(mergeToolInput(context), "model") ?? context.model;`
-    and throw `ToolInputError("todo selection requires a model")` when it is
-    null before calling `runPrompt` with the user's todos (`id`, `name`,
-    `done`) and `context.state`, using a JSON schema:
-    ```ts
-    {
-      type: "object",
-      properties: { id: { type: "number" } },
-      required: ["id"],
-    }
-    ```
-  - Validate that the returned id belongs to the user's todo list; otherwise
-    throw `ToolInputError`.
+  - Otherwise resolve the model as
+    `readString(input, "model") ?? context.model ?? (await getModelForUser(userId))`
+    and call `selectTodoWithDecision(userTodos, context.state, model)`. This
+    mirrors decision-task model precedence: explicit tool config, then the
+    queued step/task model, then the user's default decision model.
+  - This helper is not duplicated code from `find_todo`: `find_todo` performs
+    vector/lexical search and returns candidate metadata, while `resolveTodoId`
+    targets exactly one todo for mutations. Both share the explicit-id lookup
+    and decision selector, but keep their distinct selection semantics.
   - Return the selected todo.
 - `saveTodoWithEmbedding` helper:
   - After inserting or updating the todo's name/description, generate the
@@ -594,7 +628,7 @@ from `apps/backend/src/db`.
 
 ### 1.8 Fifth tool: update_todo
 
-**File:** `apps/backend/src/tools/todos.ts` — same file as above.
+**File:** `apps/backend/src/tools/todo/todos.ts` — same file as above.
 
 - Definition:
   - `key: "update_todo"`
@@ -604,7 +638,7 @@ from `apps/backend/src/db`.
   - `inputMode: "json"`
   - Input schema: optional `id` (`number`), optional `name` (`string`),
     optional `description` (`string`), optional `model` (`string`, used for
-    prompt-assisted extraction/selection).
+    prompt-assisted field extraction or decision-model selection).
   - Output: the updated `Todo`.
   - Example config: `{ "id": 3, "name": "Updated name", "description": "Updated description" }`
 - Execute:
@@ -617,7 +651,7 @@ from `apps/backend/src/db`.
 
 ### 1.9 Sixth tool: mark_todo_done
 
-**File:** `apps/backend/src/tools/todos.ts` — same file as above.
+**File:** `apps/backend/src/tools/todo/todos.ts` — same file as above.
 
 - Definition:
   - `key: "mark_todo_done"`
@@ -627,7 +661,7 @@ from `apps/backend/src/db`.
   - `inputMode: "json"`
   - Input schema: optional `id` (`number`), optional `done` (`boolean`,
     default `true`), optional `model` (`string`, used only if the todo must be
-    resolved by the LLM).
+    resolved by the decision model).
   - Output: the updated `Todo`.
   - Example config: `{ "id": 3, "done": true }`
 - Execute:
@@ -638,7 +672,7 @@ from `apps/backend/src/db`.
 
 ### 1.10 Seventh tool: delete_todo
 
-**File:** `apps/backend/src/tools/todos.ts` — same file as above.
+**File:** `apps/backend/src/tools/todo/todos.ts` — same file as above.
 
 - Definition:
   - `key: "delete_todo"`
@@ -647,7 +681,7 @@ from `apps/backend/src/db`.
   - `category: "todo"`
   - `inputMode: "json"`
   - Input schema: optional `id` (`number`), optional `model` (`string`, used
-    only if the todo must be resolved by the LLM).
+    only if the todo must be resolved by the decision model).
   - Output: `{ id, name }` of the deleted todo.
   - Example config: `{ "id": 3 }`
 - Execute:
@@ -686,7 +720,7 @@ from `apps/backend/src/db`.
 ```ts
 export * from "./types";
 export * from "./registry";
-export * from "./prompt";
+export * from "./prompt/prompt";
 ```
 
 Do not re-export every todo helper unless needed. Embeddings live in
@@ -695,6 +729,9 @@ Do not re-export every todo helper unless needed. Embeddings live in
 ---
 
 ## 2. Database changes
+
+> Status: sections 2.1–2.5 are implemented and applied to the development
+> database. Section 2.6 (embedding backfill) remains.
 
 ### 2.1 Task columns
 
@@ -773,16 +810,24 @@ export const todos = pgTable("todos", {
 
 **File:** `compose.yml` — `[EDIT]` `[DB]`
 
-The current `postgres:18` image does not include pgvector. Use a pgvector-enabled
-Postgres image instead, for example:
+The original `postgres:18` image does not include pgvector. The dev compose
+service now uses:
 
 ```yaml
 postgres:
   image: pgvector/pgvector:pg18
 ```
 
-If the deployment database already has pgvector installed, only the migration
-extension statement is needed.
+Fresh development volumes also mount
+`apps/backend/drizzle/init.sql` into `/docker-entrypoint-initdb.d/`, which runs:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+```
+
+That init script is necessary because `drizzle-kit push` does not execute the
+generated migration. If the deployment database already has pgvector installed,
+only the migration extension statement is needed.
 
 The migration must run this **before** adding the vector column:
 
@@ -791,7 +836,8 @@ CREATE EXTENSION IF NOT EXISTS vector;
 ```
 
 Drizzle will not generate the extension statement automatically; prepend it to
-the generated migration.
+the generated migration. This has been done for
+`apps/backend/drizzle/20261106094218_lying_inertia/migration.sql`.
 
 ### 2.5 Generate and apply migrations
 
@@ -841,7 +887,7 @@ Run it once after pulling the embedding model:
 `pnpm --filter backend backfill-embeddings`.
 
 The app must still work without the backfill: `find_todo` falls back to lexical
-search and LLM selection when no embeddings exist.
+search and the decision-model selector when no embeddings exist.
 
 ---
 
@@ -1800,11 +1846,14 @@ Flow:
   todo mutations.
 - Never let an unhandled tool error escape `processQueue`; the queue loop must
   keep processing later rows.
-- LLM JSON output must be parsed defensively. If it is not valid JSON or does
-  not contain the expected fields, throw a useful `ToolInputError`.
+- `runPrompt` JSON output must be parsed defensively. If it is not valid JSON or
+  does not contain the expected fields, throw a useful `ToolInputError`. This
+  applies to todo-field extraction; todo selection uses a decision-model choice
+  and must validate that the selected option belongs to the candidate list.
 - Embedding failures must not break todo CRUD:
   - `tryEmbedText` catches and logs.
-  - `find_todo` falls back to lexical search, then to LLM selection.
+  - `find_todo` falls back to lexical search, then to the decision-model
+    selector.
   - The backfill script is idempotent and skips todos that already have an
     embedding.
 
@@ -1815,7 +1864,9 @@ Flow:
 Run these after implementation:
 
 1. **Database / pgvector**
-   - Update `compose.yml` to a pgvector-enabled Postgres image.
+   - `compose.yml` uses `pgvector/pgvector:pg18`.
+   - Fresh dev volumes mount `apps/backend/drizzle/init.sql`, which enables the
+     `vector` extension before `drizzle-kit push` runs.
    - `pnpm --filter backend generate`
    - Review the generated SQL: extension, todo rename, vector column, indexes,
      task columns, queued-task model.
@@ -1875,8 +1926,8 @@ Run these after implementation:
      fails validation.
    - Send malformed JSON state/config and confirm the queued step fails with a
      readable note instead of crashing the queue.
-   - Run `find_todo` with the embedding model missing and confirm lexical/LLM
-     fallback still returns a result.
+   - Run `find_todo` with the embedding model missing and confirm lexical /
+     decision-model fallback still returns a result.
 
 ---
 

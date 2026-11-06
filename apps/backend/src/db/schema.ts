@@ -11,6 +11,8 @@ import {
   real,
   timestamp,
   uuid,
+  index,
+  vector,
 } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
@@ -20,14 +22,26 @@ export const users = pgTable("users", {
   hashedPassword: text("hashedPassword").notNull(),
 });
 
-export const todos = pgTable("todos", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-  name: text("name").notNull(),
-  content: text("content").notNull(),
-  done: boolean("done").default(false).notNull(),
-  authorId: integer("author_id").notNull(),
-  actorId: integer("actor_id").notNull(),
-});
+export const todos = pgTable(
+  "todos",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    name: text("name").notNull(),
+    description: text("description").notNull(),
+    done: boolean("done").default(false).notNull(),
+    authorId: integer("author_id").notNull(),
+    actorId: integer("actor_id").notNull(),
+    descriptionEmbedding: vector("descriptionEmbedding", {
+      dimensions: 768,
+    }),
+  },
+  (table) => [
+    index("todos_description_embedding_idx").using(
+      "hnsw",
+      table.descriptionEmbedding.op("vector_cosine_ops"),
+    ),
+  ],
+);
 
 export const decisionType = pgEnum("decisionType", ["choice", "noul", "score"]);
 
@@ -62,6 +76,9 @@ export const tasks = pgTable("tasks", {
   type: TaskType().default("decision").notNull(),
   decisionId: integer("decisionId"),
   fallbackTaskId: integer("fallbackTaskId"),
+  toolKey: text("toolKey"),
+  toolConfig: json("toolConfig"),
+  model: text("model"),
 });
 
 export const queuedTaskStatus = pgEnum("queuedTaskStatus", [
@@ -86,6 +103,7 @@ export const queuedTasks = pgTable("queuedTasks", {
     .defaultNow()
     .notNull(),
   queued_by: integer("queued_by").notNull(),
+  model: text("model"),
 });
 
 export const models = pgTable("models", {

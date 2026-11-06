@@ -6,7 +6,7 @@ export const Todo = builder.drizzleObject("todos", {
     id: t.exposeInt("id"),
     name: t.exposeString("name"),
     done: t.exposeBoolean("done"),
-    content: t.exposeString("content"),
+    description: t.exposeString("description"),
     authorId: t.exposeInt("authorId"),
     actorId: t.exposeInt("actorId"),
   }),

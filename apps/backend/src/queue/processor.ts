@@ -7,12 +7,12 @@ import type {
   SystemOneScoreAnswer,
 } from "ollama";
 import { db } from "../schema/builder";
-import { queuedTasks, taskResults, userSettings } from "../db";
+import { queuedTasks, taskResults } from "../db";
 import { ollama } from "../ai/Ollama";
+import { DEFAULT_MODEL, getModelForUser } from "../ai/model";
 import { setupQuestions } from "../schema/ai/ai-service";
 import { publishQueuedTaskEvent } from "./pubsub";
 
-const DEFAULT_MODEL = "tev1:4b";
 const MAX_STEPS_PER_RUN = 15;
 
 type QueuedRow = typeof queuedTasks.$inferSelect;
@@ -46,16 +46,6 @@ export async function resetStaleRunningTasks(): Promise<void> {
     );
     triggerQueue();
   }
-}
-
-async function modelForUser(userId: number): Promise<string> {
-  const [settings] = await db
-    .select({ defaultModelName: userSettings.defaultModelName })
-    .from(userSettings)
-    .where(eq(userSettings.userId, userId))
-    .limit(1);
-
-  return settings?.defaultModelName ?? DEFAULT_MODEL;
 }
 
 async function processQueue(): Promise<void> {
@@ -132,7 +122,7 @@ async function processStep(
         optionDescriptions: decision.optionDescriptions ?? undefined,
       },
     ]);
-    model = await modelForUser(row.queued_by);
+    model = await getModelForUser(row.queued_by);
     response = await ollama.systemone({
       model,
       state: row.state,
