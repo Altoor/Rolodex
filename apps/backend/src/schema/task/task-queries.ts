@@ -1,6 +1,7 @@
 import { GraphQLError } from "graphql";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { builder, db } from "../builder";
+import { requireUserId } from "../auth";
 import { Task, TaskResult, QueuedTask } from "./";
 import { queuedTasks } from "../../db";
 
@@ -139,6 +140,41 @@ builder.queryType({
           .select()
           .from(queuedTasks)
           .where(runId ? eq(queuedTasks.runId, runId) : undefined)
+          .orderBy(asc(queuedTasks.queued_at), asc(queuedTasks.id));
+      },
+    }),
+
+    activeQueuedTasks: t.field({
+      type: [QueuedTask],
+      description:
+        "Every step of the current user's chain runs that are still queued or running.",
+      resolve: async (_root, _args, ctx) => {
+        const userId = requireUserId(ctx);
+
+        const activeRuns = await db
+          .selectDistinct({ runId: queuedTasks.runId })
+          .from(queuedTasks)
+          .where(
+            and(
+              eq(queuedTasks.queued_by, userId),
+              inArray(queuedTasks.status, ["queued", "running"]),
+            ),
+          );
+
+        if (activeRuns.length === 0) return [];
+
+        return db
+          .select()
+          .from(queuedTasks)
+          .where(
+            and(
+              eq(queuedTasks.queued_by, userId),
+              inArray(
+                queuedTasks.runId,
+                activeRuns.map((run) => run.runId),
+              ),
+            ),
+          )
           .orderBy(asc(queuedTasks.queued_at), asc(queuedTasks.id));
       },
     }),

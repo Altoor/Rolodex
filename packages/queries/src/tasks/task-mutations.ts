@@ -138,6 +138,13 @@ export const CREATE_QUEUED_TASK = gql(/* GraphQL */ `
       status
       runId
       queued_by
+      queued_at
+      result
+      task {
+        id
+        name
+        type
+      }
     }
   }
 `);

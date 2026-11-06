@@ -3,14 +3,14 @@
 import { useMutation, useQuery, useSubscription } from "@apollo/client/react";
 import { CREATE_QUEUED_TASK } from "@repo/queries/tasks/task-mutations";
 import { QUEUED_TASK_EVENT } from "@repo/queries/tasks/task-subscriptions";
-import { TASKS } from "@repo/queries/tasks/task-queries";
+import { ACTIVE_QUEUED_TASKS, TASKS } from "@repo/queries/tasks/task-queries";
 import { useAuth } from "../components/auth/auth-provider";
 import { EmptyState } from "#components/feedback/empty-state";
 import { LoadingState } from "#components/feedback/loading-state";
 import { PageContainer } from "#components/layout/page-container";
 import { PageHeader } from "#components/layout/page-header";
 import { Circle, CircleAlert, CircleCheck, LoaderCircle } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { SubmitHandler, useForm } from "react-hook-form";
 
 import { Button } from "#components/ui/button";
@@ -64,6 +64,40 @@ interface QueuedTaskStep {
   task: { id: number | null; name: string | null; type: string | null } | null;
 }
 
+interface QueuedTaskRow {
+  id: number | null;
+  taskId: number | null;
+  status: "queued" | "running" | "completed" | "failed" | null;
+  runId: string | null;
+  result: unknown;
+  task: { id: number | null; name: string | null; type: string | null } | null;
+}
+
+function toStep(row: QueuedTaskRow): QueuedTaskStep | null {
+  if (row.id == null || !row.runId) return null;
+
+  return {
+    id: row.id,
+    taskId: row.taskId ?? null,
+    status: row.status ?? "queued",
+    runId: row.runId,
+    result: (row.result as StepResult | null) ?? null,
+    task: row.task ?? null,
+  };
+}
+
+function upsertStep(
+  steps: QueuedTaskStep[],
+  step: QueuedTaskStep,
+): QueuedTaskStep[] {
+  const index = steps.findIndex((s) => s.id === step.id);
+  if (index === -1) return [...steps, step].sort((a, b) => a.id - b.id);
+
+  const next = [...steps];
+  next[index] = step;
+  return next;
+}
+
 export default function LandingPage() {
   const { user, loading: authLoading } = useAuth();
   const loggedIn = !!user;
@@ -75,14 +109,46 @@ export default function LandingPage() {
 
   const [createQueuedTask] = useMutation(CREATE_QUEUED_TASK);
 
-  const [activeRunId, setActiveRunId] = useState<string | null>(null);
-  const activeRunIdRef = useRef<string | null>(null);
-  const setActiveRun = (runId: string | null) => {
-    activeRunIdRef.current = runId;
-    setActiveRunId(runId);
+  // Live steps for every run the current user has in flight. Completed steps of
+  // an active run stay here so each chain-of-thought keeps its history.
+  const [liveRunState, setLiveRunState] = useState<{
+    userId: number | null;
+    steps: QueuedTaskStep[];
+  }>({ userId: null, steps: [] });
+  const [openRuns, setOpenRuns] = useState<Record<string, boolean>>({});
+  const userId = user?.id ?? null;
+
+  const addLiveStep = (step: QueuedTaskStep) => {
+    setLiveRunState((prev) => ({
+      userId,
+      // Never mix steps from a previous session/user.
+      steps: upsertStep(prev.userId === userId ? prev.steps : [], step),
+    }));
   };
-  const [steps, setSteps] = useState<QueuedTaskStep[]>([]);
-  const [cotOpen, setCotOpen] = useState(true);
+
+  // Active runs may already exist when the page loads (another tab, a refresh,
+  // or a run queued before this page mounted). Seed them from the backend;
+  // live updates arrive through the subscription below.
+  const { data: activeData } = useQuery(ACTIVE_QUEUED_TASKS, {
+    skip: !loggedIn,
+    fetchPolicy: "network-only",
+  });
+
+  const steps = useMemo(() => {
+    const byId = new Map<number, QueuedTaskStep>();
+
+    for (const row of activeData?.activeQueuedTasks ?? []) {
+      const step = toStep(row);
+      if (step) byId.set(step.id, step);
+    }
+
+    // Live events are always fresher than the query snapshot.
+    if (liveRunState.userId === userId) {
+      for (const step of liveRunState.steps) byId.set(step.id, step);
+    }
+
+    return [...byId.values()].sort((a, b) => a.id - b.id);
+  }, [activeData, liveRunState, userId]);
 
   const {
     control,
@@ -117,25 +183,14 @@ export default function LandingPage() {
     skip: !loggedIn,
     onData: ({ data }) => {
       const event = data.data?.queuedTaskEvent?.queuedTask;
-      if (!event || !event.runId) return;
-      if (event.runId !== activeRunIdRef.current) return;
+      if (!event) return;
+      // The backend already filters per user; keep the guard for safety.
+      if (event.queued_by != null && event.queued_by !== user?.id) return;
 
-      const step: QueuedTaskStep = {
-        id: event.id ?? -1,
-        taskId: event.taskId ?? null,
-        status: event.status ?? "queued",
-        runId: event.runId,
-        result: (event.result as StepResult | null) ?? null,
-        task: event.task ?? null,
-      };
+      const step = toStep(event);
+      if (!step) return;
 
-      setSteps((prev) => {
-        const index = prev.findIndex((s) => s.id === step.id);
-        if (index === -1) return [...prev, step].sort((a, b) => a.id - b.id);
-        const next = [...prev];
-        next[index] = step;
-        return next;
-      });
+      addLiveStep(step);
     },
   });
 
@@ -147,17 +202,17 @@ export default function LandingPage() {
       },
     });
 
-    const runId = data?.createQueuedTask?.runId;
-    if (!runId) return;
+    const step = data?.createQueuedTask ? toStep(data.createQueuedTask) : null;
+    if (!step) return;
 
-    setActiveRun(runId);
-    setSteps([]);
-    setCotOpen(true);
+    // Show the new run immediately, before the processor emits its first event.
+    addLiveStep(step);
+    setOpenRuns((prev) => ({ ...prev, [step.runId]: true }));
     reset({ state: "", taskId: inputs.taskId });
   };
 
-  const submit = () => {
-    void handleSubmit(onSubmit)();
+  const submit = (event?: React.FormEvent<HTMLFormElement>) => {
+    void handleSubmit(onSubmit)(event);
   };
 
   // Enter submits, Shift+Enter inserts a newline.
@@ -167,6 +222,35 @@ export default function LandingPage() {
       submit();
     }
   };
+
+  const taskName = (id: number | null | undefined) =>
+    id != null ? (tasks.find((t) => t.id === id)?.name ?? `task ${id}`) : null;
+
+  const runs = useMemo(() => {
+    const byRun = new Map<string, QueuedTaskStep[]>();
+
+    for (const step of steps) {
+      const runSteps = byRun.get(step.runId);
+      if (runSteps) runSteps.push(step);
+      else byRun.set(step.runId, [step]);
+    }
+
+    return [...byRun.entries()]
+      .map(([runId, runSteps]) => {
+        const ordered = [...runSteps].sort((a, b) => a.id - b.id);
+
+        return {
+          runId,
+          steps: ordered,
+          startTaskId: ordered[0]?.taskId ?? null,
+          pending: ordered.some(
+            (step) => step.status === "queued" || step.status === "running",
+          ),
+          failed: ordered.some((step) => step.status === "failed"),
+        };
+      })
+      .sort((a, b) => (a.steps[0]?.id ?? 0) - (b.steps[0]?.id ?? 0));
+  }, [steps]);
 
   if (authLoading) {
     return (
@@ -192,19 +276,6 @@ export default function LandingPage() {
       </PageContainer>
     );
   }
-
-  const anyPending = steps.some(
-    (s) => s.status === "queued" || s.status === "running",
-  );
-  const anyFailed = steps.some((s) => s.status === "failed");
-  const headerStatus = anyFailed
-    ? ("error" as const)
-    : anyPending
-      ? ("running" as const)
-      : undefined;
-
-  const taskName = (id: number | null | undefined) =>
-    id != null ? (tasks.find((t) => t.id === id)?.name ?? `task ${id}`) : null;
 
   return (
     <PageContainer>
@@ -261,93 +332,107 @@ export default function LandingPage() {
             </Button>
           </form>
         </CardContent>
-        <CardFooter>
-          {activeRunId ? (
-            <ChainOfThought
-              open={anyPending ? true : cotOpen}
-              onOpenChange={setCotOpen}
-            >
-              <ChainOfThoughtHeader
-                status={headerStatus}
-                icon={
-                  headerStatus === "error" ? (
-                    <CircleAlert />
-                  ) : headerStatus === "running" ? (
-                    <LoaderCircle className="animate-spin" />
-                  ) : (
-                    <CircleCheck />
-                  )
-                }
-                title={
-                  anyFailed
-                    ? "Run failed"
-                    : anyPending
-                      ? "Working"
-                      : `Finished in ${steps.length} step${
-                          steps.length === 1 ? "" : "s"
-                        }`
-                }
-              />
-              <ChainOfThoughtContent>
-                {steps.map((step) => {
-                  const status: StepStatus =
-                    step.status === "running"
-                      ? "active"
-                      : step.status === "queued"
-                        ? "pending"
-                        : step.status === "failed"
-                          ? "error"
-                          : "complete";
-
-                  const branch =
-                    step.result?.branch === "result"
-                      ? `next: ${taskName(step.result.nextTaskId)}`
-                      : step.result?.branch === "fallback"
-                        ? `fallback: ${taskName(step.result.nextTaskId)}`
-                        : undefined;
-
-                  const detail =
-                    [step.result?.summary, step.result?.note]
-                      .filter((part): part is string => !!part)
-                      .join(" — ") || undefined;
-
-                  return (
-                    <div
-                      key={step.id}
-                      className="flex flex-col items-start gap-0.5"
-                    >
-                      <ChainOfThoughtStep
-                        status={status}
-                        icon={
-                          status === "active" ? (
-                            <LoaderCircle className="animate-spin" />
-                          ) : status === "error" ? (
-                            <CircleAlert />
-                          ) : status === "complete" ? (
-                            <CircleCheck />
-                          ) : (
-                            <Circle />
-                          )
-                        }
-                        title={
-                          step.task?.name ?? `task ${step.taskId ?? step.id}`
-                        }
-                        description={branch}
-                      />
-                      {detail ? (
-                        <p className="ml-6 text-xs text-muted-foreground">
-                          {detail}
-                        </p>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </ChainOfThoughtContent>
-            </ChainOfThought>
-          ) : (
+        <CardFooter className="flex-col items-stretch gap-3">
+          {runs.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No run yet. Submit a state above to start one.
+              No runs yet. Submit a state above to start one.
             </p>
+          ) : (
+            runs.map((run) => {
+              const startName = taskName(run.startTaskId);
+              const headerStatus = run.failed
+                ? ("error" as const)
+                : run.pending
+                  ? ("running" as const)
+                  : undefined;
+
+              return (
+                <ChainOfThought
+                  key={run.runId}
+                  open={run.pending ? true : (openRuns[run.runId] ?? true)}
+                  onOpenChange={(open) =>
+                    setOpenRuns((prev) => ({ ...prev, [run.runId]: open }))
+                  }
+                >
+                  <ChainOfThoughtHeader
+                    status={headerStatus}
+                    icon={
+                      headerStatus === "error" ? (
+                        <CircleAlert />
+                      ) : headerStatus === "running" ? (
+                        <LoaderCircle className="animate-spin" />
+                      ) : (
+                        <CircleCheck />
+                      )
+                    }
+                    title={
+                      run.failed
+                        ? `Run failed${startName ? ` — ${startName}` : ""}`
+                        : run.pending
+                          ? `Working${startName ? ` on ${startName}` : ""}`
+                          : `Finished in ${run.steps.length} step${
+                              run.steps.length === 1 ? "" : "s"
+                            }${startName ? ` — ${startName}` : ""}`
+                    }
+                  />
+                  <ChainOfThoughtContent>
+                    {run.steps.map((step) => {
+                      const status: StepStatus =
+                        step.status === "running"
+                          ? "active"
+                          : step.status === "queued"
+                            ? "pending"
+                            : step.status === "failed"
+                              ? "error"
+                              : "complete";
+
+                      const branch =
+                        step.result?.branch === "result"
+                          ? `next: ${taskName(step.result.nextTaskId)}`
+                          : step.result?.branch === "fallback"
+                            ? `fallback: ${taskName(step.result.nextTaskId)}`
+                            : undefined;
+
+                      const detail =
+                        [step.result?.summary, step.result?.note]
+                          .filter((part): part is string => !!part)
+                          .join(" — ") || undefined;
+
+                      return (
+                        <div
+                          key={step.id}
+                          className="flex flex-col items-start gap-0.5"
+                        >
+                          <ChainOfThoughtStep
+                            status={status}
+                            icon={
+                              status === "active" ? (
+                                <LoaderCircle className="animate-spin" />
+                              ) : status === "error" ? (
+                                <CircleAlert />
+                              ) : status === "complete" ? (
+                                <CircleCheck />
+                              ) : (
+                                <Circle />
+                              )
+                            }
+                            title={
+                              step.task?.name ?? `task ${step.taskId ?? step.id}`
+                            }
+                            description={branch}
+                          />
+                          {detail ? (
+                            <p className="ml-6 text-xs text-muted-foreground">
+                              {detail}
+                            </p>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </ChainOfThoughtContent>
+                </ChainOfThought>
+              );
+            })
           )}
         </CardFooter>
       </Card>

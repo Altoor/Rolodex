@@ -22,6 +22,10 @@ builder.subscriptionType({
           const event = await new Promise<QueuedTaskEventPayload>((resolve) =>
             queueEvents.once("queuedTask", resolve),
           );
+
+          // Only stream steps that belong to the subscribed user's runs.
+          if (event.queuedTask.queued_by !== user.id) continue;
+
           yield event;
         }
       },

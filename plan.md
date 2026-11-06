@@ -1266,7 +1266,9 @@ Notes:
 
 - `MAX_STEPS_PER_RUN` and `stepsByRun` retain the existing chain-depth guard.
 - `finishStep` publishes the queued task event, so the existing subscription UI
-  receives tool progress without changes.
+  receives tool progress without changes. The subscription only streams events
+  for the subscribed user's runs, and the landing page groups events by
+  `runId`, so tool steps appear under the correct run.
 - `toolConfig.appendState` is the generic opt-in for passing tool output to the
   next step. The prompt and find_todo tools opt in themselves via
   `execution.appendState = true`.
@@ -1357,9 +1359,16 @@ export const TEST_TOOL = gql(/* GraphQL */ `
     toolKey
   }
   ```
+- `ACTIVE_QUEUED_TASKS` (`activeQueuedTasks`) powers the landing page's
+  multi-run chain-of-thought and restores in-flight runs after a refresh. Keep
+  its selection in sync with `QUEUED_TASK`, including `model` and `toolKey`, so
+  active runs display the same details as live subscription events.
 
 **File:** `packages/queries/src/tasks/task-mutations.ts` — `[EDIT]` `[QUERIES]`
 
+- `CREATE_QUEUED_TASK` selects the newly created step (`task`, `result`,
+  `queued_at`, and the new `model`) so the landing page can show the run
+  immediately, before the processor emits its first subscription event.
 - `CREATE_TASK`:
   - Add variables `$toolKey: String`, `$toolConfig: JSON`, `$model: String`.
   - Pass `toolKey: $toolKey`, `toolConfig: $toolConfig`, `model: $model`.
@@ -1374,6 +1383,8 @@ export const TEST_TOOL = gql(/* GraphQL */ `
 
 - In `queuedTask.task`, add `toolKey`.
 - Add `model` to `queuedTask` so the chain-of-thought can show the model used.
+- The backend already filters `queuedTaskEvent` to the current user's steps;
+  no subscription document changes are needed for the multi-run COT.
 
 ### 5.3 Regenerate generated GraphQL files
 
@@ -1629,6 +1640,11 @@ object validation; parse it only when saving.
 
 **File:** `packages/ui/src/pages/landing.tsx` — `[EDIT]` `[UI]`
 
+- The page now renders one chain-of-thought per run for the current user,
+  grouped by `runId`. Active runs are seeded from `activeQueuedTasks` and kept
+  fresh by the `queuedTaskEvent` subscription, so a refresh keeps in-flight
+  runs visible and multiple queued runs appear side by side. Apply the
+  following changes inside the per-run step loop.
 - Extend `StepResult`:
   ```ts
   branch?: "result" | "fallback" | "tool" | "none";
@@ -1845,6 +1861,9 @@ Run these after implementation:
 7. **Queue execution**
    - Run a `prompt` task from the landing page and confirm the answer appears
      in the chain-of-thought result.
+   - Refresh the landing page while one or more runs are still queued/running
+     and confirm every run is restored and continues updating from the
+     subscription.
    - Run a `create_todo` task with free-text state and confirm a todo is
      created with a name and description and an embedding.
    - Confirm `update_todo` recomputes the embedding after name/description
