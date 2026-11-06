@@ -41,6 +41,7 @@ import {
 } from "#components/ui/select";
 import { Spinner } from "#components/ui/spinner";
 import { Textarea } from "#components/ui/textarea";
+import { Separator } from "#components/ui/separator";
 
 type Inputs = {
   taskId: string;
@@ -64,6 +65,7 @@ interface QueuedTaskStep {
   result: StepResult | null;
   model: string | null;
   decisionModel: string | null;
+  state: string | null;
   task: { id: number | null; name: string | null; type: string | null } | null;
 }
 
@@ -75,6 +77,7 @@ interface QueuedTaskRow {
   result: unknown;
   model: string | null;
   decisionModel: string | null;
+  state: string | null;
   task: { id: number | null; name: string | null; type: string | null } | null;
 }
 
@@ -90,6 +93,7 @@ function toStep(row: QueuedTaskRow): QueuedTaskStep | null {
     model: row.model ?? null,
     decisionModel: row.decisionModel ?? null,
     task: row.task ?? null,
+    state: row.state ?? null,
   };
 }
 
@@ -248,6 +252,7 @@ export default function LandingPage() {
 
         return {
           runId,
+          state: ordered[0]?.state,
           steps: ordered,
           startTaskId: ordered[0]?.taskId ?? null,
           pending: ordered.some(
@@ -341,7 +346,7 @@ export default function LandingPage() {
         </CardContent>
         <CardFooter className="flex-col items-stretch gap-3">
           {runs.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm ">
               No runs yet. Submit a state above to start one.
             </p>
           ) : (
@@ -354,112 +359,115 @@ export default function LandingPage() {
                   : undefined;
 
               return (
-                <ChainOfThought
-                  key={run.runId}
-                  open={run.pending ? true : (openRuns[run.runId] ?? true)}
-                  onOpenChange={(open) =>
-                    setOpenRuns((prev) => ({ ...prev, [run.runId]: open }))
-                  }
-                >
-                  <ChainOfThoughtHeader
-                    status={headerStatus}
-                    icon={
-                      headerStatus === "error" ? (
-                        <CircleAlert />
-                      ) : headerStatus === "running" ? (
-                        <LoaderCircle className="animate-spin" />
-                      ) : (
-                        <CircleCheck />
-                      )
+                <div key={run.runId}>
+                  <p className="text-sm text-muted-foreground">{run.state}</p>
+                  <ChainOfThought
+                    open={run.pending ? true : (openRuns[run.runId] ?? true)}
+                    onOpenChange={(open) =>
+                      setOpenRuns((prev) => ({ ...prev, [run.runId]: open }))
                     }
-                    title={
-                      run.failed
-                        ? `Run failed${startName ? ` — ${startName}` : ""}`
-                        : run.pending
-                          ? `Working${startName ? ` on ${startName}` : ""}`
-                          : `Finished in ${run.steps.length} step${
-                              run.steps.length === 1 ? "" : "s"
-                            }${startName ? ` — ${startName}` : ""}`
-                    }
-                  />
-                  <ChainOfThoughtContent>
-                    {run.steps.map((step) => {
-                      const status: StepStatus =
-                        step.status === "running"
-                          ? "active"
-                          : step.status === "queued"
-                            ? "pending"
-                            : step.status === "failed"
-                              ? "error"
-                              : "complete";
+                  >
+                    <ChainOfThoughtHeader
+                      status={headerStatus}
+                      icon={
+                        headerStatus === "error" ? (
+                          <CircleAlert />
+                        ) : headerStatus === "running" ? (
+                          <LoaderCircle className="animate-spin" />
+                        ) : (
+                          <CircleCheck />
+                        )
+                      }
+                      title={
+                        run.failed
+                          ? `Run failed${startName ? ` — ${startName}` : ""}`
+                          : run.pending
+                            ? `Working${startName ? ` on ${startName}` : ""}`
+                            : `Finished in ${run.steps.length} step${
+                                run.steps.length === 1 ? "" : "s"
+                              }${startName ? ` — ${startName}` : ""}`
+                      }
+                    />
+                    <ChainOfThoughtContent>
+                      {run.steps.map((step) => {
+                        const status: StepStatus =
+                          step.status === "running"
+                            ? "active"
+                            : step.status === "queued"
+                              ? "pending"
+                              : step.status === "failed"
+                                ? "error"
+                                : "complete";
 
-                      const branch =
-                        step.result?.branch === "result"
-                          ? `next: ${taskName(step.result.nextTaskId)}`
-                          : step.result?.branch === "fallback"
-                            ? `fallback: ${taskName(step.result.nextTaskId)}`
-                            : step.result?.branch === "tool"
-                              ? step.result.nextTaskId != null
-                                ? `next: ${taskName(step.result.nextTaskId)}`
-                                : "tool result"
-                              : undefined;
+                        const branch =
+                          step.result?.branch === "result"
+                            ? `next: ${taskName(step.result.nextTaskId)}`
+                            : step.result?.branch === "fallback"
+                              ? `fallback: ${taskName(step.result.nextTaskId)}`
+                              : step.result?.branch === "tool"
+                                ? step.result.nextTaskId != null
+                                  ? `next: ${taskName(step.result.nextTaskId)}`
+                                  : "tool result"
+                                : undefined;
 
-                      const detail =
-                        [
-                          step.result?.summary,
-                          step.result?.note,
-                          step.model ? `generation: ${step.model}` : null,
-                          step.decisionModel
-                            ? `decision: ${step.decisionModel}`
-                            : null,
-                        ]
-                          .filter((part): part is string => !!part)
-                          .join(" — ") || undefined;
+                        const detail =
+                          [
+                            step.result?.summary,
+                            step.result?.note,
+                            step.model ? `generation: ${step.model}` : null,
+                            step.decisionModel
+                              ? `decision: ${step.decisionModel}`
+                              : null,
+                          ]
+                            .filter((part): part is string => !!part)
+                            .join(" — ") || undefined;
 
-                      return (
-                        <div
-                          key={step.id}
-                          className="flex flex-col items-start gap-0.5"
-                        >
-                          <ChainOfThoughtStep
-                            status={status}
-                            icon={
-                              status === "active" ? (
-                                <LoaderCircle className="animate-spin" />
-                              ) : status === "error" ? (
-                                <CircleAlert />
-                              ) : status === "complete" ? (
-                                <CircleCheck />
-                              ) : (
-                                <Circle />
-                              )
-                            }
-                            title={
-                              step.task?.name ??
-                              `task ${step.taskId ?? step.id}`
-                            }
-                            description={branch}
-                          />
-                          {detail ? (
-                            <p className="ml-6 text-xs text-muted-foreground">
-                              {detail}
-                            </p>
-                          ) : null}
-                          {step.result?.output != null ? (
-                            <details className="ml-6 text-xs text-muted-foreground">
-                              <summary className="cursor-pointer select-none">
-                                Tool output
-                              </summary>
-                              <pre className="mt-1 max-h-56 overflow-auto rounded-md bg-muted p-2 text-xs">
-                                {JSON.stringify(step.result.output, null, 2)}
-                              </pre>
-                            </details>
-                          ) : null}
-                        </div>
-                      );
-                    })}
-                  </ChainOfThoughtContent>
-                </ChainOfThought>
+                        return (
+                          <div
+                            key={step.id}
+                            className="flex flex-col items-start gap-0.5"
+                          >
+                            <ChainOfThoughtStep
+                              status={status}
+                              icon={
+                                status === "active" ? (
+                                  <LoaderCircle className="animate-spin" />
+                                ) : status === "error" ? (
+                                  <CircleAlert />
+                                ) : status === "complete" ? (
+                                  <CircleCheck />
+                                ) : (
+                                  <Circle />
+                                )
+                              }
+                              title={
+                                step.task?.name ??
+                                `task ${step.taskId ?? step.id}`
+                              }
+                              description={branch}
+                            />
+                            {detail ? (
+                              <p className="ml-6 text-xs text-muted-foreground">
+                                {detail}
+                              </p>
+                            ) : null}
+                            {step.result?.output != null ? (
+                              <details className="ml-6 text-xs text-muted-foreground">
+                                <summary className="cursor-pointer select-none">
+                                  Tool output
+                                </summary>
+                                <pre className="mt-1 max-h-56 overflow-auto rounded-md bg-muted p-2 text-xs">
+                                  {JSON.stringify(step.result.output, null, 2)}
+                                </pre>
+                              </details>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </ChainOfThoughtContent>
+                  </ChainOfThought>
+                  <Separator className="my-2"></Separator>
+                </div>
               );
             })
           )}

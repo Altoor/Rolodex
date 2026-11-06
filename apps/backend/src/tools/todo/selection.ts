@@ -33,25 +33,35 @@ export async function selectTodoWithDecision<T extends SelectableTodo>(
   const premise = "todo";
   const criteria: Record<string, string | null> = {};
 
-  for (const todo of userTodos) {
-    criteria[`${TODO_OPTION_PREFIX}${todo.id}`] = [
-      todo.name,
-      todo.done ? "Done" : "Not done",
-      todo.description,
-    ].join("\n");
-  }
+  const userTodoMap = new Map<number, { name: string; value: string }>(
+    userTodos.map((userTodo) => [
+      userTodo.id,
+      {
+        name: userTodo.name,
+        value: `${userTodo.description}. Is this task done?: ${userTodo.done ? "Done" : "Not done"}`,
+      },
+    ]),
+  );
 
-  criteria[NONE_OPTION] = "No todo matches the request.";
+  userTodoMap.forEach((item, key) => {
+    criteria[item.name] = item.value;
+  });
+
+  criteria[NONE_OPTION] = null;
+
+  console.log("criteria:", criteria);
 
   const question: SystemOneChoiceQuestion = {
     type: "choice",
-    instructions: [
-      "Select the todo that best matches the user's request.",
-      `Choose "${NONE_OPTION}" when no todo matches.`,
-      `User request:\n${request}`,
-    ].join("\n\n"),
+    instructions: "Select the todo that best matches the user's request.",
     criteria,
   };
+
+  console.log("systemone:", {
+    model,
+    state: request,
+    questions: { [premise]: question },
+  });
 
   const response = await ollama.systemone({
     model,
@@ -63,6 +73,8 @@ export async function selectTodoWithDecision<T extends SelectableTodo>(
   if (!answer || answer.type !== "choice") {
     throw new ToolInputError("todo selection did not return a choice");
   }
+
+  console.log("answer:", answer);
 
   if (answer.choice === NONE_OPTION) {
     throw new ToolInputError("no matching todo found");

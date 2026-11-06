@@ -219,8 +219,17 @@ export const createTodoTool: Tool = {
 
     await saveTodoWithEmbedding(todo);
 
+    const returnTodo = {
+      id: todo.id,
+      name: todo.name,
+      description: todo.description,
+      done: todo.done,
+      authorId: todo.authorId,
+      actorId: todo.actorId,
+    };
+
     return {
-      output: { todo },
+      output: { todo: returnTodo },
       summary: `Created todo "${name}"`,
     };
   },
@@ -301,8 +310,17 @@ export const updateTodoTool: Tool = {
 
     await saveTodoWithEmbedding(updated);
 
+    const returnTodo = {
+      id: updated.id,
+      name: updated.name,
+      description: updated.description,
+      done: updated.done,
+      authorId: updated.authorId,
+      actorId: updated.actorId,
+    };
+
     return {
-      output: { todo: updated },
+      output: { todo: returnTodo },
       summary: `Updated todo "${updated.name}"`,
     };
   },
@@ -354,9 +372,17 @@ export const markTodoDoneTool: Tool = {
     if (!updated) {
       throw new ToolInputError(`todo ${todo.id} not found`);
     }
+    const returnTodo = {
+      id: updated.id,
+      name: updated.name,
+      description: updated.description,
+      done: updated.done,
+      authorId: updated.authorId,
+      actorId: updated.actorId,
+    };
 
     return {
-      output: { todo: updated },
+      output: { todo: returnTodo },
       summary: done
         ? `Marked todo "${updated.name}" as done`
         : `Marked todo "${updated.name}" as not done`,
