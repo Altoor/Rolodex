@@ -14,6 +14,7 @@ export interface TodoCandidate {
   name: string;
   description: string;
   done: boolean;
+  doByDate: string | null;
   score: number;
 }
 
@@ -66,6 +67,7 @@ export async function findTodoMatches(
         name: todo.name,
         description: todo.description,
         done: todo.done,
+        doByDate: todo.doByDate?.toISOString() ?? null,
         score: 1,
       },
       candidates: [],
@@ -96,6 +98,7 @@ export async function findTodoMatches(
         name: todos.name,
         description: todos.description,
         done: todos.done,
+        doByDate: todos.doByDate,
         distance,
       })
       .from(todos)
@@ -108,6 +111,7 @@ export async function findTodoMatches(
       name: row.name,
       description: row.description,
       done: row.done,
+      doByDate: row.doByDate?.toISOString() ?? null,
       score: 1 - Number(row.distance),
     }));
   }
@@ -120,6 +124,7 @@ export async function findTodoMatches(
         name: todos.name,
         description: todos.description,
         done: todos.done,
+        doByDate: todos.doByDate,
       })
       .from(todos)
       .where(
@@ -132,6 +137,7 @@ export async function findTodoMatches(
 
     candidates = rows.map((row) => ({
       ...row,
+      doByDate: row.doByDate?.toISOString() ?? null,
       score: 1,
     }));
   }
@@ -156,6 +162,7 @@ export async function findTodoMatches(
         name: selected.name,
         description: selected.description,
         done: selected.done,
+        doByDate: selected.doByDate?.toISOString() ?? null,
         score: 1,
       },
     ];

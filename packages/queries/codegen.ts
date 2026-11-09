@@ -10,6 +10,8 @@ const config: CodegenConfig = {
       plugins: [],
       presetConfig: {
         gqlTagName: "gql",
+        // Keep operation results usable without unmasking every fragment.
+        fragmentMasking: false,
       },
     },
   },

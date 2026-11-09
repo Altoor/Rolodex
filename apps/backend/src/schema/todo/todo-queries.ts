@@ -14,6 +14,11 @@ builder.queryType({
           where: {
             OR: [{ actorId: userId }, { authorId: userId }],
           },
+          orderBy: (todos, { asc }) => [
+            asc(todos.done),
+            asc(todos.doByDate),
+            asc(todos.id),
+          ],
         });
       },
     }),

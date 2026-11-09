@@ -5,6 +5,7 @@ import { CREATE_QUEUED_TASK } from "@repo/queries/tasks/task-mutations";
 import { QUEUED_TASK_EVENT } from "@repo/queries/tasks/task-subscriptions";
 import { ACTIVE_QUEUED_TASKS, TASKS } from "@repo/queries/tasks/task-queries";
 import { useAuth } from "../components/auth/auth-provider";
+import { Block } from "#components/blocks/block";
 import { EmptyState } from "#components/feedback/empty-state";
 import { LoadingState } from "#components/feedback/loading-state";
 import { PageContainer } from "#components/layout/page-container";
@@ -54,6 +55,7 @@ interface StepResult {
   nextTaskId?: number | null;
   summary?: string;
   note?: string;
+  toolKey?: string | null;
   output?: unknown;
 }
 
@@ -452,14 +454,11 @@ export default function LandingPage() {
                               </p>
                             ) : null}
                             {step.result?.output != null ? (
-                              <details className="ml-6 text-xs text-muted-foreground">
-                                <summary className="cursor-pointer select-none">
-                                  Tool output
-                                </summary>
-                                <pre className="mt-1 max-h-56 overflow-auto rounded-md bg-muted p-2 text-xs">
-                                  {JSON.stringify(step.result.output, null, 2)}
-                                </pre>
-                              </details>
+                              <Block
+                                className="ml-6 mt-1"
+                                toolKey={step.result.toolKey}
+                                output={step.result.output}
+                              />
                             ) : null}
                           </div>
                         );

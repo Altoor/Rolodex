@@ -13,14 +13,21 @@ builder.mutationType({
       args: {
         name: t.arg.string({ required: true }),
         description: t.arg.string({ required: false }),
+        doByDate: t.arg({ type: "DateTime", required: false }),
         actor_id: t.arg.int({ required: false }),
       },
-      resolve: async (_query, _root, { name, description, actor_id }, ctx) => {
+      resolve: async (
+        _query,
+        _root,
+        { name, description, doByDate, actor_id },
+        ctx,
+      ) => {
         const author_id = requireUserId(ctx);
 
         const todo = {
           name,
           description: description ?? "",
+          doByDate: doByDate ?? null,
           authorId: author_id,
           actorId: actor_id ?? author_id,
           done: false,
@@ -79,12 +86,13 @@ builder.mutationType({
         id: t.arg.int({ required: true }),
         name: t.arg.string({ required: false }),
         description: t.arg.string({ required: false }),
+        doByDate: t.arg({ type: "DateTime", required: false }),
         actor_id: t.arg.int({ required: false }),
       },
       resolve: async (
         _query,
         _root,
-        { id, name, description, actor_id },
+        { id, name, description, doByDate, actor_id },
         ctx,
       ) => {
         const userId = requireUserId(ctx);
@@ -110,6 +118,7 @@ builder.mutationType({
           authorId: todo.authorId,
           actorId: actor_id ?? todo.actorId,
           done: todo.done,
+          ...(doByDate !== undefined ? { doByDate } : {}),
         };
 
         const [updatedTodo] = await db

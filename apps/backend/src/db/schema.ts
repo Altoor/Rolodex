@@ -29,6 +29,7 @@ export const todos = pgTable(
     name: text("name").notNull(),
     description: text("description").notNull(),
     done: boolean("done").default(false).notNull(),
+    doByDate: timestamp("do_by_date", { withTimezone: true }),
     authorId: integer("author_id").notNull(),
     actorId: integer("actor_id").notNull(),
     descriptionEmbedding: vector("descriptionEmbedding", {

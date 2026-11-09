@@ -53,6 +53,7 @@ export const findTodoTool: Tool = {
           name: todo.name,
           description: todo.description,
           done: todo.done,
+          doByDate: todo.doByDate,
         },
         score: todo.score,
         candidates,

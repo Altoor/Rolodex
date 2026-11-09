@@ -7,6 +7,7 @@ interface SelectableTodo {
   name: string;
   description: string;
   done: boolean;
+  doByDate: Date | null;
 }
 
 const NONE_OPTION = "none";
@@ -38,7 +39,9 @@ export async function selectTodoWithDecision<T extends SelectableTodo>(
       userTodo.id,
       {
         name: userTodo.name,
-        value: `${userTodo.description}. Is this task done?: ${userTodo.done ? "Done" : "Not done"}`,
+        value: `${userTodo.description}. Due: ${
+          userTodo.doByDate?.toISOString() ?? "none"
+        }. Is this task done?: ${userTodo.done ? "Done" : "Not done"}`,
       },
     ]),
   );

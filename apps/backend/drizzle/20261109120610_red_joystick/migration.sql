@@ -1,0 +1,1 @@
+ALTER TABLE "todos" ADD COLUMN "do_by_date" timestamp with time zone;

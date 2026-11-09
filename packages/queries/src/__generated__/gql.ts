@@ -37,6 +37,12 @@ type Documents = {
     "\n  query QueuedTask($runId: String) {\n    queuedTask(runId: $runId) {\n      id\n      taskId\n      state\n      status\n      runId\n      queued_by\n      queued_at\n      result\n      model\n      decisionModel\n      task {\n        id\n        name\n        type\n        toolKey\n      }\n    }\n  }\n": typeof types.QueuedTaskDocument,
     "\n  query ActiveQueuedTasks {\n    activeQueuedTasks {\n      id\n      taskId\n      state\n      status\n      runId\n      queued_by\n      queued_at\n      result\n      model\n      decisionModel\n      task {\n        id\n        name\n        type\n        toolKey\n      }\n    }\n  }\n": typeof types.ActiveQueuedTasksDocument,
     "\n  subscription QueuedTaskEvent {\n    queuedTaskEvent {\n      message\n      queuedTask {\n        id\n        taskId\n        state\n        status\n        runId\n        queued_by\n        queued_at\n        result\n        model\n        decisionModel\n        task {\n          id\n          name\n          type\n          toolKey\n        }\n      }\n    }\n  }\n": typeof types.QueuedTaskEventDocument,
+    "\n  mutation CreateTodo(\n    $name: String!\n    $description: String\n    $doByDate: DateTime\n    $actor_id: Int\n  ) {\n    createTodo(\n      name: $name\n      description: $description\n      doByDate: $doByDate\n      actor_id: $actor_id\n    ) {\n      ...TodoFields\n    }\n  }\n": typeof types.CreateTodoDocument,
+    "\n  mutation UpdateTodo(\n    $id: Int!\n    $name: String\n    $description: String\n    $doByDate: DateTime\n    $actor_id: Int\n  ) {\n    updateTodo(\n      id: $id\n      name: $name\n      description: $description\n      doByDate: $doByDate\n      actor_id: $actor_id\n    ) {\n      ...TodoFields\n    }\n  }\n": typeof types.UpdateTodoDocument,
+    "\n  mutation MarkTodoDone($id: Int!, $done: Boolean!) {\n    markTodoDone(id: $id, done: $done) {\n      ...TodoFields\n    }\n  }\n": typeof types.MarkTodoDoneDocument,
+    "\n  mutation DeleteTodo($id: Int!) {\n    deleteTodo(id: $id)\n  }\n": typeof types.DeleteTodoDocument,
+    "\n  fragment TodoFields on Todo {\n    id\n    name\n    description\n    done\n    doByDate\n    authorId\n    actorId\n  }\n": typeof types.TodoFieldsFragmentDoc,
+    "\n  query GetTodos {\n    getTodos {\n      ...TodoFields\n    }\n  }\n": typeof types.GetTodosDocument,
     "\n  mutation TestTool(\n    $key: String!\n    $state: String!\n    $toolConfig: JSON\n    $model: String\n    $decisionModel: String\n  ) {\n    testTool(\n      key: $key\n      state: $state\n      toolConfig: $toolConfig\n      model: $model\n      decisionModel: $decisionModel\n    ) {\n      output\n      summary\n    }\n  }\n": typeof types.TestToolDocument,
     "\n  query GetTools {\n    tools {\n      key\n      name\n      description\n      category\n      inputMode\n      inputSchema\n      outputDescription\n      exampleConfig\n    }\n  }\n": typeof types.GetToolsDocument,
     "\n  query GetTool($key: String!) {\n    getTool(key: $key) {\n      key\n      name\n      description\n      category\n      inputMode\n      inputSchema\n      outputDescription\n      exampleConfig\n    }\n  }\n": typeof types.GetToolDocument,
@@ -69,6 +75,12 @@ const documents: Documents = {
     "\n  query QueuedTask($runId: String) {\n    queuedTask(runId: $runId) {\n      id\n      taskId\n      state\n      status\n      runId\n      queued_by\n      queued_at\n      result\n      model\n      decisionModel\n      task {\n        id\n        name\n        type\n        toolKey\n      }\n    }\n  }\n": types.QueuedTaskDocument,
     "\n  query ActiveQueuedTasks {\n    activeQueuedTasks {\n      id\n      taskId\n      state\n      status\n      runId\n      queued_by\n      queued_at\n      result\n      model\n      decisionModel\n      task {\n        id\n        name\n        type\n        toolKey\n      }\n    }\n  }\n": types.ActiveQueuedTasksDocument,
     "\n  subscription QueuedTaskEvent {\n    queuedTaskEvent {\n      message\n      queuedTask {\n        id\n        taskId\n        state\n        status\n        runId\n        queued_by\n        queued_at\n        result\n        model\n        decisionModel\n        task {\n          id\n          name\n          type\n          toolKey\n        }\n      }\n    }\n  }\n": types.QueuedTaskEventDocument,
+    "\n  mutation CreateTodo(\n    $name: String!\n    $description: String\n    $doByDate: DateTime\n    $actor_id: Int\n  ) {\n    createTodo(\n      name: $name\n      description: $description\n      doByDate: $doByDate\n      actor_id: $actor_id\n    ) {\n      ...TodoFields\n    }\n  }\n": types.CreateTodoDocument,
+    "\n  mutation UpdateTodo(\n    $id: Int!\n    $name: String\n    $description: String\n    $doByDate: DateTime\n    $actor_id: Int\n  ) {\n    updateTodo(\n      id: $id\n      name: $name\n      description: $description\n      doByDate: $doByDate\n      actor_id: $actor_id\n    ) {\n      ...TodoFields\n    }\n  }\n": types.UpdateTodoDocument,
+    "\n  mutation MarkTodoDone($id: Int!, $done: Boolean!) {\n    markTodoDone(id: $id, done: $done) {\n      ...TodoFields\n    }\n  }\n": types.MarkTodoDoneDocument,
+    "\n  mutation DeleteTodo($id: Int!) {\n    deleteTodo(id: $id)\n  }\n": types.DeleteTodoDocument,
+    "\n  fragment TodoFields on Todo {\n    id\n    name\n    description\n    done\n    doByDate\n    authorId\n    actorId\n  }\n": types.TodoFieldsFragmentDoc,
+    "\n  query GetTodos {\n    getTodos {\n      ...TodoFields\n    }\n  }\n": types.GetTodosDocument,
     "\n  mutation TestTool(\n    $key: String!\n    $state: String!\n    $toolConfig: JSON\n    $model: String\n    $decisionModel: String\n  ) {\n    testTool(\n      key: $key\n      state: $state\n      toolConfig: $toolConfig\n      model: $model\n      decisionModel: $decisionModel\n    ) {\n      output\n      summary\n    }\n  }\n": types.TestToolDocument,
     "\n  query GetTools {\n    tools {\n      key\n      name\n      description\n      category\n      inputMode\n      inputSchema\n      outputDescription\n      exampleConfig\n    }\n  }\n": types.GetToolsDocument,
     "\n  query GetTool($key: String!) {\n    getTool(key: $key) {\n      key\n      name\n      description\n      category\n      inputMode\n      inputSchema\n      outputDescription\n      exampleConfig\n    }\n  }\n": types.GetToolDocument,
@@ -184,6 +196,30 @@ export function gql(source: "\n  query ActiveQueuedTasks {\n    activeQueuedTask
  * The gql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
 export function gql(source: "\n  subscription QueuedTaskEvent {\n    queuedTaskEvent {\n      message\n      queuedTask {\n        id\n        taskId\n        state\n        status\n        runId\n        queued_by\n        queued_at\n        result\n        model\n        decisionModel\n        task {\n          id\n          name\n          type\n          toolKey\n        }\n      }\n    }\n  }\n"): (typeof documents)["\n  subscription QueuedTaskEvent {\n    queuedTaskEvent {\n      message\n      queuedTask {\n        id\n        taskId\n        state\n        status\n        runId\n        queued_by\n        queued_at\n        result\n        model\n        decisionModel\n        task {\n          id\n          name\n          type\n          toolKey\n        }\n      }\n    }\n  }\n"];
+/**
+ * The gql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function gql(source: "\n  mutation CreateTodo(\n    $name: String!\n    $description: String\n    $doByDate: DateTime\n    $actor_id: Int\n  ) {\n    createTodo(\n      name: $name\n      description: $description\n      doByDate: $doByDate\n      actor_id: $actor_id\n    ) {\n      ...TodoFields\n    }\n  }\n"): (typeof documents)["\n  mutation CreateTodo(\n    $name: String!\n    $description: String\n    $doByDate: DateTime\n    $actor_id: Int\n  ) {\n    createTodo(\n      name: $name\n      description: $description\n      doByDate: $doByDate\n      actor_id: $actor_id\n    ) {\n      ...TodoFields\n    }\n  }\n"];
+/**
+ * The gql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function gql(source: "\n  mutation UpdateTodo(\n    $id: Int!\n    $name: String\n    $description: String\n    $doByDate: DateTime\n    $actor_id: Int\n  ) {\n    updateTodo(\n      id: $id\n      name: $name\n      description: $description\n      doByDate: $doByDate\n      actor_id: $actor_id\n    ) {\n      ...TodoFields\n    }\n  }\n"): (typeof documents)["\n  mutation UpdateTodo(\n    $id: Int!\n    $name: String\n    $description: String\n    $doByDate: DateTime\n    $actor_id: Int\n  ) {\n    updateTodo(\n      id: $id\n      name: $name\n      description: $description\n      doByDate: $doByDate\n      actor_id: $actor_id\n    ) {\n      ...TodoFields\n    }\n  }\n"];
+/**
+ * The gql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function gql(source: "\n  mutation MarkTodoDone($id: Int!, $done: Boolean!) {\n    markTodoDone(id: $id, done: $done) {\n      ...TodoFields\n    }\n  }\n"): (typeof documents)["\n  mutation MarkTodoDone($id: Int!, $done: Boolean!) {\n    markTodoDone(id: $id, done: $done) {\n      ...TodoFields\n    }\n  }\n"];
+/**
+ * The gql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function gql(source: "\n  mutation DeleteTodo($id: Int!) {\n    deleteTodo(id: $id)\n  }\n"): (typeof documents)["\n  mutation DeleteTodo($id: Int!) {\n    deleteTodo(id: $id)\n  }\n"];
+/**
+ * The gql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function gql(source: "\n  fragment TodoFields on Todo {\n    id\n    name\n    description\n    done\n    doByDate\n    authorId\n    actorId\n  }\n"): (typeof documents)["\n  fragment TodoFields on Todo {\n    id\n    name\n    description\n    done\n    doByDate\n    authorId\n    actorId\n  }\n"];
+/**
+ * The gql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function gql(source: "\n  query GetTodos {\n    getTodos {\n      ...TodoFields\n    }\n  }\n"): (typeof documents)["\n  query GetTodos {\n    getTodos {\n      ...TodoFields\n    }\n  }\n"];
 /**
  * The gql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */

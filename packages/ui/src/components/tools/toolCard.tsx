@@ -19,10 +19,16 @@ import {
   FieldGroup,
   FieldLabel,
 } from "#components/ui/field";
-import { Separator } from "#components/ui/separator";
 import { Spinner } from "#components/ui/spinner";
 import { Textarea } from "#components/ui/textarea";
 import { Input } from "#components/ui/input";
+import {
+  Accordion,
+  AccordionItem,
+  AccordionPanel,
+  AccordionTrigger,
+} from "#components/ui/accordion";
+import { Block } from "#components/blocks/block";
 import { ToolDetails } from "#components/tools/toolDetails";
 import { SubmitHandler, useForm } from "react-hook-form";
 
@@ -106,10 +112,6 @@ export default function ToolCard({ tool }: ToolCardProps) {
       </CardHeader>
 
       <CardContent className="flex flex-col gap-4">
-        <ToolDetails tool={tool} showDescription={false} />
-
-        <Separator />
-
         <form onSubmit={handleSubmit(onSubmit)}>
           <FieldGroup>
             <Field>
@@ -122,51 +124,67 @@ export default function ToolCard({ tool }: ToolCardProps) {
               <FieldError errors={[errors.state]} />
             </Field>
 
-            <Field>
-              <FieldLabel htmlFor={`tool-${tool.key}-config`}>
-                Tool config (JSON)
-              </FieldLabel>
-              <Textarea
-                id={`tool-${tool.key}-config`}
-                placeholder="Optional JSON object."
-                {...register("toolConfig")}
-              />
-              <FieldDescription>
-                Optional JSON object. The state above is also passed to the
-                tool.
-              </FieldDescription>
-              <FieldError errors={[errors.toolConfig]} />
-            </Field>
+            <Accordion keepMounted>
+              <AccordionItem value="details">
+                <AccordionTrigger>Tool details</AccordionTrigger>
+                <AccordionPanel className="pb-3">
+                  <ToolDetails tool={tool} showDescription={false} />
+                </AccordionPanel>
+              </AccordionItem>
 
-            <Field>
-              <FieldLabel htmlFor={`tool-${tool.key}-model`}>
-                Generation model (optional)
-              </FieldLabel>
-              <Input
-                id={`tool-${tool.key}-model`}
-                placeholder="Use your default generation model"
-                {...register("model")}
-              />
-              <FieldDescription>
-                Used by prompt-style tools. Leave blank to use your default
-                generation model.
-              </FieldDescription>
-            </Field>
+              <AccordionItem value="options">
+                <AccordionTrigger>Advanced options</AccordionTrigger>
+                <AccordionPanel className="pb-3">
+                  <FieldGroup className="gap-4">
+                    <Field>
+                      <FieldLabel htmlFor={`tool-${tool.key}-config`}>
+                        Tool config (JSON)
+                      </FieldLabel>
+                      <Textarea
+                        id={`tool-${tool.key}-config`}
+                        placeholder="Optional JSON object."
+                        {...register("toolConfig")}
+                      />
+                      <FieldDescription>
+                        Optional JSON object. The state above is also passed to
+                        the tool.
+                      </FieldDescription>
+                      <FieldError errors={[errors.toolConfig]} />
+                    </Field>
 
-            <Field>
-              <FieldLabel htmlFor={`tool-${tool.key}-decision-model`}>
-                Decision model (optional)
-              </FieldLabel>
-              <Input
-                id={`tool-${tool.key}-decision-model`}
-                placeholder="Use your default decision model"
-                {...register("decisionModel")}
-              />
-              <FieldDescription>
-                Used by decision tasks and todo selection. Leave blank to use
-                your default decision model.
-              </FieldDescription>
-            </Field>
+                    <Field>
+                      <FieldLabel htmlFor={`tool-${tool.key}-model`}>
+                        Generation model (optional)
+                      </FieldLabel>
+                      <Input
+                        id={`tool-${tool.key}-model`}
+                        placeholder="Use your default generation model"
+                        {...register("model")}
+                      />
+                      <FieldDescription>
+                        Used by prompt-style tools. Leave blank to use your
+                        default generation model.
+                      </FieldDescription>
+                    </Field>
+
+                    <Field>
+                      <FieldLabel htmlFor={`tool-${tool.key}-decision-model`}>
+                        Decision model (optional)
+                      </FieldLabel>
+                      <Input
+                        id={`tool-${tool.key}-decision-model`}
+                        placeholder="Use your default decision model"
+                        {...register("decisionModel")}
+                      />
+                      <FieldDescription>
+                        Used by decision tasks and todo selection. Leave blank
+                        to use your default decision model.
+                      </FieldDescription>
+                    </Field>
+                  </FieldGroup>
+                </AccordionPanel>
+              </AccordionItem>
+            </Accordion>
 
             <Field>
               <FieldDescription>
@@ -186,15 +204,20 @@ export default function ToolCard({ tool }: ToolCardProps) {
         </form>
 
         {data?.testTool ? (
-          <div className="flex flex-col gap-2">
-            <p className="text-sm font-medium">Result</p>
-            <p className="text-sm text-muted-foreground">
-              {data.testTool.summary}
-            </p>
-            <pre className="overflow-x-auto rounded-md bg-muted p-3 text-xs">
-              {JSON.stringify(data.testTool.output, null, 2)}
-            </pre>
-          </div>
+          <Accordion
+            key={`${data.testTool.summary}:${JSON.stringify(data.testTool.output)}`}
+            defaultValue={["result"]}
+          >
+            <AccordionItem value="result">
+              <AccordionTrigger>Result</AccordionTrigger>
+              <AccordionPanel className="flex flex-col gap-2 pb-3">
+                <p className="text-sm text-muted-foreground">
+                  {data.testTool.summary}
+                </p>
+                <Block toolKey={tool.key} output={data.testTool.output} />
+              </AccordionPanel>
+            </AccordionItem>
+          </Accordion>
         ) : null}
       </CardContent>
     </Card>
