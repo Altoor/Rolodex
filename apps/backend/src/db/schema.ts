@@ -14,6 +14,7 @@ import {
   index,
   vector,
 } from "drizzle-orm/pg-core";
+import type { ToolStateEntry } from "../tools/types";
 
 export const users = pgTable("users", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
@@ -30,6 +31,10 @@ export const todos = pgTable(
     description: text("description").notNull(),
     done: boolean("done").default(false).notNull(),
     doByDate: timestamp("do_by_date", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
     authorId: integer("author_id").notNull(),
     actorId: integer("actor_id").notNull(),
     descriptionEmbedding: vector("descriptionEmbedding", {
@@ -71,6 +76,11 @@ export const taskResults = pgTable("taskResults", {
 
 export const TaskType = pgEnum("TaskType", ["decision", "textPrompt", "tool"]);
 
+export const toolOutputTypeEnum = pgEnum("ToolOutputType", [
+  "normal",
+  "foreach",
+]);
+
 export const tasks = pgTable("tasks", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   name: text("name").notNull(),
@@ -79,6 +89,12 @@ export const tasks = pgTable("tasks", {
   fallbackTaskId: integer("fallbackTaskId"),
   toolKey: text("toolKey"),
   toolConfig: json("toolConfig"),
+  toolOutputType: toolOutputTypeEnum("toolOutputType")
+    .default("normal")
+    .notNull(),
+  // Conditional tool branches (currently used by the `if` tool).
+  onTrueTaskId: integer("onTrueTaskId"),
+  onFalseTaskId: integer("onFalseTaskId"),
   // Generation model used by prompt-style tools.
   model: text("model"),
   // System One decision model used by decision tasks and todo selection.
@@ -96,6 +112,15 @@ export const queuedTasks = pgTable("queuedTasks", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   taskId: integer("taskId").notNull(),
   state: text("state").notNull(),
+  /** Accumulated structured tool output, separate from the immutable state. */
+  toolState: json("toolState")
+    .$type<ToolStateEntry[]>()
+    .notNull()
+    .default(sql`'[]'::json`),
+  /** Set for foreach children. */
+  parentQueuedTaskId: integer("parentQueuedTaskId"),
+  /** Chain depth, used instead of a shared per-run step budget. */
+  depth: integer("depth").notNull().default(0),
   status: queuedTaskStatus().default("queued").notNull(),
   // Groups all steps that belong to one chain run.
   runId: uuid("runId")

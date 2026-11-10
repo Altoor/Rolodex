@@ -1,4 +1,3 @@
-import { serializeToolOutput } from "../input";
 import type { Tool, ToolDefinition } from "../types";
 import { findTodoMatches } from "./search";
 
@@ -30,6 +29,11 @@ const definition: ToolDefinition = {
         description:
           "Optional decision model used by the fallback selector. Defaults to the task/inherited decision model, then the user's default decision model.",
       },
+      includeArchived: {
+        type: "boolean",
+        description: "Include archived todos. Defaults to false.",
+        default: false,
+      },
     },
   },
   outputDescription:
@@ -54,17 +58,14 @@ export const findTodoTool: Tool = {
           description: todo.description,
           done: todo.done,
           doByDate: todo.doByDate,
+          createdAt: todo.createdAt,
+          archivedAt: todo.archivedAt,
         },
         score: todo.score,
         candidates,
       },
       summary: `Found todo "${todo.name}"`,
-      // Feed the selected todo into update_todo/delete_todo. Use the
-      // delimited form so existing plain-text state is preserved.
-      stateAppend: serializeToolOutput({
-        todoId: todo.id,
-        todoName: todo.name,
-      }),
+      toolStateAppend: { todo },
       appendState: true,
     };
   },

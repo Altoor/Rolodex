@@ -51,3 +51,11 @@ export const DELETE_TODO = gql(/* GraphQL */ `
     deleteTodo(id: $id)
   }
 `);
+
+export const ARCHIVE_TODO = gql(/* GraphQL */ `
+  mutation ArchiveTodo($id: Int!, $archived: Boolean) {
+    archiveTodo(id: $id, archived: $archived) {
+      ...TodoFields
+    }
+  }
+`);

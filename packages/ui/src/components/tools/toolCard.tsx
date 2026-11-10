@@ -39,6 +39,8 @@ interface ToolCardProps {
 type Inputs = {
   state: string;
   toolConfig: string;
+  toolState: string;
+  outputType: string;
   model: string;
   decisionModel: string;
 };
@@ -67,6 +69,8 @@ export default function ToolCard({ tool }: ToolCardProps) {
       toolConfig: tool.exampleConfig
         ? JSON.stringify(tool.exampleConfig, null, 2)
         : "",
+      toolState: "[]",
+      outputType: "normal",
       model: "",
       decisionModel: "",
     },
@@ -74,11 +78,27 @@ export default function ToolCard({ tool }: ToolCardProps) {
 
   const onSubmit: SubmitHandler<Inputs> = async (inputs) => {
     let toolConfig: Record<string, unknown> | null;
+    let toolState: unknown[];
 
     try {
       toolConfig = parseToolConfig(inputs.toolConfig);
     } catch (err) {
       setError("toolConfig", {
+        message: err instanceof Error ? err.message : String(err),
+      });
+      return;
+    }
+
+    try {
+      const parsed: unknown = inputs.toolState.trim()
+        ? JSON.parse(inputs.toolState)
+        : [];
+      if (!Array.isArray(parsed)) {
+        throw new Error("toolState must be a JSON array");
+      }
+      toolState = parsed;
+    } catch (err) {
+      setError("toolState", {
         message: err instanceof Error ? err.message : String(err),
       });
       return;
@@ -94,6 +114,8 @@ export default function ToolCard({ tool }: ToolCardProps) {
         key: tool.key,
         state: inputs.state,
         toolConfig,
+        toolState,
+        outputType: inputs.outputType.trim() || "normal",
         model: inputs.model.trim() || null,
         decisionModel: inputs.decisionModel.trim() || null,
       },
@@ -150,6 +172,36 @@ export default function ToolCard({ tool }: ToolCardProps) {
                         the tool.
                       </FieldDescription>
                       <FieldError errors={[errors.toolConfig]} />
+                    </Field>
+
+                    <Field>
+                      <FieldLabel htmlFor={`tool-${tool.key}-state-json`}>
+                        Tool state (JSON)
+                      </FieldLabel>
+                      <Textarea
+                        id={`tool-${tool.key}-state-json`}
+                        placeholder="Optional JSON array of tool-state entries."
+                        {...register("toolState")}
+                      />
+                      <FieldDescription>
+                        Accumulated tool-state entries available to the tool.
+                      </FieldDescription>
+                      <FieldError errors={[errors.toolState]} />
+                    </Field>
+
+                    <Field>
+                      <FieldLabel htmlFor={`tool-${tool.key}-output-type`}>
+                        Output type (optional)
+                      </FieldLabel>
+                      <Input
+                        id={`tool-${tool.key}-output-type`}
+                        placeholder="normal"
+                        {...register("outputType")}
+                      />
+                      <FieldDescription>
+                        normal or foreach. Only tools that advertise foreach
+                        accept it.
+                      </FieldDescription>
                     </Field>
 
                     <Field>
@@ -215,6 +267,18 @@ export default function ToolCard({ tool }: ToolCardProps) {
                   {data.testTool.summary}
                 </p>
                 <Block toolKey={tool.key} output={data.testTool.output} />
+                <div className="flex flex-col gap-1">
+                  <p className="text-xs font-medium">Resulting state</p>
+                  <pre className="max-h-48 overflow-auto rounded-md bg-muted p-2 text-xs">
+                    {data.testTool.state}
+                  </pre>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <p className="text-xs font-medium">Resulting tool state</p>
+                  <pre className="max-h-48 overflow-auto rounded-md bg-muted p-2 text-xs">
+                    {JSON.stringify(data.testTool.toolState, null, 2)}
+                  </pre>
+                </div>
               </AccordionPanel>
             </AccordionItem>
           </Accordion>

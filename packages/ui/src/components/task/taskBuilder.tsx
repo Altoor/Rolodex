@@ -28,6 +28,7 @@ import {
 import TaskCard from "./taskCard/taskCard";
 import {
   emptyTaskFormValues,
+  NO_BRANCH_TASK,
   taskToFormValues,
   USE_USER_DEFAULT_MODEL,
   type TaskFormValues,
@@ -50,7 +51,13 @@ const TaskBuilder = ({ selectedTaskId }: TaskBuilderProps) => {
 
   const { data: toolsData } = useQuery(TOOLS);
   const { data: modelsData } = useQuery(MODELS);
+  const { data: tasksData } = useQuery(TASKS);
   const tools = toolsData?.tools ?? [];
+  const branchTasks = (tasksData?.tasks ?? []).flatMap((task) =>
+    task?.id != null
+      ? [{ id: task.id, name: task.name ?? "Untitled task" }]
+      : [],
+  );
   const models = (modelsData?.models ?? []).flatMap((model) =>
     model.pulled && model.name ? [model.name] : [],
   );
@@ -135,6 +142,12 @@ const TaskBuilder = ({ selectedTaskId }: TaskBuilderProps) => {
     };
   }, [getDecision, getValues, selectedDecisionId, setValue]);
 
+  const parseBranchTaskId = (value: string): number | null => {
+    if (!value || value === NO_BRANCH_TASK) return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
   const saveTask = methods.handleSubmit(async (values) => {
     if (values.type === "tool" && !values.toolKey) {
       methods.setError("toolKey", { message: "select a tool" });
@@ -162,12 +175,17 @@ const TaskBuilder = ({ selectedTaskId }: TaskBuilderProps) => {
       }
     }
 
+    const isIfTool = values.type === "tool" && values.toolKey === "if";
     const taskVariables = {
       name: values.name,
       type: values.type,
       decisionId: values.type === "decision" ? selectedDecisionId : undefined,
       toolKey: values.type === "tool" ? values.toolKey : null,
       toolConfig,
+      toolOutputType:
+        values.type === "tool" ? values.toolOutputType : ("normal" as const),
+      onTrueTaskId: isIfTool ? parseBranchTaskId(values.onTrueTaskId) : null,
+      onFalseTaskId: isIfTool ? parseBranchTaskId(values.onFalseTaskId) : null,
       model: values.model === USE_USER_DEFAULT_MODEL ? null : values.model,
       decisionModel:
         values.decisionModel === USE_USER_DEFAULT_MODEL
@@ -266,6 +284,7 @@ const TaskBuilder = ({ selectedTaskId }: TaskBuilderProps) => {
         <TaskCard
           resultFields={fields}
           tools={tools}
+          tasks={branchTasks}
           models={models}
           save={saveTask}
           saving={creatingTask || updatingTask}

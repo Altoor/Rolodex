@@ -2,6 +2,7 @@
 
 import { useMutation } from "@apollo/client/react";
 import {
+  ARCHIVE_TODO,
   CREATE_TODO,
   DELETE_TODO,
   MARK_TODO_DONE,
@@ -14,6 +15,7 @@ import { toTodoItem, type TodoDraft, type TodoItemData } from "./types";
 interface UseTodoActionsOptions {
   onUpdated?: (todo: TodoItemData) => void;
   onDeleted?: (id: number) => void;
+  onArchived?: (todo: TodoItemData) => void;
 }
 
 const refetchOptions = {
@@ -34,11 +36,13 @@ function errorMessage(error: unknown): string {
 export function useTodoActions({
   onUpdated,
   onDeleted,
+  onArchived,
 }: UseTodoActionsOptions = {}) {
   const [createMutation] = useMutation(CREATE_TODO, refetchOptions);
   const [markMutation] = useMutation(MARK_TODO_DONE, refetchOptions);
   const [updateMutation] = useMutation(UPDATE_TODO, refetchOptions);
   const [deleteMutation] = useMutation(DELETE_TODO, refetchOptions);
+  const [archiveMutation] = useMutation(ARCHIVE_TODO, refetchOptions);
 
   const [pendingIds, setPendingIds] = useState<ReadonlySet<number>>(new Set());
   const [creating, setCreating] = useState(false);
@@ -122,6 +126,25 @@ export function useTodoActions({
     });
   };
 
+  const archiveTodoAction = async (
+    todo: TodoItemData,
+    archived = true,
+  ): Promise<TodoItemData | null> => {
+    const id = todo.id;
+    if (id == null) return null;
+
+    return run(id, async () => {
+      const { data, error: mutationError } = await archiveMutation({
+        variables: { id, archived },
+      });
+      if (mutationError) throw mutationError;
+
+      const updated = data?.archiveTodo ? toTodoItem(data.archiveTodo) : null;
+      if (updated) onArchived?.(updated);
+      return updated;
+    });
+  };
+
   const deleteTodo = async (todo: TodoItemData): Promise<void> => {
     const id = todo.id;
     if (id == null) return;
@@ -141,6 +164,7 @@ export function useTodoActions({
     createTodo,
     markDone,
     updateTodo,
+    archiveTodo: archiveTodoAction,
     deleteTodo,
     pendingIds,
     creating,

@@ -11,6 +11,9 @@ export type FlowTaskResult = NonNullable<FlowTask["taskResults"]>[number];
 
 /** Handle id used for a task's fallback output on the flow node. */
 export const FALLBACK_HANDLE_ID = "fallback";
+/** Handle ids used for the `if` tool's conditional outputs. */
+export const TRUE_HANDLE_ID = "true";
+export const FALSE_HANDLE_ID = "false";
 
 export type TaskFlowNodeData = {
   taskId: number;
@@ -20,6 +23,8 @@ export type TaskFlowNodeData = {
   toolKey: string | null;
   model: string | null;
   decisionModel: string | null;
+  onTrueTaskId: number | null;
+  onFalseTaskId: number | null;
   taskResults: FlowTaskResult[];
   onTaskDelete?: (taskId: number) => void;
 } & Record<string, unknown>;

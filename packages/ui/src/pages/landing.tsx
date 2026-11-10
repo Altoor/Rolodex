@@ -51,12 +51,15 @@ type Inputs = {
 
 /** The executor stores this on each step's `result` column. */
 interface StepResult {
-  branch?: "result" | "fallback" | "tool" | "none";
+  branch?: "result" | "fallback" | "tool" | "none" | "true" | "false";
   nextTaskId?: number | null;
   summary?: string;
   note?: string;
   toolKey?: string | null;
   output?: unknown;
+  outputType?: "normal" | "foreach";
+  itemCount?: number;
+  childQueuedTaskIds?: number[];
 }
 
 interface QueuedTaskStep {
@@ -402,15 +405,29 @@ export default function LandingPage() {
                                 : "complete";
 
                         const branch =
-                          step.result?.branch === "result"
-                            ? `next: ${taskName(step.result.nextTaskId)}`
-                            : step.result?.branch === "fallback"
-                              ? `fallback: ${taskName(step.result.nextTaskId)}`
-                              : step.result?.branch === "tool"
+                          step.result?.outputType === "foreach"
+                            ? `foreach × ${step.result.itemCount ?? 0}${
+                                step.result.nextTaskId != null
+                                  ? ` → ${taskName(step.result.nextTaskId)}`
+                                  : ""
+                              }`
+                            : step.result?.branch === "true"
+                              ? step.result.nextTaskId != null
+                                ? `true: ${taskName(step.result.nextTaskId)}`
+                                : "true branch"
+                              : step.result?.branch === "false"
                                 ? step.result.nextTaskId != null
+                                  ? `false: ${taskName(step.result.nextTaskId)}`
+                                  : "false branch"
+                                : step.result?.branch === "result"
                                   ? `next: ${taskName(step.result.nextTaskId)}`
-                                  : "tool result"
-                                : undefined;
+                                  : step.result?.branch === "fallback"
+                                    ? `fallback: ${taskName(step.result.nextTaskId)}`
+                                    : step.result?.branch === "tool"
+                                      ? step.result.nextTaskId != null
+                                        ? `next: ${taskName(step.result.nextTaskId)}`
+                                        : "tool result"
+                                      : undefined;
 
                         const detail =
                           [

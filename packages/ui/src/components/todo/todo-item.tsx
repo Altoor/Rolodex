@@ -11,7 +11,7 @@ import {
   ItemMedia,
   ItemTitle,
 } from "#components/ui/item";
-import { Pencil, Trash2 } from "lucide-react";
+import { Archive, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { TodoDueBadge } from "./todo-due-badge";
 import { TodoForm } from "./todo-form";
@@ -26,6 +26,7 @@ interface TodoItemProps {
     todo: TodoItemData,
     draft: TodoDraft,
   ) => Promise<TodoItemData | null> | TodoItemData | null | void;
+  onArchive?: (todo: TodoItemData, archived: boolean) => void;
   onDelete?: (todo: TodoItemData) => void;
 }
 
@@ -35,10 +36,12 @@ export function TodoItem({
   pending = false,
   onToggle,
   onSave,
+  onArchive,
   onDelete,
 }: TodoItemProps) {
   const [editing, setEditing] = useState(false);
   const canMutate = editable && todo.id != null && !pending;
+  const archived = todo.archivedAt != null;
 
   if (editing && onSave) {
     return (
@@ -100,6 +103,23 @@ export function TodoItem({
           >
             <Pencil />
           </Button>
+          {onArchive ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              title={
+                archived ? `Restore ${todo.name}` : `Archive ${todo.name}`
+              }
+              aria-label={
+                archived ? `Restore ${todo.name}` : `Archive ${todo.name}`
+              }
+              disabled={!canMutate}
+              onClick={() => onArchive(todo, !archived)}
+            >
+              {archived ? <RotateCcw /> : <Archive />}
+            </Button>
+          ) : null}
           {onDelete ? (
             <ConfirmButton
               title={`Delete ${todo.name}`}

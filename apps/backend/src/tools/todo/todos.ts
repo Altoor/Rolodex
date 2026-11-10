@@ -210,8 +210,9 @@ export async function extractTodoDateTime(
 
 export async function resolveTodoId(
   context: ToolRunContext,
+  options: { includeArchived?: boolean } = {},
 ): Promise<TodoCandidate> {
-  const { todo } = await findTodoMatches(context);
+  const { todo } = await findTodoMatches(context, options);
   return todo;
 }
 
@@ -236,6 +237,8 @@ export function toToolTodo(todo: typeof todos.$inferSelect) {
     description: todo.description,
     done: todo.done,
     doByDate: todo.doByDate?.toISOString() ?? null,
+    createdAt: todo.createdAt?.toISOString() ?? null,
+    archivedAt: todo.archivedAt?.toISOString() ?? null,
     authorId: todo.authorId,
     actorId: todo.actorId,
   };
@@ -490,17 +493,45 @@ const deleteTodoDefinition: ToolDefinition = {
         description:
           "Optional decision model used to select the todo. Defaults to the user's default decision model.",
       },
+      allowNotDone: {
+        type: "boolean",
+        description: "Allow deleting a todo that is not done. Defaults to false.",
+        default: false,
+      },
+      allowNotArchived: {
+        type: "boolean",
+        description:
+          "Allow deleting a todo that is not archived. Defaults to false.",
+        default: false,
+      },
     },
   },
   outputDescription: "The id and name of the deleted todo.",
-  exampleConfig: { id: 3 },
+  exampleConfig: {
+    id: 3,
+    allowNotDone: false,
+    allowNotArchived: false,
+  },
 };
 
 export const deleteTodoTool: Tool = {
   definition: deleteTodoDefinition,
 
   async execute(context) {
-    const todo = await resolveTodoId(context);
+    const input = mergeToolInput(context);
+    const allowNotDone = readBoolean(input, "allowNotDone") ?? false;
+    const allowNotArchived = readBoolean(input, "allowNotArchived") ?? false;
+    const todo = await resolveTodoId(context, { includeArchived: true });
+
+    const done = todo.done;
+    const archived = todo.archivedAt != null;
+
+    if (!done && !archived && !allowNotDone && !allowNotArchived) {
+      throw new ToolInputError(
+        `todo "${todo.name}" is neither done nor archived; ` +
+          `mark it done/archive it first, or set allowNotDone/allowNotArchived=true`,
+      );
+    }
 
     await db.delete(todos).where(eq(todos.id, todo.id));
 

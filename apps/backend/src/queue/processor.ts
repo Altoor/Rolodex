@@ -16,9 +16,15 @@ import {
 } from "../ai/model";
 import { setupQuestions } from "../schema/ai/ai-service";
 import { publishQueuedTaskEvent } from "./pubsub";
-import { getTool, type ToolConfig } from "../tools";
+import {
+  getTool,
+  type ToolConfig,
+  type ToolStateEntry,
+  type ToolStateEntryInput,
+} from "../tools";
 
-const MAX_STEPS_PER_RUN = 15;
+const MAX_CHAIN_DEPTH = 20;
+const MAX_FOREACH_ITEMS = 50;
 
 type QueuedRow = typeof queuedTasks.$inferSelect;
 type TaskResultRow = typeof taskResults.$inferSelect;
@@ -56,8 +62,6 @@ export async function resetStaleRunningTasks(): Promise<void> {
 async function processQueue(): Promise<void> {
   if (processing) return;
   processing = true;
-  // Steps executed so far per chain run (loop guard).
-  const stepsByRun = new Map<string, number>();
 
   try {
     for (;;) {
@@ -71,17 +75,14 @@ async function processQueue(): Promise<void> {
         .orderBy(asc(queuedTasks.queued_at), asc(queuedTasks.id))
         .limit(1);
       if (!row) break;
-      await processStep(row, stepsByRun);
+      await processStep(row);
     }
   } finally {
     processing = false;
   }
 }
 
-async function processStep(
-  row: QueuedRow,
-  stepsByRun: Map<string, number>,
-): Promise<void> {
+async function processStep(row: QueuedRow): Promise<void> {
   const task = await db.query.tasks.findFirst({
     where: { id: row.taskId },
   });
@@ -98,7 +99,7 @@ async function processStep(
   if (running) publish(running, `running task "${task.name}"`);
 
   if (task.type === "tool") {
-    await processToolStep(row, task, stepsByRun);
+    await processToolStep(row, task);
     return;
   }
 
@@ -188,15 +189,16 @@ async function processStep(
     note = "no matching result and no fallback — run finished";
   }
 
-  const steps = (stepsByRun.get(row.runId) ?? 0) + 1;
-  stepsByRun.set(row.runId, steps);
-
   let enqueueNext = nextTaskId != null;
-  if (enqueueNext && steps >= MAX_STEPS_PER_RUN) {
+  if (enqueueNext && row.depth >= MAX_CHAIN_DEPTH) {
     enqueueNext = false;
-    const maxNote = `max chain depth (${MAX_STEPS_PER_RUN}) reached — run stopped`;
+    const maxNote = `max chain depth (${MAX_CHAIN_DEPTH}) reached — run stopped`;
     note = note ? `${note}; ${maxNote}` : maxNote;
   }
+
+  const nextToolState = appendState
+    ? [...row.toolState, { decision: answer }]
+    : row.toolState;
 
   const result = {
     answer,
@@ -210,10 +212,12 @@ async function processStep(
   await finishStep(row.id, "completed", result, summary ?? note);
 
   if (enqueueNext && nextTaskId != null) {
-    const nextState = appendState ? `${row.state}\n\n${summary}` : row.state;
     await db.insert(queuedTasks).values({
       taskId: nextTaskId,
-      state: nextState,
+      // State is immutable for the whole run; decisions add to toolState.
+      state: row.state,
+      toolState: nextToolState,
+      depth: row.depth + 1,
       runId: row.runId,
       queued_by: row.queued_by,
     });
@@ -223,7 +227,6 @@ async function processStep(
 async function processToolStep(
   row: QueuedRow,
   task: typeof tasks.$inferSelect,
-  stepsByRun: Map<string, number>,
 ): Promise<void> {
   if (!task.toolKey) {
     await finishStep(row.id, "failed", {
@@ -238,6 +241,17 @@ async function processToolStep(
     await finishStep(row.id, "failed", {
       toolKey: task.toolKey,
       note: `unknown tool "${task.toolKey}"`,
+    });
+    return;
+  }
+
+  const outputType = task.toolOutputType ?? "normal";
+  const supportedOutputTypes = tool.definition.outputTypes ?? ["normal"];
+
+  if (!supportedOutputTypes.includes(outputType)) {
+    await finishStep(row.id, "failed", {
+      toolKey: task.toolKey,
+      note: `tool "${task.toolKey}" does not support output type "${outputType}"`,
     });
     return;
   }
@@ -258,6 +272,8 @@ async function processToolStep(
       taskId: task.id,
       queuedTaskId: row.id,
       state: row.state,
+      toolState: row.toolState,
+      outputType,
       config: toolConfig,
       // Selector override > task model > user default, independently for each
       // model role.
@@ -265,45 +281,142 @@ async function processToolStep(
       decisionModel,
     });
 
-    const steps = (stepsByRun.get(row.runId) ?? 0) + 1;
-    stepsByRun.set(row.runId, steps);
+    let nextToolState = execution.toolState ?? row.toolState;
 
-    let nextTaskId = execution.nextTaskId ?? task.fallbackTaskId ?? null;
+    if (execution.toolStateAppend !== undefined) {
+      nextToolState = [
+        ...nextToolState,
+        ...toToolStateEntries(execution.toolStateAppend),
+      ];
+    }
+
+    // Legacy stateAppend now becomes a simple text entry instead of mutating
+    // the original state.
+    if (execution.stateAppend !== undefined) {
+      nextToolState = [...nextToolState, { text: execution.stateAppend }];
+    }
+
+    if (execution.clearToolState) nextToolState = [];
+
+    const nextState = execution.nextState ?? row.state;
+
+    let nextTaskId: number | null;
+    let branch: "true" | "false" | "tool" | "none";
+
+    if (execution.branch === "true") {
+      nextTaskId = task.onTrueTaskId;
+      branch = "true";
+    } else if (execution.branch === "false") {
+      nextTaskId = task.onFalseTaskId;
+      branch = "false";
+    } else {
+      nextTaskId = execution.nextTaskId ?? task.fallbackTaskId ?? null;
+      branch = nextTaskId != null ? "tool" : "none";
+    }
+
     let note: string | undefined;
+    let childQueuedTaskIds: number[] = [];
+    let itemCount: number | undefined;
 
-    if (nextTaskId != null && steps >= MAX_STEPS_PER_RUN) {
-      nextTaskId = null;
-      note = `max chain depth (${MAX_STEPS_PER_RUN}) reached — run stopped`;
+    if (execution.branch && nextTaskId == null) {
+      note = `branch "${execution.branch}" has no target task configured — run stopped`;
+    }
+
+    if (outputType === "normal") {
+      const append =
+        execution.appendState ?? Boolean(toolConfig?.appendState);
+
+      if (
+        append &&
+        execution.toolStateAppend === undefined &&
+        execution.stateAppend === undefined
+      ) {
+        nextToolState = [...nextToolState, execution.output];
+      }
+
+      if (nextTaskId != null) {
+        if (row.depth >= MAX_CHAIN_DEPTH) {
+          nextTaskId = null;
+          note = `max chain depth (${MAX_CHAIN_DEPTH}) reached — run stopped`;
+        } else {
+          await db.insert(queuedTasks).values({
+            taskId: nextTaskId,
+            state: nextState,
+            toolState: nextToolState,
+            depth: row.depth + 1,
+            parentQueuedTaskId: row.id,
+            runId: row.runId,
+            queued_by: row.queued_by,
+            model: execution.nextModel ?? row.model,
+            decisionModel: execution.nextDecisionModel ?? row.decisionModel,
+          });
+        }
+      }
+    } else {
+      const items = execution.foreach?.items ?? [];
+      itemCount = items.length;
+
+      if (items.length > MAX_FOREACH_ITEMS) {
+        await finishStep(row.id, "failed", {
+          toolKey: task.toolKey,
+          note: `foreach returned ${items.length} items; max is ${MAX_FOREACH_ITEMS}`,
+        });
+        return;
+      }
+
+      const forkTaskId = execution.foreach?.nextTaskId ?? nextTaskId;
+
+      if (items.length > 0 && forkTaskId == null) {
+        await finishStep(row.id, "failed", {
+          toolKey: task.toolKey,
+          note: "foreach has no next task configured",
+        });
+        return;
+      }
+
+      if (items.length > 0 && row.depth >= MAX_CHAIN_DEPTH) {
+        nextTaskId = null;
+        note = `max chain depth (${MAX_CHAIN_DEPTH}) reached — run stopped`;
+      } else if (items.length > 0 && forkTaskId != null) {
+        const inserted = await db
+          .insert(queuedTasks)
+          .values(
+            items.map((item) => ({
+              taskId: forkTaskId,
+              state: nextState,
+              toolState: [...nextToolState, item],
+              depth: row.depth + 1,
+              parentQueuedTaskId: row.id,
+              runId: row.runId,
+              queued_by: row.queued_by,
+              model: execution.nextModel ?? row.model,
+              decisionModel:
+                execution.nextDecisionModel ?? row.decisionModel,
+            })),
+          )
+          .returning({ id: queuedTasks.id });
+
+        childQueuedTaskIds = inserted.map((child) => child.id);
+        nextTaskId = forkTaskId;
+      } else {
+        nextTaskId = null;
+        note = "foreach returned no items — no next tasks enqueued";
+      }
     }
 
     const result = {
       toolKey: task.toolKey,
       output: execution.output,
       summary: execution.summary,
-      branch: nextTaskId != null ? "tool" : "none",
+      outputType,
+      branch,
       nextTaskId,
+      ...(itemCount !== undefined ? { itemCount } : {}),
+      ...(childQueuedTaskIds.length > 0 ? { childQueuedTaskIds } : {}),
       ...(note ? { note } : {}),
     };
 
-    await finishStep(row.id, "completed", result, execution.summary);
-
-    if (nextTaskId != null) {
-      const append = execution.appendState ?? Boolean(toolConfig?.appendState);
-      const nextState = append
-        ? `${row.state}\n\n${execution.stateAppend ?? execution.summary}`
-        : row.state;
-
-      await db.insert(queuedTasks).values({
-        taskId: nextTaskId,
-        state: nextState,
-        runId: row.runId,
-        queued_by: row.queued_by,
-        // model_selector sets nextModel/nextDecisionModel; otherwise keep the
-        // inherited overrides.
-        model: execution.nextModel ?? row.model,
-        decisionModel: execution.nextDecisionModel ?? row.decisionModel,
-      });
-    }
+    await finishStep(row.id, "completed", result, execution.summary ?? note);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await finishStep(row.id, "failed", {
@@ -311,6 +424,12 @@ async function processToolStep(
       note: `tool error: ${message}`,
     });
   }
+}
+
+function toToolStateEntries(
+  input: ToolStateEntryInput | ToolStateEntryInput[],
+): ToolStateEntry[] {
+  return Array.isArray(input) ? input : [input];
 }
 
 /**

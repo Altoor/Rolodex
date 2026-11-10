@@ -1,6 +1,11 @@
 import { ollama } from "../../ai/Ollama";
 import { getModelForUser } from "../../ai/model";
-import { mergeToolInput, readString } from "../input";
+import {
+  mergeToolInput,
+  readBoolean,
+  readString,
+  serializeToolState,
+} from "../input";
 import {
   ToolInputError,
   type Tool,
@@ -80,6 +85,12 @@ const definition: ToolDefinition = {
         description:
           "Optional JSON schema passed to Ollama for structured output.",
       },
+      useToolState: {
+        type: "boolean",
+        description:
+          "Append the accumulated toolState to the prompt. Defaults to false.",
+        default: false,
+      },
     },
   },
   outputDescription:
@@ -87,7 +98,7 @@ const definition: ToolDefinition = {
   exampleConfig: {
     model: "gemma4:e2b",
     system: "You are a helpful assistant.",
-    appendState: true,
+    useToolState: true,
   },
 };
 
@@ -96,11 +107,16 @@ export const promptTool: Tool = {
 
   async execute(context): Promise<ToolExecution> {
     const input = mergeToolInput(context);
-    const prompt = readString(input, "prompt") ?? context.state;
+    const useToolState = readBoolean(input, "useToolState") ?? false;
+    const basePrompt = readString(input, "prompt") ?? context.state;
 
-    if (!prompt || !prompt.trim()) {
+    if (!basePrompt || !basePrompt.trim()) {
       throw new ToolInputError("prompt is required");
     }
+
+    const prompt = useToolState
+      ? `${basePrompt}\n\nTool state:\n${serializeToolState(context.toolState)}`
+      : basePrompt;
 
     const model =
       readString(input, "model") ??
@@ -123,7 +139,7 @@ export const promptTool: Tool = {
         model: result.model,
       },
       summary: result.text,
-      stateAppend: result.text,
+      toolStateAppend: { text: result.text },
       // Prompt answers are normally useful to the next task.
       appendState: true,
     };

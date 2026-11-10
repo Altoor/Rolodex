@@ -9,6 +9,12 @@ import {
   updateTodoTool,
 } from "./todo/todos";
 import { findTodosTool } from "./todo/findTodos";
+import { archiveTodoTool } from "./todo/archiveTodo";
+import { deleteTodosOlderThanTool } from "./todo/deleteOlderThan";
+import { filterToolStateTool } from "./toolState/filterToolState";
+import { appendStateTool } from "./toolState/appendState";
+import { setStateTool } from "./toolState/setState";
+import { ifTool } from "./if/ifTool";
 
 export const tools: Tool[] = [
   promptTool,
@@ -19,6 +25,12 @@ export const tools: Tool[] = [
   updateTodoTool,
   markTodoDoneTool,
   deleteTodoTool,
+  archiveTodoTool,
+  deleteTodosOlderThanTool,
+  filterToolStateTool,
+  appendStateTool,
+  setStateTool,
+  ifTool,
 ];
 
 const toolsByKey = new Map<string, Tool>(

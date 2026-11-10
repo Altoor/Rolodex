@@ -13,6 +13,7 @@ interface TodoListProps {
     todo: TodoItemData,
     draft: TodoDraft,
   ) => Promise<TodoItemData | null> | TodoItemData | null | void;
+  onArchive?: (todo: TodoItemData, archived: boolean) => void;
   onDelete?: (todo: TodoItemData) => void;
   showEmpty?: boolean;
   emptyTitle?: string;
@@ -26,14 +27,20 @@ export function TodoList({
   pendingIds,
   onToggle,
   onSave,
+  onArchive,
   onDelete,
   showEmpty = true,
   emptyTitle = "No todos yet",
   emptyDescription = "Create a todo to get started.",
   className,
 }: TodoListProps) {
-  const active = todos.filter((todo) => !todo.done);
-  const completed = todos.filter((todo) => todo.done);
+  const active = todos.filter(
+    (todo) => !todo.done && todo.archivedAt == null,
+  );
+  const completed = todos.filter(
+    (todo) => todo.done && todo.archivedAt == null,
+  );
+  const archived = todos.filter((todo) => todo.archivedAt != null);
 
   if (todos.length === 0) {
     return showEmpty ? (
@@ -55,6 +62,7 @@ export function TodoList({
                 pending={todo.id != null && pendingIds?.has(todo.id)}
                 onToggle={onToggle}
                 onSave={onSave}
+                onArchive={onArchive}
                 onDelete={onDelete}
               />
             ))}
@@ -76,6 +84,29 @@ export function TodoList({
                 pending={todo.id != null && pendingIds?.has(todo.id)}
                 onToggle={onToggle}
                 onSave={onSave}
+                onArchive={onArchive}
+                onDelete={onDelete}
+              />
+            ))}
+          </ItemGroup>
+        </section>
+      ) : null}
+
+      {archived.length > 0 ? (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-sm font-medium text-muted-foreground">
+            Archived · {archived.length}
+          </h2>
+          <ItemGroup>
+            {archived.map((todo) => (
+              <TodoItem
+                key={todo.id ?? `${todo.name}-${todo.description}`}
+                todo={todo}
+                editable={editable}
+                pending={todo.id != null && pendingIds?.has(todo.id)}
+                onToggle={onToggle}
+                onSave={onSave}
+                onArchive={onArchive}
                 onDelete={onDelete}
               />
             ))}

@@ -1,9 +1,22 @@
-import { and, cosineDistance, eq, ilike, isNotNull, or } from "drizzle-orm";
+import {
+  and,
+  cosineDistance,
+  eq,
+  ilike,
+  isNotNull,
+  isNull,
+  or,
+} from "drizzle-orm";
 import { db } from "../../schema/builder";
 import { todos } from "../../db";
 import { tryEmbedText } from "../../ai/embeddings";
 import { getDecisionModelForUser } from "../../ai/model";
-import { mergeToolInput, readNumber, readString } from "../input";
+import {
+  mergeToolInput,
+  readBoolean,
+  readNumber,
+  readString,
+} from "../input";
 import { ToolInputError, type ToolRunContext } from "../types";
 import { selectTodoWithDecision } from "./selection";
 
@@ -15,6 +28,8 @@ export interface TodoCandidate {
   description: string;
   done: boolean;
   doByDate: string | null;
+  createdAt: string | null;
+  archivedAt: string | null;
   score: number;
 }
 
@@ -25,10 +40,32 @@ export interface TodoMatches {
   candidates: TodoCandidate[];
 }
 
-async function listUserTodos(userId: number): Promise<TodoRow[]> {
+/**
+ * Reads an id from a tool-state payload shaped like `{ todo }`,
+ * `{ todos: [...] }`, or `{ id }`. This keeps selection working even though
+ * tool state no longer carries a separate `data` block.
+ */
+function readEmbeddedTodoId(value: unknown): number | undefined {
+  if (Array.isArray(value)) {
+    return value.length > 0 ? readEmbeddedTodoId(value[0]) : undefined;
+  }
+
+  if (value !== null && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return readNumber(record, "id") ?? readNumber(record, "todoId");
+  }
+
+  return undefined;
+}
+
+async function listUserTodos(
+  userId: number,
+  includeArchived: boolean,
+): Promise<TodoRow[]> {
   return db.query.todos.findMany({
     where: {
       OR: [{ authorId: userId }, { actorId: userId }],
+      ...(includeArchived ? {} : { archivedAt: { isNull: true } }),
     },
   });
 }
@@ -55,9 +92,18 @@ async function loadUserTodo(userId: number, id: number): Promise<TodoRow> {
  */
 export async function findTodoMatches(
   context: ToolRunContext,
+  options: { includeArchived?: boolean } = {},
 ): Promise<TodoMatches> {
   const input = mergeToolInput(context);
-  const explicitId = readNumber(input, "id") ?? readNumber(input, "todoId");
+  const includeArchived =
+    options.includeArchived ??
+    readBoolean(input, "includeArchived") ??
+    false;
+  const explicitId =
+    readNumber(input, "id") ??
+    readNumber(input, "todoId") ??
+    readEmbeddedTodoId(input.todo) ??
+    readEmbeddedTodoId(input.todos);
 
   if (explicitId !== undefined) {
     const todo = await loadUserTodo(context.userId, explicitId);
@@ -68,6 +114,8 @@ export async function findTodoMatches(
         description: todo.description,
         done: todo.done,
         doByDate: todo.doByDate?.toISOString() ?? null,
+        createdAt: todo.createdAt?.toISOString() ?? null,
+        archivedAt: todo.archivedAt?.toISOString() ?? null,
         score: 1,
       },
       candidates: [],
@@ -99,10 +147,18 @@ export async function findTodoMatches(
         description: todos.description,
         done: todos.done,
         doByDate: todos.doByDate,
+        createdAt: todos.createdAt,
+        archivedAt: todos.archivedAt,
         distance,
       })
       .from(todos)
-      .where(and(ownership, isNotNull(todos.descriptionEmbedding)))
+      .where(
+        and(
+          ownership,
+          isNotNull(todos.descriptionEmbedding),
+          includeArchived ? undefined : isNull(todos.archivedAt),
+        ),
+      )
       .orderBy(distance)
       .limit(limit);
 
@@ -112,6 +168,8 @@ export async function findTodoMatches(
       description: row.description,
       done: row.done,
       doByDate: row.doByDate?.toISOString() ?? null,
+      createdAt: row.createdAt?.toISOString() ?? null,
+      archivedAt: row.archivedAt?.toISOString() ?? null,
       score: 1 - Number(row.distance),
     }));
   }
@@ -125,11 +183,14 @@ export async function findTodoMatches(
         description: todos.description,
         done: todos.done,
         doByDate: todos.doByDate,
+        createdAt: todos.createdAt,
+        archivedAt: todos.archivedAt,
       })
       .from(todos)
       .where(
         and(
           ownership,
+          includeArchived ? undefined : isNull(todos.archivedAt),
           or(ilike(todos.name, pattern), ilike(todos.description, pattern)),
         ),
       )
@@ -138,6 +199,8 @@ export async function findTodoMatches(
     candidates = rows.map((row) => ({
       ...row,
       doByDate: row.doByDate?.toISOString() ?? null,
+      createdAt: row.createdAt?.toISOString() ?? null,
+      archivedAt: row.archivedAt?.toISOString() ?? null,
       score: 1,
     }));
   }
@@ -149,7 +212,7 @@ export async function findTodoMatches(
       context.decisionModel ??
       (await getDecisionModelForUser(context.userId));
 
-    const userTodos = await listUserTodos(context.userId);
+    const userTodos = await listUserTodos(context.userId, includeArchived);
     if (userTodos.length === 0) {
       throw new ToolInputError("no matching todo found");
     }
@@ -163,6 +226,8 @@ export async function findTodoMatches(
         description: selected.description,
         done: selected.done,
         doByDate: selected.doByDate?.toISOString() ?? null,
+        createdAt: selected.createdAt?.toISOString() ?? null,
+        archivedAt: selected.archivedAt?.toISOString() ?? null,
         score: 1,
       },
     ];

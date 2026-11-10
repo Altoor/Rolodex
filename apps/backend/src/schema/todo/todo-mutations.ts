@@ -139,6 +139,44 @@ builder.mutationType({
       },
     }),
 
+    archiveTodo: t.drizzleField({
+      type: Todo,
+      args: {
+        id: t.arg.int({ required: true }),
+        archived: t.arg.boolean({ required: false }),
+      },
+      resolve: async (_query, _root, { id, archived }, ctx) => {
+        const userId = requireUserId(ctx);
+        const todo = await db.query.todos.findFirst({
+          where: {
+            AND: [
+              {
+                OR: [{ actorId: userId }, { authorId: userId }],
+              },
+
+              { id: id },
+            ],
+          },
+        });
+
+        if (!todo) {
+          throw new GraphQLError("no todo found");
+        }
+
+        const [updatedTodo] = await db
+          .update(todos)
+          .set({ archivedAt: (archived ?? true) ? new Date() : null })
+          .where(eq(todos.id, id))
+          .returning();
+
+        if (!updatedTodo) {
+          throw new GraphQLError("could not archive todo");
+        }
+
+        return updatedTodo;
+      },
+    }),
+
     deleteTodo: t.field({
       type: "String",
       args: {

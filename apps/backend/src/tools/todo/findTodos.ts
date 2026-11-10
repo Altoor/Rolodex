@@ -1,4 +1,3 @@
-import { serializeToolOutput } from "../input";
 import type { Tool, ToolDefinition } from "../types";
 import { findTodoMatches } from "./search";
 
@@ -26,10 +25,18 @@ const definition: ToolDefinition = {
         description:
           "Optional decision model used by the fallback selector. Defaults to the task/inherited decision model, then the user's default decision model.",
       },
+      includeArchived: {
+        type: "boolean",
+        description: "Include archived todos. Defaults to false.",
+        default: false,
+      },
     },
   },
   outputDescription:
     "The best matching todos, their similarity score, and the candidate todos.",
+  outputTypes: ["normal", "foreach"],
+  foreachOutputDescription:
+    "Enqueue one queued task per matching todo, with only that todo in each child's toolState.",
   exampleConfig: {
     query: "pick up Johnny",
     limit: 15,
@@ -42,21 +49,22 @@ export const findTodosTool: Tool = {
   async execute(context) {
     const { candidates } = await findTodoMatches(context);
 
+    if (context.outputType === "foreach") {
+      return {
+        output: { todos: candidates },
+        summary: `Found ${candidates.length} todos`,
+        foreach: {
+          items: candidates.map((todo) => ({ todo })),
+        },
+      };
+    }
+
     return {
       output: {
         todos: candidates,
       },
-      summary: `Found todos`,
-      // Feed the selected todo into update_todo/delete_todo. Use the
-      // delimited form so existing plain-text state is preserved.
-      stateAppend: serializeToolOutput({
-        todos: candidates.map((todo) => {
-          return {
-            todoId: todo.id,
-            todoName: todo.name,
-          };
-        }),
-      }),
+      summary: `Found ${candidates.length} todos`,
+      toolStateAppend: { todos: candidates },
       appendState: true,
     };
   },

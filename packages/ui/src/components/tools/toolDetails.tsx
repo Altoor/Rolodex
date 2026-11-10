@@ -18,6 +18,8 @@ export interface ToolDetailsData {
   description?: string | null;
   inputMode?: string | null;
   outputDescription?: string | null;
+  outputTypes?: Array<string | null> | null;
+  foreachOutputDescription?: string | null;
   inputSchema?: unknown;
   exampleConfig?: unknown;
 }
@@ -55,6 +57,18 @@ export function ToolDetails({
           <p>
             <span className="font-medium">Output:</span>{" "}
             {tool.outputDescription}
+          </p>
+        ) : null}
+        {tool.outputTypes && tool.outputTypes.length > 0 ? (
+          <p>
+            <span className="font-medium">Output types:</span>{" "}
+            {tool.outputTypes.filter(Boolean).join(", ")}
+          </p>
+        ) : null}
+        {tool.foreachOutputDescription ? (
+          <p className="text-muted-foreground">
+            <span className="font-medium text-foreground">Foreach:</span>{" "}
+            {tool.foreachOutputDescription}
           </p>
         ) : null}
       </div>

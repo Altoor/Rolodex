@@ -19,6 +19,7 @@ import {
   CardHeader,
   CardTitle,
 } from "#components/ui/card";
+import { Button } from "#components/ui/button";
 
 export default function TodosPage() {
   return (
@@ -29,7 +30,10 @@ export default function TodosPage() {
 }
 
 function TodosPageContent() {
-  const { data, error: queryError, loading } = useQuery(GET_TODOS);
+  const [showArchived, setShowArchived] = useState(false);
+  const { data, error: queryError, loading } = useQuery(GET_TODOS, {
+    variables: { includeArchived: showArchived },
+  });
   const [createFormKey, setCreateFormKey] = useState(0);
 
   const todos = useMemo<TodoItemData[]>(() => {
@@ -40,6 +44,8 @@ function TodosPageContent() {
         description: todo.description,
         done: todo.done,
         doByDate: todo.doByDate,
+        createdAt: todo.createdAt,
+        archivedAt: todo.archivedAt,
       });
       return item ? [item] : [];
     });
@@ -49,6 +55,7 @@ function TodosPageContent() {
     createTodo,
     markDone,
     updateTodo,
+    archiveTodo,
     deleteTodo,
     pendingIds,
     error: actionError,
@@ -60,6 +67,16 @@ function TodosPageContent() {
         title="Todos"
         description="Create, schedule, and complete your todos."
       />
+
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => setShowArchived((current) => !current)}
+        >
+          {showArchived ? "Hide archived" : "Show archived"}
+        </Button>
+      </div>
 
       <Card>
         <CardHeader>
@@ -96,6 +113,9 @@ function TodosPageContent() {
             void markDone(todo, done);
           }}
           onSave={(todo, draft) => updateTodo(todo, draft)}
+          onArchive={(todo, archived) => {
+            void archiveTodo(todo, archived);
+          }}
           onDelete={(todo) => {
             void deleteTodo(todo);
           }}

@@ -2,6 +2,7 @@ import type {
   DecisionType,
   GetTaskQuery,
   TaskType,
+  ToolOutputType,
 } from "@repo/queries/__generated__/graphql";
 
 export type TaskResultFormValues = {
@@ -28,11 +29,15 @@ export type TaskFormValues = {
   decision: TaskDecisionFormValue | null;
   toolKey: string | null;
   toolConfigText: string;
+  toolOutputType: ToolOutputType;
+  onTrueTaskId: string;
+  onFalseTaskId: string;
   model: string | null;
   decisionModel: string | null;
 };
 
 export const USE_USER_DEFAULT_MODEL = "__user_default_model__";
+export const NO_BRANCH_TASK = "__none__";
 
 export const emptyTaskFormValues: TaskFormValues = {
   name: "",
@@ -41,6 +46,9 @@ export const emptyTaskFormValues: TaskFormValues = {
   decision: null,
   toolKey: null,
   toolConfigText: "",
+  toolOutputType: "normal",
+  onTrueTaskId: NO_BRANCH_TASK,
+  onFalseTaskId: NO_BRANCH_TASK,
   model: null,
   decisionModel: null,
 };
@@ -73,6 +81,11 @@ export const taskToFormValues = (task: TaskRecord): TaskFormValues => ({
   toolConfigText: task.toolConfig
     ? JSON.stringify(task.toolConfig, null, 2)
     : "",
+  toolOutputType: (task.toolOutputType as ToolOutputType | null) ?? "normal",
+  onTrueTaskId:
+    task.onTrueTaskId != null ? String(task.onTrueTaskId) : NO_BRANCH_TASK,
+  onFalseTaskId:
+    task.onFalseTaskId != null ? String(task.onFalseTaskId) : NO_BRANCH_TASK,
   model: task.model ?? null,
   decisionModel: task.decisionModel ?? null,
 });

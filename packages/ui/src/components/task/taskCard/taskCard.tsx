@@ -35,7 +35,7 @@ import {
 } from "#components/tools/toolDetails";
 import type { FieldArrayWithId } from "react-hook-form";
 import { useFormContext, useWatch } from "react-hook-form";
-import { USE_USER_DEFAULT_MODEL, type TaskFormValues } from "../task-form";
+import { USE_USER_DEFAULT_MODEL, NO_BRANCH_TASK, type TaskFormValues } from "../task-form";
 import TaskResultOption from "../taskResultOption/taskResultOption";
 import { TaskType } from "@repo/queries/__generated__/graphql";
 
@@ -45,9 +45,15 @@ const TASK_TYPES = [
   { label: "Tool", value: "tool" as TaskType },
 ];
 
+interface TaskOption {
+  id: number;
+  name: string;
+}
+
 interface TaskCardProps {
   resultFields: FieldArrayWithId<TaskFormValues, "taskResults", "id">[];
   tools: ToolDetailsData[];
+  tasks: TaskOption[];
   models: string[];
   save: () => void;
   saving?: boolean;
@@ -60,6 +66,7 @@ interface TaskCardProps {
 const TaskCard = ({
   resultFields,
   tools,
+  tasks,
   models,
   save,
   saving = false,
@@ -71,12 +78,16 @@ const TaskCard = ({
   const {
     register,
     control,
+    setValue,
     formState: { errors },
   } = useFormContext<TaskFormValues>();
   const type = useWatch({ control, name: "type" });
   const decision = useWatch({ control, name: "decision" });
   const toolKey = useWatch({ control, name: "toolKey" });
   const selectedTool = tools.find((tool) => tool.key === toolKey);
+  const supportedOutputTypes = (selectedTool?.outputTypes ?? ["normal"]).filter(
+    (outputType): outputType is string => Boolean(outputType),
+  );
 
   return (
     <Card className="w-full">
@@ -205,7 +216,17 @@ const TaskCard = ({
                 rules={{ required: "select a tool" }}
               >
                 {(value, onChange) => (
-                  <Select value={value} onValueChange={onChange}>
+                  <Select
+                    value={value}
+                    onValueChange={(next) => {
+                      onChange(next);
+                      // Branch/output settings are tool-specific; reset them
+                      // when switching tools to avoid stale validation errors.
+                      setValue("toolOutputType", "normal");
+                      setValue("onTrueTaskId", NO_BRANCH_TASK);
+                      setValue("onFalseTaskId", NO_BRANCH_TASK);
+                    }}
+                  >
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Select a tool" />
                     </SelectTrigger>
@@ -241,6 +262,108 @@ const TaskCard = ({
               </FieldDescription>
               <FieldError errors={[errors.toolConfigText]} />
             </Field>
+
+            {supportedOutputTypes.length > 1 ? (
+              <Field>
+                <FieldLabel>Output type</FieldLabel>
+                <SelectController
+                  name="toolOutputType"
+                  control={control}
+                  defaultValue="normal"
+                >
+                  {(value, onChange) => (
+                    <Select
+                      value={value ?? "normal"}
+                      onValueChange={onChange}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          {supportedOutputTypes.map((outputType) => (
+                            <SelectItem key={outputType} value={outputType}>
+                              {outputType}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  )}
+                </SelectController>
+                <FieldDescription>
+                  Foreach runs the next task once per returned item.
+                </FieldDescription>
+              </Field>
+            ) : null}
+
+            {toolKey === "if" ? (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field>
+                  <FieldLabel>True branch task</FieldLabel>
+                  <SelectController
+                    name="onTrueTaskId"
+                    control={control}
+                    defaultValue={NO_BRANCH_TASK}
+                  >
+                    {(value, onChange) => (
+                      <Select
+                        value={value ?? NO_BRANCH_TASK}
+                        onValueChange={onChange}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            <SelectItem value={NO_BRANCH_TASK}>
+                              Stop run
+                            </SelectItem>
+                            {tasks.map((task) => (
+                              <SelectItem key={task.id} value={String(task.id)}>
+                                {task.name}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </SelectController>
+                </Field>
+
+                <Field>
+                  <FieldLabel>False branch task</FieldLabel>
+                  <SelectController
+                    name="onFalseTaskId"
+                    control={control}
+                    defaultValue={NO_BRANCH_TASK}
+                  >
+                    {(value, onChange) => (
+                      <Select
+                        value={value ?? NO_BRANCH_TASK}
+                        onValueChange={onChange}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectGroup>
+                            <SelectItem value={NO_BRANCH_TASK}>
+                              Stop run
+                            </SelectItem>
+                            {tasks.map((task) => (
+                              <SelectItem key={task.id} value={String(task.id)}>
+                                {task.name}
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </SelectController>
+                </Field>
+              </div>
+            ) : null}
 
             {toolKey === "prompt" ? (
               <FieldDescription>

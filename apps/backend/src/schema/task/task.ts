@@ -6,6 +6,10 @@ export const TaskType = builder.enumType("TaskType", {
   values: ["decision", "textPrompt", "tool"],
 });
 
+export const ToolOutputType = builder.enumType("ToolOutputType", {
+  values: ["normal", "foreach"],
+});
+
 export const Task = builder.drizzleObject("tasks", {
   name: "Task",
   fields: (t) => ({
@@ -19,6 +23,12 @@ export const Task = builder.drizzleObject("tasks", {
       nullable: true,
       resolve: (parent) => parent.toolConfig ?? null,
     }),
+    toolOutputType: t.field({
+      type: ToolOutputType,
+      resolve: (parent) => parent.toolOutputType,
+    }),
+    onTrueTaskId: t.exposeInt("onTrueTaskId", { nullable: true }),
+    onFalseTaskId: t.exposeInt("onFalseTaskId", { nullable: true }),
     model: t.exposeString("model", { nullable: true }),
     decisionModel: t.exposeString("decisionModel", { nullable: true }),
     tool: t.field({
@@ -59,6 +69,12 @@ export const QueuedTask = builder.drizzleObject("queuedTasks", {
     id: t.exposeInt("id"),
     taskId: t.exposeInt("taskId"),
     state: t.exposeString("state"),
+    toolState: t.field({
+      type: "JSON",
+      resolve: (parent) => parent.toolState ?? [],
+    }),
+    parentQueuedTaskId: t.exposeInt("parentQueuedTaskId", { nullable: true }),
+    depth: t.exposeInt("depth"),
     status: t.field({
       type: QueuedTaskStatus,
       resolve: (parent) => parent.status,

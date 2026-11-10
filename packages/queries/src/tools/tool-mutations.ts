@@ -7,6 +7,8 @@ export const TEST_TOOL = gql(/* GraphQL */ `
     $toolConfig: JSON
     $model: String
     $decisionModel: String
+    $toolState: JSON
+    $outputType: String
   ) {
     testTool(
       key: $key
@@ -14,9 +16,13 @@ export const TEST_TOOL = gql(/* GraphQL */ `
       toolConfig: $toolConfig
       model: $model
       decisionModel: $decisionModel
+      toolState: $toolState
+      outputType: $outputType
     ) {
       output
       summary
+      state
+      toolState
     }
   }
 `);

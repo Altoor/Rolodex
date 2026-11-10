@@ -7,12 +7,16 @@ builder.queryType({
   fields: (t) => ({
     getTodos: t.drizzleField({
       type: [Todo],
-      resolve: (_query, _root, _args, ctx) => {
+      args: {
+        includeArchived: t.arg.boolean({ required: false }),
+      },
+      resolve: (_query, _root, { includeArchived }, ctx) => {
         const userId = requireUserId(ctx);
 
         return db.query.todos.findMany({
           where: {
             OR: [{ actorId: userId }, { authorId: userId }],
+            ...(includeArchived ? {} : { archivedAt: { isNull: true } }),
           },
           orderBy: (todos, { asc }) => [
             asc(todos.done),

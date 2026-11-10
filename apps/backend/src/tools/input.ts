@@ -1,4 +1,4 @@
-import type { ToolRunContext } from "./types";
+import type { ToolRunContext, ToolStateEntry } from "./types";
 import { ToolInputError } from "./types";
 
 export const TOOL_OUTPUT_START = "<<<TOOL_OUTPUT>>>";
@@ -51,18 +51,49 @@ export function extractToolOutput(
   return parseJsonObject(contents);
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 /**
- * Combines tool config, JSON state and any structured output appended by a
- * previous tool. Later sources override earlier ones.
+ * Serializes accumulated tool state for prompts or for the append_state /
+ * set_state tools. Entries are serialized as-is.
+ */
+export function serializeToolState(
+  toolState: ToolStateEntry[],
+  format: "json" | "text" = "json",
+): string {
+  if (format === "text") {
+    return toolState
+      .map((entry) =>
+        typeof entry === "string" ? entry : JSON.stringify(entry, null, 2),
+      )
+      .join("\n\n");
+  }
+
+  return JSON.stringify(toolState, null, 2);
+}
+
+/**
+ * Combines tool config, JSON state, legacy structured output and accumulated
+ * tool state. Later sources override earlier ones.
  */
 export function mergeToolInput(
   context: ToolRunContext,
 ): Record<string, unknown> {
-  return {
+  const merged: Record<string, unknown> = {
     ...(context.config ?? {}),
     ...(parseJsonObject(context.state) ?? {}),
     ...(extractToolOutput(context.state) ?? {}),
   };
+
+  for (const entry of context.toolState) {
+    if (isPlainObject(entry)) {
+      Object.assign(merged, entry);
+    }
+  }
+
+  return merged;
 }
 
 export function readString(

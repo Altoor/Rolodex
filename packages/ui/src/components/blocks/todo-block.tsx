@@ -12,6 +12,7 @@ const TODO_TOOL_KEYS = new Set([
   "create_todo",
   "update_todo",
   "mark_todo_done",
+  "archive_todo",
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -81,9 +82,13 @@ export function TodoBlock({ output }: BlockComponentProps) {
   const extracted = useMemo(() => extractBlockTodos(output), [output]);
   const [todos, setTodos] = useState(extracted);
 
-  const { markDone, updateTodo, deleteTodo, pendingIds, error } =
+  const { markDone, updateTodo, archiveTodo, deleteTodo, pendingIds, error } =
     useTodoActions({
       onUpdated: (todo) =>
+        setTodos((current) =>
+          current.map((item) => (item.id === todo.id ? todo : item)),
+        ),
+      onArchived: (todo) =>
         setTodos((current) =>
           current.map((item) => (item.id === todo.id ? todo : item)),
         ),
@@ -105,6 +110,9 @@ export function TodoBlock({ output }: BlockComponentProps) {
           void markDone(todo, done);
         }}
         onSave={(todo, draft) => updateTodo(todo, draft)}
+        onArchive={(todo, archived) => {
+          void archiveTodo(todo, archived);
+        }}
         onDelete={(todo) => {
           void deleteTodo(todo);
         }}

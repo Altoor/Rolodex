@@ -12,6 +12,7 @@ import {
   type Connection,
   type Edge,
   type NodeTypes,
+  type ReactFlowInstance,
   type XYPosition,
 } from "@xyflow/react";
 import {
@@ -37,6 +38,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import TaskFlowNodeView from "./taskFlowNode";
 import {
   FALLBACK_HANDLE_ID,
+  FALSE_HANDLE_ID,
+  TRUE_HANDLE_ID,
   type FlowTask,
   type TaskFlowNode,
 } from "./taskFlowTypes";
@@ -75,6 +78,8 @@ const computePositions = (
           .map((result) => result?.resultTaskId)
           .filter((id): id is number => id != null),
         ...(task?.fallbackTaskId != null ? [task.fallbackTaskId] : []),
+        ...(task?.onTrueTaskId != null ? [task.onTrueTaskId] : []),
+        ...(task?.onFalseTaskId != null ? [task.onFalseTaskId] : []),
       ];
       for (const targetId of relatedIds) {
         if (!byId.has(targetId) || depth.has(targetId)) {
@@ -119,19 +124,20 @@ const computePositions = (
 };
 
 /**
- * Reflects a fallbackTaskId change in the Apollo cache immediately, so the
- * flow updates right away instead of waiting for the refetch to round-trip.
+ * Reflects a task link change in the Apollo cache immediately, so the flow
+ * updates right away instead of waiting for the refetch to round-trip.
  */
-const setFallbackInCache = (
+const setTaskFieldInCache = (
   cache: ApolloCache,
   taskId: number,
-  fallbackTaskId: number | null,
+  field: "fallbackTaskId" | "onTrueTaskId" | "onFalseTaskId",
+  value: number | null,
 ) => {
   const ref = cache.identify({ __typename: "Task", id: taskId });
   if (!ref) return;
   cache.modify({
     id: ref,
-    fields: { fallbackTaskId: () => fallbackTaskId },
+    fields: { [field]: () => value },
   });
 };
 
@@ -155,6 +161,11 @@ interface TaskFlowProps {
   defaultTaskId?: number | null;
   onDefaultTaskChange?: (id: number) => void;
 }
+
+/** Menu opened by right-clicking an edge or empty canvas space. */
+type FlowContextMenu =
+  | { kind: "edge"; x: number; y: number; edge: Edge }
+  | { kind: "pane"; x: number; y: number; position: XYPosition };
 
 const TaskFlow = ({
   selectedTaskId,
@@ -182,6 +193,14 @@ const TaskFlow = ({
   );
 
   const [nodes, setNodes, onNodesChange] = useNodesState<TaskFlowNode>([]);
+  // Context menu shown when right-clicking an edge or the empty canvas.
+  const [contextMenu, setContextMenu] = useState<FlowContextMenu | null>(null);
+  // Positions chosen by "Add task here" for tasks that do not exist in the
+  // nodes state yet. Cleared once the new node has been laid out.
+  const pendingPositions = useRef<Map<number, XYPosition>>(new Map());
+  const flowInstance = useRef<ReactFlowInstance<TaskFlowNode, Edge> | null>(
+    null,
+  );
   // The task chosen as the first (entry) node of the flow via the dropdown.
   // Prefer the user's saved default task, then their in-session choice, then
   // the first task returned by the API.
@@ -229,9 +248,10 @@ const TaskFlow = ({
         type: "taskFlow" as const,
         selected: task.id === selectedTaskId,
         position:
-          !relayout && prevPositions.has(task.id)
+          pendingPositions.current.get(task.id) ??
+          (!relayout && prevPositions.has(task.id)
             ? prevPositions.get(task.id)!
-            : positions.get(task.id)!,
+            : positions.get(task.id)!),
         data: {
           taskId: task.id,
           name: task.name ?? "Untitled task",
@@ -240,6 +260,8 @@ const TaskFlow = ({
           toolKey: task.toolKey ?? null,
           model: task.model ?? null,
           decisionModel: task.decisionModel ?? null,
+          onTrueTaskId: task.onTrueTaskId ?? null,
+          onFalseTaskId: task.onFalseTaskId ?? null,
           taskResults: (task.taskResults ?? []).filter(
             (result) => result != null,
           ),
@@ -255,6 +277,16 @@ const TaskFlow = ({
     handleDeleteTask,
     setNodes,
   ]);
+
+  // A task placed via "Add task here" only needs its pending position until
+  // it has appeared in the node state; after that its current position wins.
+  useEffect(() => {
+    if (pendingPositions.current.size === 0) return;
+    const placed = new Set(nodes.map((node) => Number(node.id)));
+    for (const id of pendingPositions.current.keys()) {
+      if (placed.has(id)) pendingPositions.current.delete(id);
+    }
+  }, [nodes]);
 
   // Edges are derived from the taskResults' resultTaskId values and each
   // task's fallbackTaskId (rendered dashed).
@@ -293,6 +325,38 @@ const TaskFlow = ({
           markerEnd: MarkerType.ArrowClosed,
         });
       }
+      if (
+        task.toolKey === "if" &&
+        task.onTrueTaskId != null &&
+        task.onTrueTaskId !== task.id &&
+        taskIds.has(String(task.onTrueTaskId))
+      ) {
+        result.push({
+          id: `e-true-${task.id}`,
+          source: String(task.id),
+          sourceHandle: TRUE_HANDLE_ID,
+          target: String(task.onTrueTaskId),
+          targetHandle: "input",
+          animated: true,
+          markerEnd: MarkerType.ArrowClosed,
+        });
+      }
+      if (
+        task.toolKey === "if" &&
+        task.onFalseTaskId != null &&
+        task.onFalseTaskId !== task.id &&
+        taskIds.has(String(task.onFalseTaskId))
+      ) {
+        result.push({
+          id: `e-false-${task.id}`,
+          source: String(task.id),
+          sourceHandle: FALSE_HANDLE_ID,
+          target: String(task.onFalseTaskId),
+          targetHandle: "input",
+          animated: true,
+          markerEnd: MarkerType.ArrowClosed,
+        });
+      }
     }
     return result;
   }, [tasks]);
@@ -305,17 +369,28 @@ const TaskFlow = ({
 
   // Connecting an output to another task's input updates the relationship:
   // a TaskResult output updates its resultTaskId, the fallback output
-  // updates the task's fallbackTaskId.
+  // updates fallbackTaskId, and if-tool outputs update the branch ids.
   const onConnect = useCallback(
     (connection: Connection) => {
       const targetTaskId = Number(connection.target);
       if (!Number.isFinite(targetTaskId)) return;
-      if (connection.sourceHandle === FALLBACK_HANDLE_ID) {
+      if (
+        connection.sourceHandle === FALLBACK_HANDLE_ID ||
+        connection.sourceHandle === TRUE_HANDLE_ID ||
+        connection.sourceHandle === FALSE_HANDLE_ID
+      ) {
         const taskId = Number(connection.source);
         if (!Number.isFinite(taskId)) return;
+        const field =
+          connection.sourceHandle === FALLBACK_HANDLE_ID
+            ? "fallbackTaskId"
+            : connection.sourceHandle === TRUE_HANDLE_ID
+              ? "onTrueTaskId"
+              : "onFalseTaskId";
         void updateTask({
-          variables: { id: taskId, fallbackTaskId: targetTaskId },
-          update: (cache) => setFallbackInCache(cache, taskId, targetTaskId),
+          variables: { id: taskId, [field]: targetTaskId },
+          update: (cache) =>
+            setTaskFieldInCache(cache, taskId, field, targetTaskId),
         });
         return;
       }
@@ -330,8 +405,8 @@ const TaskFlow = ({
     [updateTask, updateTaskResult],
   );
 
-  // Deleting an edge clears the matching relationship (resultTaskId or
-  // fallbackTaskId).
+  // Deleting an edge clears the matching relationship (resultTaskId,
+  // fallbackTaskId, or an if-tool branch id).
   const onEdgesDelete = useCallback(
     (edges: Edge[]) => {
       for (const edge of edges) {
@@ -340,7 +415,21 @@ const TaskFlow = ({
           if (!Number.isFinite(taskId)) continue;
           void updateTask({
             variables: { id: taskId, fallbackTaskId: null },
-            update: (cache) => setFallbackInCache(cache, taskId, null),
+            update: (cache) =>
+              setTaskFieldInCache(cache, taskId, "fallbackTaskId", null),
+          });
+          continue;
+        }
+        if (edge.id.startsWith("e-true-") || edge.id.startsWith("e-false-")) {
+          const isTrue = edge.id.startsWith("e-true-");
+          const taskId = Number(
+            edge.id.replace(isTrue ? "e-true-" : "e-false-", ""),
+          );
+          if (!Number.isFinite(taskId)) continue;
+          const field = isTrue ? "onTrueTaskId" : "onFalseTaskId";
+          void updateTask({
+            variables: { id: taskId, [field]: null },
+            update: (cache) => setTaskFieldInCache(cache, taskId, field, null),
           });
           continue;
         }
@@ -375,6 +464,134 @@ const TaskFlow = ({
       },
     });
   }, [createTask, tasks.length]);
+
+  // Insert a task into an existing edge: source -> new task -> target. The
+  // new task chains to the original target through its fallback link, so it
+  // works whether the edge came from a result, a fallback, or an if branch.
+  const insertTaskOnEdge = useCallback(
+    async (edge: Edge) => {
+      setContextMenu(null);
+
+      const sourceTaskId = Number(edge.source);
+      const targetTaskId = Number(edge.target);
+      if (
+        !Number.isFinite(sourceTaskId) ||
+        !Number.isFinite(targetTaskId)
+      ) {
+        return;
+      }
+
+      const { data } = await createTask({
+        variables: {
+          name: `New Task ${tasks.length + 1}`,
+          type: "decision" as TaskType,
+          fallbackTaskId: targetTaskId,
+        },
+      });
+      const newTaskId = data?.createTask?.id;
+      if (newTaskId == null) return;
+
+      try {
+        if (edge.sourceHandle === FALLBACK_HANDLE_ID) {
+          await updateTask({
+            variables: { id: sourceTaskId, fallbackTaskId: newTaskId },
+          });
+        } else if (
+          edge.sourceHandle === TRUE_HANDLE_ID ||
+          edge.sourceHandle === FALSE_HANDLE_ID
+        ) {
+          const field =
+            edge.sourceHandle === TRUE_HANDLE_ID
+              ? "onTrueTaskId"
+              : "onFalseTaskId";
+          await updateTask({
+            variables: { id: sourceTaskId, [field]: newTaskId },
+          });
+        } else {
+          const resultId = Number(edge.sourceHandle);
+          if (!Number.isFinite(resultId)) {
+            await deleteTask({ variables: { id: newTaskId } });
+            return;
+          }
+          await updateTaskResult({
+            variables: { id: resultId, resultTaskId: newTaskId },
+          });
+        }
+      } catch {
+        // Avoid leaving an orphaned task if rewiring the source fails.
+        await deleteTask({ variables: { id: newTaskId } });
+        return;
+      }
+
+      onSelectTaskId?.(newTaskId);
+    },
+    [
+      createTask,
+      deleteTask,
+      onSelectTaskId,
+      tasks.length,
+      updateTask,
+      updateTaskResult,
+    ],
+  );
+
+  // Create a task at a specific canvas position (right-click empty space).
+  const addTaskAtPosition = useCallback(
+    async (position: XYPosition) => {
+      setContextMenu(null);
+
+      const { data } = await createTask({
+        variables: {
+          name: `New Task ${tasks.length + 1}`,
+          type: "decision" as TaskType,
+        },
+      });
+      const newTaskId = data?.createTask?.id;
+      if (newTaskId == null) return;
+
+      pendingPositions.current.set(newTaskId, position);
+      onSelectTaskId?.(newTaskId);
+    },
+    [createTask, onSelectTaskId, tasks.length],
+  );
+
+  // Esc closes the context menu.
+  useEffect(() => {
+    if (!contextMenu) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setContextMenu(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [contextMenu]);
+
+  const onEdgeContextMenu = useCallback(
+    (event: React.MouseEvent, edge: Edge) => {
+      event.preventDefault();
+      setContextMenu({ kind: "edge", x: event.clientX, y: event.clientY, edge });
+    },
+    [],
+  );
+
+  const onPaneContextMenu = useCallback(
+    (event: MouseEvent | React.MouseEvent) => {
+      event.preventDefault();
+      const position = flowInstance.current
+        ? flowInstance.current.screenToFlowPosition({
+            x: event.clientX,
+            y: event.clientY,
+          })
+        : { x: event.clientX, y: event.clientY };
+
+      setContextMenu({
+        kind: "pane",
+        x: event.clientX,
+        y: event.clientY,
+        position,
+      });
+    },
+    [],
+  );
 
   const onNodeClick = useCallback(
     (_event: React.MouseEvent, node: TaskFlowNode) => {
@@ -426,6 +643,13 @@ const TaskFlow = ({
           onEdgesDelete={onEdgesDelete}
           onDelete={onDelete}
           onNodeClick={onNodeClick}
+          onEdgeContextMenu={onEdgeContextMenu}
+          onPaneContextMenu={onPaneContextMenu}
+          onPaneClick={() => setContextMenu(null)}
+          onMoveStart={() => setContextMenu(null)}
+          onInit={(instance) => {
+            flowInstance.current = instance;
+          }}
           isValidConnection={isValidConnection}
           deleteKeyCode={["Backspace", "Delete"]}
           fitView
@@ -433,10 +657,47 @@ const TaskFlow = ({
           <Background variant={BackgroundVariant.Dots} />
           <Controls />
         </ReactFlow>
+        {contextMenu ? (
+          <>
+            <div
+              className="fixed inset-0 z-40"
+              onPointerDown={() => setContextMenu(null)}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                setContextMenu(null);
+              }}
+            />
+            <div
+              role="menu"
+              className="fixed z-50 min-w-44 rounded-lg bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10"
+              style={{ left: contextMenu.x, top: contextMenu.y }}
+            >
+              <button
+                type="button"
+                role="menuitem"
+                className="flex w-full cursor-default items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-sm outline-hidden select-none hover:bg-accent focus:bg-accent focus:text-accent-foreground"
+                onClick={() => {
+                  if (contextMenu.kind === "edge") {
+                    void insertTaskOnEdge(contextMenu.edge);
+                  } else {
+                    void addTaskAtPosition(contextMenu.position);
+                  }
+                }}
+              >
+                <Plus className="size-4" />
+                {contextMenu.kind === "edge"
+                  ? "Add task between"
+                  : "Add task here"}
+              </button>
+            </div>
+          </>
+        ) : null}
       </div>
       <p className="text-xs text-muted-foreground">
         Click a node to edit it, drag a result output onto another task's input
-        to link them, or create new tasks with the "New Task" button.
+        to link them, right-click an edge to insert a task in between,
+        right-click empty canvas space to add a task there, or create new tasks
+        with the "New Task" button.
       </p>
     </div>
   );

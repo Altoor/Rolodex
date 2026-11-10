@@ -7,14 +7,17 @@ export const TODO_FIELDS = gql(/* GraphQL */ `
     description
     done
     doByDate
+    createdAt
+    archivedAt
+    archived
     authorId
     actorId
   }
 `);
 
 export const GET_TODOS = gql(/* GraphQL */ `
-  query GetTodos {
-    getTodos {
+  query GetTodos($includeArchived: Boolean = false) {
+    getTodos(includeArchived: $includeArchived) {
       ...TodoFields
     }
   }

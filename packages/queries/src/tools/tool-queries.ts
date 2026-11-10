@@ -10,6 +10,8 @@ export const TOOLS = gql(/* GraphQL */ `
       inputMode
       inputSchema
       outputDescription
+      outputTypes
+      foreachOutputDescription
       exampleConfig
     }
   }
@@ -25,6 +27,8 @@ export const GET_TOOL = gql(/* GraphQL */ `
       inputMode
       inputSchema
       outputDescription
+      outputTypes
+      foreachOutputDescription
       exampleConfig
     }
   }

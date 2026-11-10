@@ -2,7 +2,7 @@ import { and, eq, lt } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { builder, db } from "../builder";
 import { GraphQLError } from "graphql/error";
-import { TaskType, Task, TaskResult, QueuedTask } from ".";
+import { TaskType, ToolOutputType, Task, TaskResult, QueuedTask } from ".";
 import { taskResults, tasks, queuedTasks } from "../../db";
 import { DecisionType } from "../ai";
 import { triggerQueue } from "../../queue";
@@ -15,6 +15,9 @@ async function assertValidTaskConfig(input: {
   type: string;
   toolKey: string | null;
   toolConfig?: unknown;
+  toolOutputType: string;
+  onTrueTaskId?: number | null;
+  onFalseTaskId?: number | null;
   model: string | null;
   decisionModel: string | null;
 }): Promise<void> {
@@ -25,10 +28,35 @@ async function assertValidTaskConfig(input: {
       });
     }
 
-    if (!getToolDefinition(input.toolKey)) {
+    const definition = getToolDefinition(input.toolKey);
+    if (!definition) {
       throw new GraphQLError(`Unknown tool "${input.toolKey}"`, {
         extensions: { code: "BAD_USER_INPUT" },
       });
+    }
+
+    const outputTypes = definition.outputTypes ?? ["normal"];
+    if (!outputTypes.includes(input.toolOutputType as "normal" | "foreach")) {
+      throw new GraphQLError(
+        `Tool "${input.toolKey}" does not support output type "${input.toolOutputType}"`,
+        { extensions: { code: "BAD_USER_INPUT" } },
+      );
+    }
+
+    if (input.toolKey === "if") {
+      for (const [label, id] of [
+        ["onTrueTaskId", input.onTrueTaskId],
+        ["onFalseTaskId", input.onFalseTaskId],
+      ] as const) {
+        if (id == null) continue;
+
+        const target = await db.query.tasks.findFirst({ where: { id } });
+        if (!target) {
+          throw new GraphQLError(`${label} ${id} does not reference a task`, {
+            extensions: { code: "BAD_USER_INPUT" },
+          });
+        }
+      }
     }
   }
 
@@ -66,6 +94,9 @@ builder.mutationType({
         type: t.arg({ type: TaskType, required: true }),
         toolKey: t.arg.string(),
         toolConfig: t.arg({ type: "JSON" }),
+        toolOutputType: t.arg({ type: ToolOutputType }),
+        onTrueTaskId: t.arg.int(),
+        onFalseTaskId: t.arg.int(),
         model: t.arg.string(),
         decisionModel: t.arg.string(),
       },
@@ -79,6 +110,9 @@ builder.mutationType({
           type,
           toolKey,
           toolConfig,
+          toolOutputType,
+          onTrueTaskId,
+          onFalseTaskId,
           model,
           decisionModel,
         },
@@ -93,6 +127,9 @@ builder.mutationType({
           fallbackTaskId,
           toolKey: toolKey ?? null,
           toolConfig: toolConfig ?? null,
+          toolOutputType: toolOutputType ?? "normal",
+          onTrueTaskId: onTrueTaskId ?? null,
+          onFalseTaskId: onFalseTaskId ?? null,
           model: model ?? null,
           decisionModel: decisionModel ?? null,
         };
@@ -101,6 +138,9 @@ builder.mutationType({
           type: task.type,
           toolKey: task.toolKey,
           toolConfig: task.toolConfig,
+          toolOutputType: task.toolOutputType,
+          onTrueTaskId: task.onTrueTaskId,
+          onFalseTaskId: task.onFalseTaskId,
           model: task.model,
           decisionModel: task.decisionModel,
         });
@@ -121,6 +161,9 @@ builder.mutationType({
         type: t.arg({ type: TaskType }),
         toolKey: t.arg.string(),
         toolConfig: t.arg({ type: "JSON" }),
+        toolOutputType: t.arg({ type: ToolOutputType }),
+        onTrueTaskId: t.arg.int(),
+        onFalseTaskId: t.arg.int(),
         model: t.arg.string(),
         decisionModel: t.arg.string(),
       },
@@ -135,6 +178,9 @@ builder.mutationType({
           fallbackTaskId,
           toolKey,
           toolConfig,
+          toolOutputType,
+          onTrueTaskId,
+          onFalseTaskId,
           model,
           decisionModel,
         },
@@ -156,6 +202,11 @@ builder.mutationType({
         const nextToolKey = toolKey !== undefined ? toolKey : task.toolKey;
         const nextToolConfig =
           toolConfig !== undefined ? toolConfig : task.toolConfig;
+        const nextToolOutputType = toolOutputType ?? task.toolOutputType;
+        const nextOnTrueTaskId =
+          onTrueTaskId !== undefined ? onTrueTaskId : task.onTrueTaskId;
+        const nextOnFalseTaskId =
+          onFalseTaskId !== undefined ? onFalseTaskId : task.onFalseTaskId;
         const nextModel = model !== undefined ? model : task.model;
         const nextDecisionModel =
           decisionModel !== undefined ? decisionModel : task.decisionModel;
@@ -164,6 +215,9 @@ builder.mutationType({
           type: nextType,
           toolKey: nextToolKey,
           toolConfig: nextToolConfig,
+          toolOutputType: nextToolOutputType,
+          onTrueTaskId: nextOnTrueTaskId,
+          onFalseTaskId: nextOnFalseTaskId,
           model: nextModel,
           decisionModel: nextDecisionModel,
         });
@@ -178,6 +232,9 @@ builder.mutationType({
           // Explicit nulls clear the tool/model configuration.
           toolKey: nextToolKey,
           toolConfig: nextToolConfig,
+          toolOutputType: nextToolOutputType,
+          onTrueTaskId: nextOnTrueTaskId,
+          onFalseTaskId: nextOnFalseTaskId,
           model: nextModel,
           decisionModel: nextDecisionModel,
         };
@@ -211,11 +268,19 @@ builder.mutationType({
         }
 
         await db.delete(taskResults).where(eq(taskResults.taskId, id));
-        // Clear any tasks that used this task as their fallback.
+        // Clear any tasks that used this task as their fallback or branch.
         await db
           .update(tasks)
           .set({ fallbackTaskId: null })
           .where(eq(tasks.fallbackTaskId, id));
+        await db
+          .update(tasks)
+          .set({ onTrueTaskId: null })
+          .where(eq(tasks.onTrueTaskId, id));
+        await db
+          .update(tasks)
+          .set({ onFalseTaskId: null })
+          .where(eq(tasks.onFalseTaskId, id));
         await db.delete(tasks).where(eq(tasks.id, id));
 
         return "successfully deleted task";
@@ -390,6 +455,8 @@ builder.mutationType({
         const queuedTask = {
           taskId: resolvedTaskId,
           state,
+          toolState: [],
+          depth: 0,
           // A new user submission starts a new chain run.
           runId: randomUUID(),
           queued_by: author_id,

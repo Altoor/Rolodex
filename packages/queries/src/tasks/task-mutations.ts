@@ -8,6 +8,9 @@ export const CREATE_TASK = gql(/* GraphQL */ `
     $fallbackTaskId: Int
     $toolKey: String
     $toolConfig: JSON
+    $toolOutputType: ToolOutputType
+    $onTrueTaskId: Int
+    $onFalseTaskId: Int
     $model: String
     $decisionModel: String
   ) {
@@ -18,6 +21,9 @@ export const CREATE_TASK = gql(/* GraphQL */ `
       fallbackTaskId: $fallbackTaskId
       toolKey: $toolKey
       toolConfig: $toolConfig
+      toolOutputType: $toolOutputType
+      onTrueTaskId: $onTrueTaskId
+      onFalseTaskId: $onFalseTaskId
       model: $model
       decisionModel: $decisionModel
     ) {
@@ -26,12 +32,17 @@ export const CREATE_TASK = gql(/* GraphQL */ `
       type
       toolKey
       toolConfig
+      toolOutputType
+      onTrueTaskId
+      onFalseTaskId
       model
       decisionModel
       tool {
         key
         name
         description
+        outputTypes
+        foreachOutputDescription
       }
       decision {
         id
@@ -51,6 +62,9 @@ export const UPDATE_TASK = gql(/* GraphQL */ `
     $fallbackTaskId: Int
     $toolKey: String
     $toolConfig: JSON
+    $toolOutputType: ToolOutputType
+    $onTrueTaskId: Int
+    $onFalseTaskId: Int
     $model: String
     $decisionModel: String
   ) {
@@ -62,6 +76,9 @@ export const UPDATE_TASK = gql(/* GraphQL */ `
       fallbackTaskId: $fallbackTaskId
       toolKey: $toolKey
       toolConfig: $toolConfig
+      toolOutputType: $toolOutputType
+      onTrueTaskId: $onTrueTaskId
+      onFalseTaskId: $onFalseTaskId
       model: $model
       decisionModel: $decisionModel
     ) {
@@ -70,12 +87,17 @@ export const UPDATE_TASK = gql(/* GraphQL */ `
       type
       toolKey
       toolConfig
+      toolOutputType
+      onTrueTaskId
+      onFalseTaskId
       model
       decisionModel
       tool {
         key
         name
         description
+        outputTypes
+        foreachOutputDescription
       }
       decision {
         id
@@ -170,6 +192,9 @@ export const CREATE_QUEUED_TASK = gql(/* GraphQL */ `
       id
       taskId
       state
+      toolState
+      parentQueuedTaskId
+      depth
       status
       runId
       queued_by
