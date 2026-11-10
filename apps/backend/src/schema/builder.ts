@@ -2,10 +2,9 @@
 import SchemaBuilder from "@pothos/core";
 import DrizzlePlugin from "@pothos/plugin-drizzle";
 import { getTableConfig } from "drizzle-orm/pg-core";
-import * as schema from "../db";
-import { drizzle } from "drizzle-orm/node-postgres";
+import { db, relations } from "@repo/db";
+import * as schema from "@repo/db";
 import { DateTimeResolver, GraphQLJSON, GraphQLLong } from "graphql-scalars";
-import { relations } from "../db";
 
 export interface PothosTypes {
   DrizzleRelations: typeof schema.relations;
@@ -26,7 +25,7 @@ export interface PothosTypes {
   };
 }
 
-export const db = drizzle(process.env.DATABASE_URL!, { relations });
+export { db };
 
 export const builder = new SchemaBuilder<PothosTypes>({
   plugins: [DrizzlePlugin],

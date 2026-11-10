@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "#components/ui/select";
 import { ConfirmButton } from "#components/feedback/confirm-button";
+import { parseNullableNumber } from "#lib/numbers";
 import { Save, X } from "lucide-react";
 import { useFormContext, useWatch } from "react-hook-form";
 import type { TaskFormValues } from "../task-form";
@@ -24,15 +25,6 @@ interface TaskResultOptionProps {
   onDelete: () => void;
   onSave: () => void;
 }
-
-/** Turns an empty numeric input into null and any other text into a number. */
-const parseNullableNumber = (value: unknown): number | null => {
-  if (value == null) return null;
-  const text = String(value).trim();
-  if (text === "") return null;
-  const parsed = Number.parseFloat(text);
-  return Number.isFinite(parsed) ? parsed : null;
-};
 
 const TaskResultOption = ({
   index,
@@ -133,7 +125,7 @@ const TaskResultOption = ({
                   <Select value={value} onValueChange={onChange}>
                     <SelectTrigger
                       id={`task-result-${index}-option`}
-                      className="w-[180px]"
+                      className="w-(--size-select-sm)"
                     >
                       <SelectValue />
                     </SelectTrigger>

@@ -1,10 +1,10 @@
 import { eq } from "drizzle-orm";
-import { todos } from "../../db";
+import { todos } from "@repo/db";
 import { builder, db } from "../builder";
 import { Todo } from "./todo";
 import { GraphQLError } from "graphql/error";
 import { requireUserId } from "../auth";
-import { saveTodoWithEmbedding } from "../../tools/todo/todos";
+import { saveTodoWithEmbedding } from "@repo/tools/tools/todo/todos";
 
 builder.mutationType({
   fields: (t) => ({

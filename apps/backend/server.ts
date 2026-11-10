@@ -6,6 +6,7 @@ import jwt from "jsonwebtoken";
 import { getUser } from "./src/schema/user/user-service.ts";
 import { resetStaleRunningTasks, triggerQueue } from "./src/queue/index.ts";
 import { users } from "./src/db/index.ts";
+import { TOKEN_SECRET } from "./src/config.ts";
 
 const yoga = createYoga({
   schema,
@@ -42,7 +43,7 @@ async function extractUser(
   if (!token) return null;
 
   try {
-    const theTokenVerified = jwt.verify(token, process.env.TOKEN_SECRET);
+    const theTokenVerified = jwt.verify(token, TOKEN_SECRET);
     if (typeof theTokenVerified === "string" || !theTokenVerified.aud)
       return null;
 

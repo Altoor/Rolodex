@@ -590,9 +590,9 @@ Confirmed: normalise all one-off values, not only exact matches.
   repeated dimensions and colours, e.g.:
   - `--size-select-sm: 11.25rem` (the repeated `w-[180px]`)
   - `--size-flow-root-select: 13.75rem` (`w-[220px]`)
-  - `--size-flow-column: 28.75rem` (`w-[460px]` in flow layout)
-  - `--size-flow-row: 12.5rem` (`h-[200px]` in flow layout)
   - `--color-edge-muted: #d4d4d8` (or map to an existing border/muted token)
+- Flow node geometry (`COLUMN_WIDTH` / `ROW_HEIGHT`) stays as named constants in
+  `taskFlow/services/layout.ts`; it feeds numeric React Flow positions, not CSS.
 - Use `@theme`/CSS variables, not one-off utility classes.
 - Prefer an existing scale value when it is visually equivalent; only create a token
   when the value is shared or semantically meaningful.
@@ -722,3 +722,38 @@ The following changes were confirmed for this cleanup.
    spacing/colours shift slightly.
 
 Implementation can start with Phase 1 in [section 6](#6-suggested-execution-order-pr-sized-phases).
+
+---
+
+## 10. Implementation status
+
+All phases are implemented on `feature/tools`:
+
+- **Packages** — `@repo/db`, `@repo/ai` and `@repo/tools` exist; backend imports
+  them through the compatibility shims in `apps/backend/src/{db,ai,tools}`.
+- **Tools** — every tool and `conditions/` now lives in `packages/tools`; model
+  types are split under `src/model/`, and general helpers under `src/utils/`.
+- **Queue** — `processor.ts` now dispatches to `processors/decision-step.ts` and
+  `processors/tool-step.ts`, with `step-store.ts`, `result-matcher.ts` and the
+  `tool-step/*` helpers.
+- **Backend tasks/tools** — task services, thin resolvers and `tool-service.ts`
+  are in place; deprecated execution fields were removed.
+- **UI** — `TaskCard`, `TaskFlow`, `taskBuilder` and `toolCard` are split into
+  containers, hooks/services and presentational components. Design tokens were
+  added for the repeated select widths and the muted graph edge colour.
+- **Polish** — shared auth helper, deduplicated tool-state application, shared
+  `parseNullableNumber`, package READMEs, and token normalisation in touched UI
+  files.
+
+Verified:
+
+```bash
+pnpm install
+pnpm check-types
+pnpm lint
+pnpm build
+```
+
+`apps/backend` was also checked with `tsc --noEmit` because it has no
+`check-types` script. Manual smoke tests from section 7 still need to be run
+against a live backend/Ollama instance.

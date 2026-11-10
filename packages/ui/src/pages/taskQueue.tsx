@@ -6,7 +6,7 @@ import { AuthGate } from "../components/auth/auth-gate";
 import { useAuth } from "../components/auth/auth-provider";
 import { PageContainer } from "#components/layout/page-container";
 import { PageHeader } from "#components/layout/page-header";
-import TaskBuilder from "#components/task/taskBuilder";
+import TaskBuilder from "#components/task/taskBuilder/taskBuilder";
 import TaskFlow from "#components/task/taskFlow/taskFlow";
 import { useState } from "react";
 

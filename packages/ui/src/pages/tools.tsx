@@ -8,7 +8,7 @@ import { ErrorState } from "#components/feedback/error-state";
 import { LoadingState } from "#components/feedback/loading-state";
 import { PageContainer } from "#components/layout/page-container";
 import { PageHeader } from "#components/layout/page-header";
-import ToolCard from "../components/tools/toolCard";
+import ToolCard from "../components/tools/toolCard/toolCard";
 
 export default function ToolsPage() {
   return (

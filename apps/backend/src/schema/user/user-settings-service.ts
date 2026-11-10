@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { GraphQLError } from "graphql";
 import { db } from "../builder";
-import { userSettings } from "../../db";
+import { userSettings } from "@repo/db";
 
 export const ensureUserSettings = async (userId: number) => {
   const existing = await db.query.userSettings.findFirst({

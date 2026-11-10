@@ -4,7 +4,7 @@ import { builder, db } from "../builder";
 import { GraphQLError } from "graphql/error";
 import { DecisionType, SystemOnePrompt, SystemOneResponse } from "./ai";
 import { setupQuestions } from "./ai-service";
-import { ollama } from "../../ai/Ollama";
+import { ollama } from "@repo/ai";
 import { requireUserId } from "../auth";
 
 builder.mutationType({

@@ -1,3 +1,2 @@
-export * from "./types";
-export * from "./registry";
-export * from "./prompt/prompt";
+// The tool implementations live in @repo/tools.
+export * from "@repo/tools";

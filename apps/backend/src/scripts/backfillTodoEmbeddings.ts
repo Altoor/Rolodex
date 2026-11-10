@@ -1,8 +1,8 @@
 import "dotenv/config";
 import { eq, isNull } from "drizzle-orm";
 import { db } from "../schema/builder";
-import { todos } from "../db";
-import { embedText, todoEmbeddingText } from "../ai/embeddings";
+import { todos } from "@repo/db";
+import { embedText, todoEmbeddingText } from "@repo/ai";
 
 async function main(): Promise<void> {
   const missing = await db

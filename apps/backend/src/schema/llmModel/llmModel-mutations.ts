@@ -1,7 +1,7 @@
 import { builder, db } from "../builder";
 import { GraphQLError } from "graphql/error";
 import { Model } from "./llmModel";
-import { models } from "../../db";
+import { models } from "@repo/db";
 import { eq } from "drizzle-orm";
 
 builder.mutationType({

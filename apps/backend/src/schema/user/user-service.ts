@@ -1,7 +1,7 @@
 import { GraphQLError } from "graphql";
 import { db } from "../builder";
 import bcrypt from "bcrypt";
-import { users, userSettings } from "../../db";
+import { users, userSettings } from "@repo/db";
 import { eq } from "drizzle-orm";
 
 export const getUser = async (id: number) => {

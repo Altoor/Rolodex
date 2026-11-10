@@ -4,6 +4,9 @@
   "type": "module",
   "private": true,
   "dependencies": {
+    "@repo/ai": "workspace:*",
+    "@repo/db": "workspace:*",
+    "@repo/tools": "workspace:*",
     "@pothos/core": "^4.15.1",
     "@pothos/plugin-drizzle": "^0.20.0",
     "bcrypt": "^6.0.0",

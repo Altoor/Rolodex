@@ -1,4 +1,4 @@
-import type { Node } from "@xyflow/react";
+import type { Edge, Node, XYPosition } from "@xyflow/react";
 import type { GetTasksQuery } from "@repo/queries/__generated__/graphql";
 
 type QueryTask = NonNullable<GetTasksQuery["tasks"]>[number];
@@ -30,3 +30,15 @@ export type TaskFlowNodeData = {
 } & Record<string, unknown>;
 
 export type TaskFlowNode = Node<TaskFlowNodeData, "taskFlow">;
+
+/** Menu opened by right-clicking an edge or empty canvas space. */
+export type FlowContextMenu =
+  | { kind: "edge"; x: number; y: number; edge: Edge }
+  | { kind: "pane"; x: number; y: number; position: XYPosition };
+
+export interface TaskFlowProps {
+  selectedTaskId?: number;
+  onSelectTaskId?: (id: number | undefined) => void;
+  defaultTaskId?: number | null;
+  onDefaultTaskChange?: (id: number) => void;
+}

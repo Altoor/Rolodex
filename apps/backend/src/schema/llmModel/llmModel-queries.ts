@@ -1,8 +1,8 @@
 import { GraphQLError } from "graphql";
 import { builder, db } from "../builder";
 import { Model } from "./llmModel";
-import { ollama } from "../../ai/Ollama";
-import { models } from "../../db";
+import { ollama } from "@repo/ai";
+import { models } from "@repo/db";
 import { OllamaModelResponse } from "./model";
 import { eq } from "drizzle-orm";
 

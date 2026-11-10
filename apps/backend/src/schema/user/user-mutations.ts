@@ -4,6 +4,7 @@ import { createUser, getUserByEmail, updateUser } from "./user-service";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { GraphQLError } from "graphql";
+import { TOKEN_SECRET } from "../../config";
 
 builder.mutationType({
   fields: (t) => ({
@@ -17,7 +18,7 @@ builder.mutationType({
       resolve: async (_root, { name, email, password }, _ctx) => {
         const user = await createUser(email, name, password);
 
-        return jwt.sign({ aud: user.id, user: user }, process.env.TOKEN_SECRET);
+        return jwt.sign({ aud: user.id, user: user }, TOKEN_SECRET);
       },
     }),
 
@@ -71,10 +72,7 @@ builder.mutationType({
         const user = await getUserByEmail(email);
 
         if (bcrypt.compareSync(password, user.hashedPassword!)) {
-          return jwt.sign(
-            { aud: user.id, user: user },
-            process.env.TOKEN_SECRET,
-          );
+          return jwt.sign({ aud: user.id, user: user }, TOKEN_SECRET);
         } else {
           throw new GraphQLError("Incorrect password", {
             extensions: {
