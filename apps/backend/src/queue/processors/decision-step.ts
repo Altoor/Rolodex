@@ -1,15 +1,17 @@
-import type { SystemOneResponse } from "ollama";
-import { db, queuedTasks, taskResults } from "@repo/db";
-import {
-  DEFAULT_MODEL,
-  getDecisionModelForUser,
-  ollama,
-} from "@repo/ai";
+import type { SystemOneAnswer, SystemOneResponse } from "ollama";
+import { db, taskResults } from "@repo/db";
+import { DEFAULT_MODEL, getDecisionModelForUser, ollama } from "@repo/ai";
 import { setupQuestions } from "../../schema/ai/ai-service";
 import { MAX_CHAIN_DEPTH } from "../constants";
 import { resultMatches, summarizeAnswer } from "../result-matcher";
-import { enqueueStep, finishStep } from "../step-store";
+import { awaitStep, enqueueStep, finishStep } from "../step-store";
 import type { QueuedRow, TaskRow } from "../types";
+import {
+  decisionResultLabel,
+  decisionResultValue,
+  type PendingChoice,
+  type PendingChoiceOption,
+} from "../user-choice";
 
 /** Executes a decision task and enqueues the matching/fallback next step. */
 export async function processDecisionStep(
@@ -27,8 +29,11 @@ export async function processDecisionStep(
     return;
   }
 
-  let response: SystemOneResponse;
+  let response: SystemOneResponse | null = null;
+  let answer: SystemOneAnswer | undefined;
   let model = DEFAULT_MODEL;
+  let modelError: string | undefined;
+
   try {
     const questions = setupQuestions([
       {
@@ -48,53 +53,146 @@ export async function processDecisionStep(
       state: row.state,
       questions,
     });
-  } catch (err) {
-    await finishStep(row.id, "failed", {
-      note: `systemone error: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    });
-    return;
-  }
+    answer = response.answers[decision.decisionPremise];
 
-  const answer = response.answers[decision.decisionPremise];
-  if (!answer) {
-    await finishStep(row.id, "failed", {
-      note: `no answer returned for premise "${decision.decisionPremise}"`,
-    });
-    return;
+    if (!answer) {
+      modelError = `no answer returned for premise "${decision.decisionPremise}"`;
+    }
+  } catch (err) {
+    modelError = `systemone error: ${
+      err instanceof Error ? err.message : String(err)
+    }`;
   }
 
   const results = (
     await db.query.taskResults.findMany({ where: { taskId: task.id } })
   ).sort((a, b) => a.id - b.id);
 
+  const candidates = results.filter((result) => result.resultTaskId != null);
+
   // First taskResult whose type matches and whose thresholds all pass wins.
   // Results without a wired-up resultTaskId cannot continue the chain.
-  const match = results.find(
-    (r) =>
-      r.type === answer.type &&
-      r.resultTaskId != null &&
-      resultMatches(r, answer),
-  );
+  const match = answer
+    ? results.find(
+        (result) =>
+          result.type === answer.type &&
+          result.resultTaskId != null &&
+          resultMatches(result, answer),
+      )
+    : undefined;
+
+  // A model decision with a matching result always continues automatically.
+  if (match && answer) {
+    const summary = summarizeAnswer(task.name, answer);
+    const nextTaskId = match.resultTaskId!;
+    let note: string | undefined;
+
+    let enqueueNext = true;
+    if (row.depth >= MAX_CHAIN_DEPTH) {
+      enqueueNext = false;
+      note = `max chain depth (${MAX_CHAIN_DEPTH}) reached — run stopped`;
+    }
+
+    const nextToolState = match.appendState
+      ? [...row.toolState, { decision: answer }]
+      : row.toolState;
+
+    const result = {
+      answer,
+      usage: response?.usage ?? null,
+      model,
+      branch: "result",
+      nextTaskId,
+      summary,
+      ...(note ? { note } : {}),
+    };
+    await finishStep(row.id, "completed", result, summary);
+
+    if (enqueueNext) {
+      await enqueueStep({
+        taskId: nextTaskId,
+        // State is immutable for the whole run; decisions add to toolState.
+        state: row.state,
+        toolState: nextToolState,
+        depth: row.depth + 1,
+        runId: row.runId,
+        queued_by: row.queued_by,
+      });
+    }
+    return;
+  }
+
+  // With no match, optionally let the user choose among the result outputs.
+  if (task.forceUserDecideIfNoMatch) {
+    if (candidates.length === 0) {
+      await finishStep(row.id, "failed", {
+        note:
+          modelError ??
+          "no matching result and no result output has a target task",
+      });
+      return;
+    }
+
+    if (!answer && !modelError) {
+      modelError = `no answer returned for premise "${decision.decisionPremise}"`;
+    }
+
+    const options: PendingChoiceOption[] = candidates.map((result, index) => ({
+      id: `decision:${result.id}`,
+      label: decisionResultLabel(result, index, decision.type),
+      value: decisionResultValue(result, answer ?? null),
+      resultTaskId: result.resultTaskId,
+      appendState: result.appendState,
+      source: "decisionResult",
+    }));
+
+    const pendingChoice: PendingChoice = {
+      kind: "decisionOutput",
+      taskId: task.id,
+      prompt:
+        decision.instruction ||
+        decision.decisionPremise ||
+        `Choose an output for ${task.name}`,
+      choiceType: "list",
+      acceptLabel: "Choose",
+      recommendedOptionId: null,
+      options,
+      createdAt: new Date().toISOString(),
+    };
+
+    const summary = `Decision "${task.name}": no match — waiting for user choice`;
+
+    const result = {
+      answer: answer ?? null,
+      usage: response?.usage ?? null,
+      model,
+      branch: "awaiting_user",
+      recommendedOptionId: null,
+      summary,
+      ...(modelError ? { note: modelError } : {}),
+    };
+
+    await awaitStep(row.id, pendingChoice, result, summary);
+    return;
+  }
+
+  if (!answer) {
+    await finishStep(row.id, "failed", {
+      note:
+        modelError ??
+        `no answer returned for premise "${decision.decisionPremise}"`,
+    });
+    return;
+  }
 
   const summary = summarizeAnswer(task.name, answer);
 
-  let nextTaskId: number | null = null;
-  let appendState = false;
-  let branch: "result" | "fallback" | "none" = "none";
-  let note: string | undefined;
-
-  if (match) {
-    nextTaskId = match.resultTaskId;
-    appendState = match.appendState;
-    branch = "result";
-  } else if (task.fallbackTaskId != null) {
-    nextTaskId = task.fallbackTaskId;
-    branch = "fallback";
-  } else {
-    note = "no matching result and no fallback — run finished";
-  }
+  const nextTaskId = task.fallbackTaskId ?? null;
+  const branch: "fallback" | "none" = nextTaskId != null ? "fallback" : "none";
+  let note =
+    nextTaskId == null
+      ? "no matching result and no fallback — run finished"
+      : undefined;
 
   let enqueueNext = nextTaskId != null;
   if (enqueueNext && row.depth >= MAX_CHAIN_DEPTH) {
@@ -103,27 +201,23 @@ export async function processDecisionStep(
     note = note ? `${note}; ${maxNote}` : maxNote;
   }
 
-  const nextToolState = appendState
-    ? [...row.toolState, { decision: answer }]
-    : row.toolState;
-
   const result = {
     answer,
-    usage: response.usage,
+    usage: response?.usage ?? null,
     model,
     branch,
     nextTaskId,
     summary,
     ...(note ? { note } : {}),
   };
-  await finishStep(row.id, "completed", result, summary ?? note);
+  await finishStep(row.id, "completed", result, summary);
 
   if (enqueueNext && nextTaskId != null) {
     await enqueueStep({
       taskId: nextTaskId,
       // State is immutable for the whole run; decisions add to toolState.
       state: row.state,
-      toolState: nextToolState,
+      toolState: row.toolState,
       depth: row.depth + 1,
       runId: row.runId,
       queued_by: row.queued_by,

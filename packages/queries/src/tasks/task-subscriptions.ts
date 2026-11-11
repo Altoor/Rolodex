@@ -16,6 +16,7 @@ export const QUEUED_TASK_EVENT = gql(/* GraphQL */ `
         queued_by
         queued_at
         result
+        pendingChoice
         model
         decisionModel
         task {

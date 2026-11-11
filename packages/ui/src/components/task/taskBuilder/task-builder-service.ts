@@ -7,6 +7,7 @@ import {
   USE_USER_DEFAULT_MODEL,
   type TaskFormValues,
   type TaskResultFormValues,
+  type UserDecisionOptionFormValues,
 } from "../task-form";
 
 export interface BranchTaskOption {
@@ -42,6 +43,28 @@ export function parseToolConfigText(
   return parsed as Record<string, unknown>;
 }
 
+/** Parses an optional dynamic-option selector JSON text. */
+export function parseSelectorText(
+  text: string,
+): Record<string, unknown> | null {
+  if (!text.trim()) return null;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    throw new Error(err instanceof Error ? err.message : String(err), {
+      cause: err,
+    });
+  }
+
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("selector must be a JSON object");
+  }
+
+  return parsed as Record<string, unknown>;
+}
+
 /** Builds the create/update task mutation variables from form values. */
 export function buildTaskVariables(
   values: TaskFormValues,
@@ -66,6 +89,34 @@ export function buildTaskVariables(
       values.decisionModel === USE_USER_DEFAULT_MODEL
         ? null
         : values.decisionModel,
+    forceUserDecideIfNoMatch:
+      values.type === "decision" ? values.forceUserDecideIfNoMatch : undefined,
+    userDecisionType:
+      values.type === "userDecision" ? values.userDecisionType : undefined,
+    userDecisionConfig:
+      values.type === "userDecision" ? values.userDecisionConfig : undefined,
+  };
+}
+
+/** Builds a create/update user-decision option mutation payload. */
+export function buildUserDecisionOptionVariables(
+  option: UserDecisionOptionFormValues,
+  taskId: number,
+) {
+  return {
+    taskId,
+    kind: option.kind,
+    label: option.kind === "static" ? option.label || option.value : null,
+    description: option.description || null,
+    value: option.value || null,
+    selector:
+      option.kind === "dynamic" ? parseSelectorText(option.selectorText) : null,
+    labelPath: option.labelPath || null,
+    descriptionPath: option.descriptionPath || null,
+    valuePath: option.valuePath || null,
+    resultTaskId: option.resultTaskId ?? null,
+    appendState: option.appendState,
+    sortOrder: Number.isFinite(option.sortOrder) ? option.sortOrder : 0,
   };
 }
 

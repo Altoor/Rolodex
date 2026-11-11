@@ -14,7 +14,7 @@ export interface ToolDefinition {
   /** Human-readable name shown on the tools page. */
   name: string;
   description: string;
-  category: "ai" | "todo";
+  category: "ai" | "todo" | "ui";
   inputMode: ToolInputMode;
   inputSchema: ToolInputSchema;
   outputDescription: string;

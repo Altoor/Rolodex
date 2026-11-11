@@ -2,3 +2,8 @@
 @import "tailwindcss";
 @import "@repo/tailwind-config";
 @import "@xyflow/react/dist/style.css";
+
+/* The web app has no Tailwind entry of its own; scan its classes here so they
+   are generated exactly once (a second entry duplicates the utilities and its
+   base rules override responsive variants). */
+@source "../../../apps/web/app";

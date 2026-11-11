@@ -1,2 +1,8 @@
-@import "tailwindcss";
-@import "@repo/tailwind-config";
+/*
+ * Tailwind and the shared theme are imported once through
+ * `@repo/ui/styles.css` in `layout.tsx`. Importing `tailwindcss` here as well
+ * emits a second copy of the utilities, and its base rules override responsive
+ * variants from the first copy (for example `xl:w-[30rem]`).
+ *
+ * Add app-specific CSS below.
+ */

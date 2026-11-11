@@ -1,11 +1,13 @@
 import { GraphQLError } from "graphql";
 import { eq } from "drizzle-orm";
-import { db, taskResults, tasks } from "@repo/db";
+import { db, taskResults, tasks, userDecisionOptions } from "@repo/db";
 import { assertPulledModel } from "@repo/ai";
 import { getToolDefinition } from "@repo/tools";
 
 export type TaskOutputType = "normal" | "foreach";
-export type TaskType = "decision" | "textPrompt" | "tool";
+export type TaskType = "decision" | "textPrompt" | "tool" | "userDecision";
+export type UserDecisionType = "yesNo" | "list" | "dropdown";
+export type UserDecisionOptionKind = "static" | "dynamic";
 
 export interface TaskConfigInput {
   type: string;
@@ -16,6 +18,9 @@ export interface TaskConfigInput {
   onFalseTaskId?: number | null;
   model: string | null;
   decisionModel: string | null;
+  forceUserDecideIfNoMatch?: boolean | null;
+  userDecisionType?: string | null;
+  userDecisionConfig?: unknown;
 }
 
 export interface CreateTaskInput {
@@ -30,6 +35,9 @@ export interface CreateTaskInput {
   onFalseTaskId?: number | null;
   model?: string | null;
   decisionModel?: string | null;
+  forceUserDecideIfNoMatch?: boolean | null;
+  userDecisionType?: string | null;
+  userDecisionConfig?: unknown;
 }
 
 export interface UpdateTaskInput {
@@ -45,6 +53,9 @@ export interface UpdateTaskInput {
   onFalseTaskId?: number | null;
   model?: string | null;
   decisionModel?: string | null;
+  forceUserDecideIfNoMatch?: boolean | null;
+  userDecisionType?: string | null;
+  userDecisionConfig?: unknown;
 }
 
 function keepOrSet<T>(provided: T | undefined, fallback: T): T {
@@ -103,6 +114,27 @@ export async function assertValidTaskConfig(
     });
   }
 
+  if (
+    input.userDecisionConfig !== undefined &&
+    input.userDecisionConfig !== null &&
+    (typeof input.userDecisionConfig !== "object" ||
+      Array.isArray(input.userDecisionConfig))
+  ) {
+    throw new GraphQLError("userDecisionConfig must be a JSON object", {
+      extensions: { code: "BAD_USER_INPUT" },
+    });
+  }
+
+  if (
+    input.userDecisionType != null &&
+    !["yesNo", "list", "dropdown"].includes(input.userDecisionType)
+  ) {
+    throw new GraphQLError(
+      `Unknown userDecisionType "${input.userDecisionType}"`,
+      { extensions: { code: "BAD_USER_INPUT" } },
+    );
+  }
+
   for (const model of [input.model, input.decisionModel]) {
     if (!model) continue;
 
@@ -129,6 +161,9 @@ export async function createTask(input: CreateTaskInput) {
     onFalseTaskId: input.onFalseTaskId ?? null,
     model: input.model ?? null,
     decisionModel: input.decisionModel ?? null,
+    forceUserDecideIfNoMatch: input.forceUserDecideIfNoMatch ?? true,
+    userDecisionType: (input.userDecisionType ?? "list") as UserDecisionType,
+    userDecisionConfig: input.userDecisionConfig ?? null,
   };
 
   await assertValidTaskConfig({
@@ -140,6 +175,9 @@ export async function createTask(input: CreateTaskInput) {
     onFalseTaskId: task.onFalseTaskId,
     model: task.model,
     decisionModel: task.decisionModel,
+    forceUserDecideIfNoMatch: task.forceUserDecideIfNoMatch,
+    userDecisionType: task.userDecisionType,
+    userDecisionConfig: task.userDecisionConfig,
   });
 
   const [created] = await db.insert(tasks).values(task).returning();
@@ -166,6 +204,16 @@ export async function updateTask(input: UpdateTaskInput) {
   const nextOnFalseTaskId = keepOrSet(input.onFalseTaskId, task.onFalseTaskId);
   const nextModel = keepOrSet(input.model, task.model);
   const nextDecisionModel = keepOrSet(input.decisionModel, task.decisionModel);
+  const nextForceUserDecideIfNoMatch =
+    input.forceUserDecideIfNoMatch ?? task.forceUserDecideIfNoMatch;
+  const nextUserDecisionType = keepOrSet(
+    input.userDecisionType,
+    task.userDecisionType,
+  ) as UserDecisionType;
+  const nextUserDecisionConfig = keepOrSet(
+    input.userDecisionConfig,
+    task.userDecisionConfig,
+  );
 
   await assertValidTaskConfig({
     type: nextType,
@@ -176,6 +224,9 @@ export async function updateTask(input: UpdateTaskInput) {
     onFalseTaskId: nextOnFalseTaskId,
     model: nextModel,
     decisionModel: nextDecisionModel,
+    forceUserDecideIfNoMatch: nextForceUserDecideIfNoMatch,
+    userDecisionType: nextUserDecisionType,
+    userDecisionConfig: nextUserDecisionConfig,
   });
 
   const taskDto = {
@@ -192,6 +243,9 @@ export async function updateTask(input: UpdateTaskInput) {
     onFalseTaskId: nextOnFalseTaskId,
     model: nextModel,
     decisionModel: nextDecisionModel,
+    forceUserDecideIfNoMatch: nextForceUserDecideIfNoMatch,
+    userDecisionType: nextUserDecisionType,
+    userDecisionConfig: nextUserDecisionConfig,
   };
 
   const [updated] = await db
@@ -212,7 +266,10 @@ export async function deleteTask(id: number): Promise<string> {
   }
 
   await db.delete(taskResults).where(eq(taskResults.taskId, id));
-  // Clear any tasks that used this task as their fallback or branch.
+  await db
+    .delete(userDecisionOptions)
+    .where(eq(userDecisionOptions.taskId, id));
+  // Clear any tasks/options that used this task as a target.
   await db
     .update(tasks)
     .set({ fallbackTaskId: null })
@@ -225,6 +282,10 @@ export async function deleteTask(id: number): Promise<string> {
     .update(tasks)
     .set({ onFalseTaskId: null })
     .where(eq(tasks.onFalseTaskId, id));
+  await db
+    .update(userDecisionOptions)
+    .set({ resultTaskId: null })
+    .where(eq(userDecisionOptions.resultTaskId, id));
   await db.delete(tasks).where(eq(tasks.id, id));
 
   return "successfully deleted task";

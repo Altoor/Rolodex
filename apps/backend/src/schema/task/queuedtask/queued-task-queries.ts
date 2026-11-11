@@ -33,7 +33,7 @@ builder.queryType({
     activeQueuedTasks: t.field({
       type: [QueuedTask],
       description:
-        "Every step of the current user's chain runs that are still queued or running.",
+        "Every step of the current user's chain runs that are still queued, running, or waiting for user input.",
       resolve: async (_root, _args, ctx) => {
         const userId = requireUserId(ctx);
 
@@ -43,7 +43,11 @@ builder.queryType({
           .where(
             and(
               eq(queuedTasks.queued_by, userId),
-              inArray(queuedTasks.status, ["queued", "running"]),
+              inArray(queuedTasks.status, [
+                "queued",
+                "running",
+                "awaiting_input",
+              ]),
             ),
           );
 

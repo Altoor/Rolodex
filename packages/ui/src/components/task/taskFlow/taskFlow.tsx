@@ -1,7 +1,12 @@
 "use client";
 
 import { useQuery } from "@apollo/client/react";
-import type { Edge, NodeTypes, ReactFlowInstance, XYPosition } from "@xyflow/react";
+import type {
+  Edge,
+  NodeTypes,
+  ReactFlowInstance,
+  XYPosition,
+} from "@xyflow/react";
 import { TASKS } from "@repo/queries/tasks/task-queries";
 import type { GetTasksQuery } from "@repo/queries/__generated__/graphql";
 import { Spinner } from "#components/ui/spinner";
@@ -33,9 +38,7 @@ const TaskFlow = ({
   const tasks = useMemo<FlowTask[]>(
     () =>
       (data?.tasks ?? [])
-        .filter(
-          (task): task is IdTask => task != null && task.id != null,
-        )
+        .filter((task): task is IdTask => task != null && task.id != null)
         .map((task) => ({ ...task, id: task.id })),
     [data],
   );
@@ -63,6 +66,7 @@ const TaskFlow = ({
     insertTaskOnEdge,
     addTaskAtPosition,
     onConnect,
+    onReconnect,
     onEdgesDelete,
     onDelete,
   } = useTaskFlowActions({
@@ -136,6 +140,7 @@ const TaskFlow = ({
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
         onConnect={onConnect}
+        onReconnect={onReconnect}
         onEdgesDelete={onEdgesDelete}
         onDelete={onDelete}
         onNodeClick={onNodeClick}

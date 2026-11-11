@@ -1,6 +1,6 @@
 import { builder } from "../../builder";
 import { requireUserId } from "../../auth";
-import { Task, TaskType, ToolOutputType } from "./task";
+import { Task, TaskType, ToolOutputType, UserDecisionType } from "./task";
 import { createTask, deleteTask, updateTask } from "./task-service";
 
 builder.mutationType({
@@ -19,6 +19,9 @@ builder.mutationType({
         onFalseTaskId: t.arg.int(),
         model: t.arg.string(),
         decisionModel: t.arg.string(),
+        forceUserDecideIfNoMatch: t.arg.boolean(),
+        userDecisionType: t.arg({ type: UserDecisionType }),
+        userDecisionConfig: t.arg({ type: "JSON" }),
       },
       resolve: async (
         _query,
@@ -35,6 +38,9 @@ builder.mutationType({
           onFalseTaskId,
           model,
           decisionModel,
+          forceUserDecideIfNoMatch,
+          userDecisionType,
+          userDecisionConfig,
         },
         ctx,
       ) => {
@@ -52,6 +58,9 @@ builder.mutationType({
           onFalseTaskId,
           model,
           decisionModel,
+          forceUserDecideIfNoMatch,
+          userDecisionType,
+          userDecisionConfig,
         });
       },
     }),
@@ -71,6 +80,9 @@ builder.mutationType({
         onFalseTaskId: t.arg.int(),
         model: t.arg.string(),
         decisionModel: t.arg.string(),
+        forceUserDecideIfNoMatch: t.arg.boolean(),
+        userDecisionType: t.arg({ type: UserDecisionType }),
+        userDecisionConfig: t.arg({ type: "JSON" }),
       },
       resolve: async (
         _query,
@@ -88,6 +100,9 @@ builder.mutationType({
           onFalseTaskId,
           model,
           decisionModel,
+          forceUserDecideIfNoMatch,
+          userDecisionType,
+          userDecisionConfig,
         },
         ctx,
       ) => {
@@ -106,6 +121,9 @@ builder.mutationType({
           onFalseTaskId,
           model,
           decisionModel,
+          forceUserDecideIfNoMatch,
+          userDecisionType,
+          userDecisionConfig,
         });
       },
     }),

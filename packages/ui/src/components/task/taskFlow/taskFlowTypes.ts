@@ -9,11 +9,18 @@ export type FlowTask = QueryTask & { id: number };
 /** A single TaskResult, rendered as an output handle on a node. */
 export type FlowTaskResult = NonNullable<FlowTask["taskResults"]>[number];
 
+/** A single userDecision option, rendered as an output handle on a node. */
+export type FlowUserDecisionOption = NonNullable<
+  FlowTask["userDecisionOptions"]
+>[number];
+
 /** Handle id used for a task's fallback output on the flow node. */
 export const FALLBACK_HANDLE_ID = "fallback";
 /** Handle ids used for the `if` tool's conditional outputs. */
 export const TRUE_HANDLE_ID = "true";
 export const FALSE_HANDLE_ID = "false";
+/** Prefix for userDecision option handles, e.g. `udo:12`. */
+export const USER_DECISION_HANDLE_PREFIX = "udo:";
 
 export type TaskFlowNodeData = {
   taskId: number;
@@ -26,6 +33,10 @@ export type TaskFlowNodeData = {
   onTrueTaskId: number | null;
   onFalseTaskId: number | null;
   taskResults: FlowTaskResult[];
+  forceUserDecideIfNoMatch: boolean;
+  userDecisionType: string | null;
+  userDecisionConfig: unknown;
+  userDecisionOptions: FlowUserDecisionOption[];
   onTaskDelete?: (taskId: number) => void;
 } & Record<string, unknown>;
 

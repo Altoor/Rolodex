@@ -1,5 +1,6 @@
 import { builder } from "../../builder";
 import { requireUserId } from "../../auth";
+import { answerUserDecision } from "../../../queue/answer-user-decision";
 import { QueuedTask } from "./queued-task";
 import {
   completeQueuedTask,
@@ -19,6 +20,18 @@ builder.mutationType({
       resolve: async (_query, _root, { taskId, state }, ctx) => {
         const userId = requireUserId(ctx);
         return createQueuedTask(userId, { taskId, state });
+      },
+    }),
+
+    answerUserDecision: t.drizzleField({
+      type: QueuedTask,
+      args: {
+        queuedTaskId: t.arg.int({ required: true }),
+        optionId: t.arg.string({ required: true }),
+      },
+      resolve: async (_query, _root, { queuedTaskId, optionId }, ctx) => {
+        const userId = requireUserId(ctx);
+        return answerUserDecision(userId, queuedTaskId, optionId);
       },
     }),
 

@@ -20,6 +20,7 @@ interface TaskFlowCanvasProps {
   nodeTypes: NodeTypes;
   onNodesChange: OnNodesChange<TaskFlowNode>;
   onConnect: (connection: Connection) => void;
+  onReconnect: (oldEdge: Edge, connection: Connection) => void;
   onEdgesDelete: (edges: Edge[]) => void;
   onDelete: (args: { nodes: TaskFlowNode[]; edges: Edge[] }) => void;
   onNodeClick: (event: React.MouseEvent, node: TaskFlowNode) => void;
@@ -38,6 +39,7 @@ const TaskFlowCanvas = ({
   nodeTypes,
   onNodesChange,
   onConnect,
+  onReconnect,
   onEdgesDelete,
   onDelete,
   onNodeClick,
@@ -56,6 +58,7 @@ const TaskFlowCanvas = ({
       nodeTypes={nodeTypes}
       onNodesChange={onNodesChange}
       onConnect={onConnect}
+      onReconnect={onReconnect}
       onEdgesDelete={onEdgesDelete}
       onDelete={onDelete}
       onNodeClick={onNodeClick}

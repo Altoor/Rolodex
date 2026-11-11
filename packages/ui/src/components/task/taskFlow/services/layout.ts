@@ -30,7 +30,15 @@ export const computePositions = (
         ...(task?.taskResults ?? [])
           .map((result) => result?.resultTaskId)
           .filter((id): id is number => id != null),
-        ...(task?.fallbackTaskId != null ? [task.fallbackTaskId] : []),
+        ...(task?.userDecisionOptions ?? [])
+          .map((option) => option?.resultTaskId)
+          .filter((id): id is number => id != null),
+        ...(task?.fallbackTaskId != null &&
+        task.toolKey !== "if" &&
+        task.type !== "userDecision" &&
+        !(task.type === "decision" && task.forceUserDecideIfNoMatch)
+          ? [task.fallbackTaskId]
+          : []),
         ...(task?.onTrueTaskId != null ? [task.onTrueTaskId] : []),
         ...(task?.onFalseTaskId != null ? [task.onFalseTaskId] : []),
       ];
