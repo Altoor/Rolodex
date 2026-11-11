@@ -33,7 +33,7 @@ const definition: ToolDefinition = {
     },
   },
   outputDescription:
-    "The best matching todos, their similarity score, and the candidate todos.",
+    'The best matching todos, their similarity score, and the candidate todos. Appended to toolState as `{ todos: [...] }`; use filter_tool_state or if with `path: "todos"` to act on individual todos.',
   outputTypes: ["normal", "foreach"],
   foreachOutputDescription:
     "Enqueue one queued task per matching todo, with only that todo in each child's toolState.",

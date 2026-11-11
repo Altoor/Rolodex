@@ -100,21 +100,12 @@ export async function extractTodoFields(
 
   const prompt = [
     currentTimePrompt(),
-    "Extract a todo name, description, and do-by timestamp from the user input below.",
+    "Extract a name, description, and do-by timestamp from the user input below.",
     'Resolve relative dates and times such as "today", "tomorrow at 15:00", "next Friday", "in three days", or "this afternoon" to an absolute ISO 8601 timestamp using the current date and time.',
     "Rules:",
     ...dateRules.map((rule) => `- ${rule}`),
     "Return only JSON that matches the supplied schema.",
     `User input:\n${context.state}`,
-    suppliedName?.trim()
-      ? `Name already provided by the user: ${suppliedName}`
-      : "No name was provided.",
-    suppliedDescription?.trim()
-      ? `Description already provided by the user: ${suppliedDescription}`
-      : "No description was provided.",
-    suppliedDoByDateRaw !== undefined
-      ? "A do-by timestamp was already provided by the user."
-      : "No do-by timestamp was provided.",
   ].join("\n\n");
 
   const result = await runPrompt({

@@ -37,7 +37,7 @@ const definition: ToolDefinition = {
     },
   },
   outputDescription:
-    "The best matching todo, its similarity score, and the candidate todos.",
+    "The best matching todo, its similarity score, and the candidate todos. Appended to toolState as `{ todo }`; use `todo.done` in filter_tool_state or if conditions.",
   exampleConfig: {
     limit: 5,
   },
