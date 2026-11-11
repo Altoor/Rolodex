@@ -1,4 +1,4 @@
-import type { Node } from "@xyflow/react";
+import type { Edge, Node, XYPosition } from "@xyflow/react";
 import type { GetTasksQuery } from "@repo/queries/__generated__/graphql";
 
 type QueryTask = NonNullable<GetTasksQuery["tasks"]>[number];
@@ -11,14 +11,34 @@ export type FlowTaskResult = NonNullable<FlowTask["taskResults"]>[number];
 
 /** Handle id used for a task's fallback output on the flow node. */
 export const FALLBACK_HANDLE_ID = "fallback";
+/** Handle ids used for the `if` tool's conditional outputs. */
+export const TRUE_HANDLE_ID = "true";
+export const FALSE_HANDLE_ID = "false";
 
 export type TaskFlowNodeData = {
   taskId: number;
   name: string;
   type: string | null;
   decisionType: string | null;
+  toolKey: string | null;
+  model: string | null;
+  decisionModel: string | null;
+  onTrueTaskId: number | null;
+  onFalseTaskId: number | null;
   taskResults: FlowTaskResult[];
   onTaskDelete?: (taskId: number) => void;
 } & Record<string, unknown>;
 
 export type TaskFlowNode = Node<TaskFlowNodeData, "taskFlow">;
+
+/** Menu opened by right-clicking an edge or empty canvas space. */
+export type FlowContextMenu =
+  | { kind: "edge"; x: number; y: number; edge: Edge }
+  | { kind: "pane"; x: number; y: number; position: XYPosition };
+
+export interface TaskFlowProps {
+  selectedTaskId?: number;
+  onSelectTaskId?: (id: number | undefined) => void;
+  defaultTaskId?: number | null;
+  onDefaultTaskChange?: (id: number) => void;
+}

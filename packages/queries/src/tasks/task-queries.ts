@@ -7,6 +7,20 @@ export const TASKS = gql(/* GraphQL */ `
       name
       type
       fallbackTaskId
+      toolKey
+      toolConfig
+      toolOutputType
+      onTrueTaskId
+      onFalseTaskId
+      model
+      decisionModel
+      tool {
+        key
+        name
+        description
+        outputTypes
+        foreachOutputDescription
+      }
       taskResults {
         confidenceThreshold
         id
@@ -33,6 +47,20 @@ export const GET_TASK = gql(/* GraphQL */ `
       name
       type
       fallbackTaskId
+      toolKey
+      toolConfig
+      toolOutputType
+      onTrueTaskId
+      onFalseTaskId
+      model
+      decisionModel
+      tool {
+        key
+        name
+        description
+        outputTypes
+        foreachOutputDescription
+      }
       taskResults {
         type
         taskId
@@ -58,15 +86,47 @@ export const QUEUED_TASK = gql(/* GraphQL */ `
       id
       taskId
       state
+      toolState
+      parentQueuedTaskId
+      depth
       status
       runId
       queued_by
       queued_at
       result
+      model
+      decisionModel
       task {
         id
         name
         type
+        toolKey
+      }
+    }
+  }
+`);
+
+export const ACTIVE_QUEUED_TASKS = gql(/* GraphQL */ `
+  query ActiveQueuedTasks {
+    activeQueuedTasks {
+      id
+      taskId
+      state
+      toolState
+      parentQueuedTaskId
+      depth
+      status
+      runId
+      queued_by
+      queued_at
+      result
+      model
+      decisionModel
+      task {
+        id
+        name
+        type
+        toolKey
       }
     }
   }

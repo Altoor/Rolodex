@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { GraphQLError } from "graphql";
 import { db } from "../builder";
-import { userSettings } from "../../db";
+import { userSettings } from "@repo/db";
 
 export const ensureUserSettings = async (userId: number) => {
   const existing = await db.query.userSettings.findFirst({
@@ -38,6 +38,7 @@ export const getUserSettings = async (userId: number) => {
 type UpdateSettingsInput = {
   defaultTaskId?: number | null;
   defaultModelName?: string | null;
+  defaultDecisionModelName?: string | null;
 };
 
 export const updateUserSettings = async (
@@ -58,9 +59,14 @@ export const updateUserSettings = async (
     }
   }
 
-  if (input.defaultModelName !== undefined && input.defaultModelName !== null) {
+  for (const modelName of [
+    input.defaultModelName,
+    input.defaultDecisionModelName,
+  ]) {
+    if (modelName === undefined || modelName === null) continue;
+
     const model = await db.query.models.findFirst({
-      where: { name: input.defaultModelName },
+      where: { name: modelName },
     });
 
     if (!model) {
@@ -84,6 +90,9 @@ export const updateUserSettings = async (
         : {}),
       ...(input.defaultModelName !== undefined
         ? { defaultModelName: input.defaultModelName }
+        : {}),
+      ...(input.defaultDecisionModelName !== undefined
+        ? { defaultDecisionModelName: input.defaultDecisionModelName }
         : {}),
       updatedAt: new Date(),
     })

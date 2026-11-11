@@ -1,7 +1,7 @@
 import { builder } from "../builder";
 import { GraphQLError } from "graphql/error";
 import { Progress } from "./llmModel";
-import { ollama } from "../../ai/Ollama";
+import { ollama } from "@repo/ai";
 
 builder.subscriptionType({
   fields: (t) => ({

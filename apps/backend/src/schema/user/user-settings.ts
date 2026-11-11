@@ -6,8 +6,14 @@ export const UserSettings = builder.drizzleObject("userSettings", {
     userId: t.exposeInt("userId"),
     defaultTaskId: t.exposeInt("defaultTaskId", { nullable: true }),
     defaultModelName: t.exposeString("defaultModelName", { nullable: true }),
+    defaultDecisionModelName: t.exposeString("defaultDecisionModelName", {
+      nullable: true,
+    }),
     defaultTask: t.relation("defaultTask", { nullable: true }),
     defaultModel: t.relation("defaultModel", { nullable: true }),
+    defaultDecisionModel: t.relation("defaultDecisionModel", {
+      nullable: true,
+    }),
     updatedAt: t.field({
       type: "DateTime",
       resolve: (parent) => parent.updatedAt,

@@ -1,4 +1,3 @@
 export * from "./task";
-export * from "./task-queries";
-export * from "./task-mutations";
-export * from "./task-subscriptions";
+export * from "./task-result";
+export * from "./queuedtask";

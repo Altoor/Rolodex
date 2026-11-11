@@ -46,13 +46,13 @@ const DecisionCard = ({ save, saving = false }: DecisionCardProps) => {
   return (
     <Card className="w-full">
       <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start">
-        <CardContent className="w-full">
+        <div className="w-full">
           <CardTitle>Decision</CardTitle>
           <CardDescription>Set up a decision.</CardDescription>
           <SelectController name="type" control={control} defaultValue="noul">
             {(value, onChange) => (
               <Select value={value} onValueChange={onChange}>
-                <SelectTrigger className="w-[180px]">
+                <SelectTrigger className="w-(--size-select-sm)">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -67,8 +67,8 @@ const DecisionCard = ({ save, saving = false }: DecisionCardProps) => {
               </Select>
             )}
           </SelectController>
-        </CardContent>
-        <CardContent className="w-full">
+        </div>
+        <div className="w-full">
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="decision-name">Name</FieldLabel>
@@ -78,7 +78,7 @@ const DecisionCard = ({ save, saving = false }: DecisionCardProps) => {
               />
             </Field>
           </FieldGroup>
-        </CardContent>
+        </div>
         <CardAction>
           <Button
             type="button"

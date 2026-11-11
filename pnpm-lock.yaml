@@ -187,6 +187,15 @@ importers:
       '@pothos/plugin-drizzle':
         specifier: ^0.20.0
         version: 0.20.0(@pothos/core@4.15.1(graphql@17.0.2))(drizzle-orm@1.0.0-rc.5-ab785fc(@types/pg@8.23.1)(pg@8.23.1)(zod@4.4.3))(graphql@17.0.2)
+      '@repo/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
+      '@repo/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@repo/tools':
+        specifier: workspace:*
+        version: link:../../packages/tools
       bcrypt:
         specifier: ^6.0.0
         version: 6.0.0
@@ -331,6 +340,62 @@ importers:
         specifier: 7.0.2
         version: 7.0.2
 
+  packages/ai:
+    dependencies:
+      '@repo/db':
+        specifier: workspace:*
+        version: link:../db
+      drizzle-orm:
+        specifier: ^1.0.0-rc.4
+        version: 1.0.0-rc.5-ab785fc(@types/pg@8.23.1)(pg@8.23.1)(zod@4.4.3)
+      ollama:
+        specifier: ^0.6.4
+        version: 0.6.4
+    devDependencies:
+      '@repo/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      '@types/node':
+        specifier: ^26.6.5
+        version: 26.6.5
+      eslint:
+        specifier: 10.11.0
+        version: 10.11.0(jiti@2.7.0)(supports-color@7.2.0)
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
+  packages/db:
+    dependencies:
+      drizzle-orm:
+        specifier: ^1.0.0-rc.4
+        version: 1.0.0-rc.5-ab785fc(@types/pg@8.23.1)(pg@8.23.1)(zod@4.4.3)
+      pg:
+        specifier: ^8.23.1
+        version: 8.23.1
+    devDependencies:
+      '@repo/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      '@types/node':
+        specifier: ^26.6.5
+        version: 26.6.5
+      '@types/pg':
+        specifier: ^8.23.1
+        version: 8.23.1
+      eslint:
+        specifier: 10.11.0
+        version: 10.11.0(jiti@2.7.0)(supports-color@7.2.0)
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+
   packages/eslint-config:
     devDependencies:
       '@eslint/js':
@@ -409,6 +474,37 @@ importers:
       tailwindcss:
         specifier: 4.3.3
         version: 4.3.3
+
+  packages/tools:
+    dependencies:
+      '@repo/ai':
+        specifier: workspace:*
+        version: link:../ai
+      '@repo/db':
+        specifier: workspace:*
+        version: link:../db
+      drizzle-orm:
+        specifier: ^1.0.0-rc.4
+        version: 1.0.0-rc.5-ab785fc(@types/pg@8.23.1)(pg@8.23.1)(zod@4.4.3)
+      ollama:
+        specifier: ^0.6.4
+        version: 0.6.4
+    devDependencies:
+      '@repo/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@repo/typescript-config':
+        specifier: workspace:*
+        version: link:../typescript-config
+      '@types/node':
+        specifier: ^26.6.5
+        version: 26.6.5
+      eslint:
+        specifier: 10.11.0
+        version: 10.11.0(jiti@2.7.0)(supports-color@7.2.0)
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
 
   packages/typescript-config: {}
 

@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect } from "react";
 import { FormProvider, useForm } from "react-hook-form";
 import { useLazyQuery, useMutation } from "@apollo/client/react";
 import DecisionCard from "./decisionCard/decisionCard";
@@ -15,6 +14,8 @@ import {
 } from "@repo/queries/decisions/decision-mutations";
 import { ErrorState } from "#components/feedback/error-state";
 import { LoadingState } from "#components/feedback/loading-state";
+import { useLoadedEntity } from "#hooks/useLoadedEntity";
+import { useSaveEntity } from "#hooks/useSaveEntity";
 import {
   decisionFormValuesToVariables,
   decisionToFormValues,
@@ -30,7 +31,8 @@ const DecisionBuilder = ({ selectedDecisionId }: DecisionBuilderProps) => {
   const methods = useForm<DecisionFormValues>({
     defaultValues: emptyDecisionFormValues,
   });
-  const { handleSubmit, reset } = methods;
+  const { reset } = methods;
+
   const [getDecision, { loading, error: loadError }] =
     useLazyQuery(GET_DECISION);
   const [createDecision, { loading: creating, error: createError }] =
@@ -44,39 +46,22 @@ const DecisionBuilder = ({ selectedDecisionId }: DecisionBuilderProps) => {
       awaitRefetchQueries: true,
     });
 
-  useEffect(() => {
-    let cancelled = false;
+  useLoadedEntity({
+    id: selectedDecisionId,
+    load: async (id) =>
+      (await getDecision({ variables: { id } })).data?.getDecision,
+    onLoaded: (decision) =>
+      reset(
+        decision ? decisionToFormValues(decision) : emptyDecisionFormValues,
+      ),
+  });
 
-    if (selectedDecisionId === undefined) {
-      reset(emptyDecisionFormValues);
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    void getDecision({ variables: { id: selectedDecisionId } }).then(
-      ({ data }) => {
-        if (cancelled || !data?.getDecision) return;
-
-        reset(decisionToFormValues(data.getDecision));
-      },
-    );
-
-    return () => {
-      cancelled = true;
-    };
-  }, [getDecision, reset, selectedDecisionId]);
-
-  const saveDecision = handleSubmit(async (values) => {
-    const variables = decisionFormValuesToVariables(values);
-
-    if (selectedDecisionId !== undefined) {
-      await updateDecision({
-        variables: { ...variables, id: selectedDecisionId },
-      });
-    } else {
-      await createDecision({ variables });
-    }
+  const saveDecision = useSaveEntity({
+    form: methods,
+    id: selectedDecisionId,
+    toVariables: decisionFormValuesToVariables,
+    create: (variables) => createDecision({ variables }),
+    update: (variables) => updateDecision({ variables }),
   });
 
   if (selectedDecisionId !== undefined && loading) {

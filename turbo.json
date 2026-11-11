@@ -1,6 +1,7 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
   "ui": "tui",
+  "globalEnv": ["DATABASE_URL", "TOKEN_SECRET", "EMBEDDING_MODEL"],
   "tasks": {
     "codegen": {
       "dependsOn": ["^codegen"],

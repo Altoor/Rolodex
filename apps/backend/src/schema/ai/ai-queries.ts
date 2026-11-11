@@ -1,7 +1,7 @@
 import { GraphQLError } from "graphql";
 import { builder, db } from "../builder";
 import { DecisionType, SystemOnePrompt, SystemOneResponse } from "./ai";
-import { ollama } from "../../ai/Ollama";
+import { ollama } from "@repo/ai";
 import { setupQuestions } from "./ai-service";
 
 builder.queryType({

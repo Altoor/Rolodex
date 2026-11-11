@@ -32,6 +32,7 @@ const NONE = "__none__";
 interface UserSettingsFormProps {
   initialDefaultTaskId: number | null;
   initialDefaultModelName: string | null;
+  initialDefaultDecisionModelName: string | null;
   onSaved?: () => void;
   onDirty?: () => void;
 }
@@ -43,6 +44,7 @@ interface UserSettingsFormProps {
 export function UserSettingsForm({
   initialDefaultTaskId,
   initialDefaultModelName,
+  initialDefaultDecisionModelName,
   onSaved,
   onDirty,
 }: UserSettingsFormProps) {
@@ -67,6 +69,9 @@ export function UserSettingsForm({
   const [defaultModelName, setDefaultModelName] = useState(
     initialDefaultModelName ?? NONE,
   );
+  const [defaultDecisionModelName, setDefaultDecisionModelName] = useState(
+    initialDefaultDecisionModelName ?? NONE,
+  );
 
   const tasks = tasksData?.tasks ?? [];
   const models = modelsData?.installedModels ?? [];
@@ -76,6 +81,8 @@ export function UserSettingsForm({
       variables: {
         defaultTaskId: defaultTaskId === NONE ? null : Number(defaultTaskId),
         defaultModelName: defaultModelName === NONE ? null : defaultModelName,
+        defaultDecisionModelName:
+          defaultDecisionModelName === NONE ? null : defaultDecisionModelName,
       },
     });
 
@@ -124,7 +131,7 @@ export function UserSettingsForm({
         </Field>
 
         <Field>
-          <FieldLabel htmlFor="default-model">Model</FieldLabel>
+          <FieldLabel htmlFor="default-model">Generation model</FieldLabel>
           <Select
             value={defaultModelName}
             onValueChange={(value) => {
@@ -148,7 +155,38 @@ export function UserSettingsForm({
             </SelectContent>
           </Select>
           <FieldDescription>
-            The model used to execute your queued tasks.
+            Used by prompt-style tools and todo field extraction.
+          </FieldDescription>
+        </Field>
+
+        <Field>
+          <FieldLabel htmlFor="default-decision-model">
+            Decision model
+          </FieldLabel>
+          <Select
+            value={defaultDecisionModelName}
+            onValueChange={(value) => {
+              setDefaultDecisionModelName(value ?? NONE);
+              onDirty?.();
+            }}
+            disabled={modelsLoading || saving}
+          >
+            <SelectTrigger id="default-decision-model" className="w-full">
+              <SelectValue placeholder="Use the backend default" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value={NONE}>Use the backend default</SelectItem>
+                {models.map((model) => (
+                  <SelectItem key={model.name} value={model.name}>
+                    {model.name}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          <FieldDescription>
+            Used by decision tasks and todo selection (System One).
           </FieldDescription>
         </Field>
 

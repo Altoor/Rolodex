@@ -12,7 +12,7 @@ interface NoulResultProps {
 
 const NoulResult = ({ decisionPremise, noul }: NoulResultProps) => {
   return (
-    <Item variant={"outline"} className="max-w-60">
+    <Item variant="outline" className="max-w-60">
       <ItemContent>
         <ItemHeader>{decisionPremise}</ItemHeader>
         <ItemDescription>

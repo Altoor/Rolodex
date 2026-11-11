@@ -8,15 +8,21 @@ export const QUEUED_TASK_EVENT = gql(/* GraphQL */ `
         id
         taskId
         state
+        toolState
+        parentQueuedTaskId
+        depth
         status
         runId
         queued_by
         queued_at
         result
+        model
+        decisionModel
         task {
           id
           name
           type
+          toolKey
         }
       }
     }

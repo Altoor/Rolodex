@@ -80,7 +80,5 @@ export const setupQuestions = (questions: Question[]) => {
                 }
             `);
 
-  console.log(questionJSON);
-
   return questionJSON;
 };

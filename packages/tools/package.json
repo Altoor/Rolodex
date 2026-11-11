@@ -1,0 +1,27 @@
+{
+  "name": "@repo/tools",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src --max-warnings 0"
+  },
+  "dependencies": {
+    "@repo/ai": "workspace:*",
+    "@repo/db": "workspace:*",
+    "drizzle-orm": "^1.0.0-rc.4",
+    "ollama": "^0.6.4"
+  },
+  "devDependencies": {
+    "@repo/eslint-config": "workspace:*",
+    "@repo/typescript-config": "workspace:*",
+    "@types/node": "^26.6.5",
+    "eslint": "10.11.0",
+    "typescript": "7.0.2"
+  }
+}
