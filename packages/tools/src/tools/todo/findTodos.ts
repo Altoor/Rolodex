@@ -1,5 +1,5 @@
 import type { Tool, ToolDefinition } from "../../model";
-import { findTodoMatches } from "./search";
+import { findTodoMatches } from "./services/search";
 
 const definition: ToolDefinition = {
   key: "find_todos",

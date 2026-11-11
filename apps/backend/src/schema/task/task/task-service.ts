@@ -162,19 +162,10 @@ export async function updateTask(input: UpdateTaskInput) {
     input.toolOutputType,
     task.toolOutputType,
   ) as TaskOutputType;
-  const nextOnTrueTaskId = keepOrSet(
-    input.onTrueTaskId,
-    task.onTrueTaskId,
-  );
-  const nextOnFalseTaskId = keepOrSet(
-    input.onFalseTaskId,
-    task.onFalseTaskId,
-  );
+  const nextOnTrueTaskId = keepOrSet(input.onTrueTaskId, task.onTrueTaskId);
+  const nextOnFalseTaskId = keepOrSet(input.onFalseTaskId, task.onFalseTaskId);
   const nextModel = keepOrSet(input.model, task.model);
-  const nextDecisionModel = keepOrSet(
-    input.decisionModel,
-    task.decisionModel,
-  );
+  const nextDecisionModel = keepOrSet(input.decisionModel, task.decisionModel);
 
   await assertValidTaskConfig({
     type: nextType,

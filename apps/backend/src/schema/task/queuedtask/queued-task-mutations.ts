@@ -1,5 +1,5 @@
-import { builder } from "../builder";
-import { requireUserId } from "../auth";
+import { builder } from "../../builder";
+import { requireUserId } from "../../auth";
 import { QueuedTask } from "./queued-task";
 import {
   completeQueuedTask,

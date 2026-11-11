@@ -4,7 +4,7 @@ import { builder, db } from "../builder";
 import { Todo } from "./todo";
 import { GraphQLError } from "graphql/error";
 import { requireUserId } from "../auth";
-import { saveTodoWithEmbedding } from "@repo/tools/tools/todo/todos";
+import { saveTodoWithEmbedding } from "@repo/tools/tools/todo/services/todo";
 
 builder.mutationType({
   fields: (t) => ({

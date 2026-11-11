@@ -61,10 +61,7 @@ export async function updateTaskResult(input: UpdateTaskResultInput) {
     taskId: input.taskId ?? taskResult.taskId,
     type: (input.type ?? taskResult.type) as TaskResultType,
     option: keepOrSet(input.option, taskResult.option),
-    scoreThreshold: keepOrSet(
-      input.scoreThreshold,
-      taskResult.scoreThreshold,
-    ),
+    scoreThreshold: keepOrSet(input.scoreThreshold, taskResult.scoreThreshold),
     probabilityThreshold: keepOrSet(
       input.probabilityThreshold,
       taskResult.probabilityThreshold,

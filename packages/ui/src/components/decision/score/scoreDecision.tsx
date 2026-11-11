@@ -1,62 +1,13 @@
 "use client";
 
-import { Button } from "#components/ui/button";
-import { Field, FieldGroup, FieldLabel } from "#components/ui/field";
-import { Input } from "#components/ui/input";
-import { Plus } from "lucide-react";
-import { useFieldArray, useFormContext } from "react-hook-form";
-import ScoreOption from "./scoreOption";
-import type { DecisionFormValues } from "../decision-form";
+import DecisionFields from "../form/decisionFields";
+import DecisionOptions from "../form/decisionOptions";
 
-const ScoreDecisionForm = () => {
-  const { register, control } = useFormContext<DecisionFormValues>();
-  const { fields, append, remove } = useFieldArray({
-    control,
-    name: "options",
-  });
-
-  return (
-    <div className="flex flex-col gap-4">
-      <FieldGroup>
-        <Field>
-          <FieldLabel htmlFor="score-instruction">
-            What is your current instruction?
-          </FieldLabel>
-          <Input
-            id="score-instruction"
-            {...register("instruction", { required: true })}
-          />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="score-premise">
-            What is the premise of the decision?
-          </FieldLabel>
-          <Input
-            id="score-premise"
-            {...register("decisionPremise", { required: true })}
-          />
-        </Field>
-      </FieldGroup>
-      <div className="flex flex-row flex-wrap gap-2">
-        {fields.map((field, index) => (
-          <ScoreOption
-            key={field.id}
-            index={index}
-            onDelete={() => remove(index)}
-          />
-        ))}
-      </div>
-      <Button
-        type="button"
-        className="w-min"
-        onClick={() => append({ name: "", description: "" })}
-        title="Add option"
-        aria-label="Add option"
-      >
-        <Plus />
-      </Button>
-    </div>
-  );
-};
+const ScoreDecisionForm = () => (
+  <div className="flex flex-col gap-4">
+    <DecisionFields idPrefix="score" />
+    <DecisionOptions idPrefix="score" />
+  </div>
+);
 
 export default ScoreDecisionForm;

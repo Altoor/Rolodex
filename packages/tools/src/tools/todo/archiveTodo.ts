@@ -1,12 +1,8 @@
 import { eq } from "drizzle-orm";
 import { db, todos } from "@repo/db";
 import { mergeToolInput, readBoolean } from "../../utils";
-import {
-  ToolInputError,
-  type Tool,
-  type ToolDefinition,
-} from "../../model";
-import { resolveTodoId, toToolTodo } from "./todos";
+import { ToolInputError, type Tool, type ToolDefinition } from "../../model";
+import { resolveTodoId, toToolTodo } from "./services/todo";
 
 const definition: ToolDefinition = {
   key: "archive_todo",

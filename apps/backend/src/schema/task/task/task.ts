@@ -1,5 +1,5 @@
-import { builder } from "../builder";
-import { Tool } from "../tool";
+import { builder } from "../../builder";
+import { Tool } from "../../tool";
 import { getToolDefinition } from "@repo/tools";
 
 export const TaskType = builder.enumType("TaskType", {

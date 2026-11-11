@@ -1,5 +1,5 @@
-import { builder } from "../builder";
-import { requireUserId } from "../auth";
+import { builder } from "../../builder";
+import { requireUserId } from "../../auth";
 import { Task, TaskType, ToolOutputType } from "./task";
 import { createTask, deleteTask, updateTask } from "./task-service";
 

@@ -14,8 +14,8 @@ import {
   readBoolean,
   readNumber,
   readString,
-} from "../../utils";
-import { ToolInputError, type ToolRunContext } from "../../model";
+} from "../../../utils";
+import { ToolInputError, type ToolRunContext } from "../../../model";
 import { selectTodoWithDecision } from "./selection";
 
 type TodoRow = typeof todos.$inferSelect;
@@ -94,9 +94,7 @@ export async function findTodoMatches(
 ): Promise<TodoMatches> {
   const input = mergeToolInput(context);
   const includeArchived =
-    options.includeArchived ??
-    readBoolean(input, "includeArchived") ??
-    false;
+    options.includeArchived ?? readBoolean(input, "includeArchived") ?? false;
   const explicitId =
     readNumber(input, "id") ??
     readNumber(input, "todoId") ??

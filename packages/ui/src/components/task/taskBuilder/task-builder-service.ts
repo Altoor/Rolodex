@@ -35,11 +35,7 @@ export function parseToolConfigText(
     });
   }
 
-  if (
-    parsed === null ||
-    typeof parsed !== "object" ||
-    Array.isArray(parsed)
-  ) {
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("toolConfig must be a JSON object");
   }
 

@@ -1,4 +1,4 @@
-import { builder } from "../builder";
+import { builder } from "../../builder";
 
 export const QueuedTaskStatus = builder.enumType("QueuedTaskStatus", {
   values: ["queued", "running", "completed", "failed"],

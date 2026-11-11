@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { GraphQLError } from "graphql";
 import { and, eq, lt } from "drizzle-orm";
 import { db, queuedTasks } from "@repo/db";
-import { getUserSettings } from "../user/user-settings-service";
-import { triggerQueue } from "../../queue";
+import { getUserSettings } from "../../user/user-settings-service";
+import { triggerQueue } from "../../../queue";
 
 export interface CreateQueuedTaskInput {
   taskId?: number | null;
@@ -80,7 +80,9 @@ export async function deleteCompletedQueuedTasksBefore(
 ): Promise<string> {
   await db
     .delete(queuedTasks)
-    .where(and(eq(queuedTasks.status, "completed"), lt(queuedTasks.queued_at, date)));
+    .where(
+      and(eq(queuedTasks.status, "completed"), lt(queuedTasks.queued_at, date)),
+    );
 
   return "successfully deleted queuedTasks";
 }

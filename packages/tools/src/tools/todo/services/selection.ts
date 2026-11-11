@@ -1,6 +1,6 @@
 import type { SystemOneChoiceQuestion } from "ollama";
 import { ollama } from "@repo/ai";
-import { ToolInputError } from "../../model";
+import { ToolInputError } from "../../../model";
 
 interface SelectableTodo {
   id: number;

@@ -2,12 +2,10 @@ import type { Tool, ToolDefinition } from "../model";
 import { promptTool } from "../tools/prompt/prompt";
 import { findTodoTool } from "../tools/todo/findTodo";
 import { modelSelectorTool } from "../tools/modelSelector/modelSelector";
-import {
-  createTodoTool,
-  deleteTodoTool,
-  markTodoDoneTool,
-  updateTodoTool,
-} from "../tools/todo/todos";
+import { createTodoTool } from "../tools/todo/createTodo";
+import { updateTodoTool } from "../tools/todo/updateTodo";
+import { markTodoDoneTool } from "../tools/todo/markTodoDone";
+import { deleteTodoTool } from "../tools/todo/deleteTodo";
 import { findTodosTool } from "../tools/todo/findTodos";
 import { archiveTodoTool } from "../tools/todo/archiveTodo";
 import { deleteTodosOlderThanTool } from "../tools/todo/deleteOlderThan";

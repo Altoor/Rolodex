@@ -18,7 +18,7 @@ const ChoiceResult = ({
   probabilities,
 }: ChoiceResultProps) => {
   return (
-    <Item variant={"outline"}>
+    <Item variant="outline">
       <ItemContent>
         <ItemHeader>{decisionPremise}</ItemHeader>
         <ItemDescription>
@@ -26,11 +26,11 @@ const ChoiceResult = ({
         </ItemDescription>
       </ItemContent>
 
-      {Array.from(Object.entries(probabilities)).map((probability) => (
-        <ItemContent key={probability[0]}>
-          <ItemTitle>{probability[0]}</ItemTitle>
+      {Object.entries(probabilities).map(([option, probability]) => (
+        <ItemContent key={option}>
+          <ItemTitle>{option}</ItemTitle>
           <ItemDescription>
-            Confidence <strong>{probability[1].toFixed(2)}</strong>
+            Confidence <strong>{probability.toFixed(2)}</strong>
           </ItemDescription>
         </ItemContent>
       ))}

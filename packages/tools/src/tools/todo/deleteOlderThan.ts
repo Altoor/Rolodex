@@ -1,19 +1,7 @@
-import {
-  and,
-  eq,
-  isNotNull,
-  lt,
-  or,
-  sql,
-  type SQL,
-} from "drizzle-orm";
+import { and, eq, isNotNull, lt, or, sql, type SQL } from "drizzle-orm";
 import { db, todos } from "@repo/db";
 import { mergeToolInput, readBoolean, readString } from "../../utils";
-import {
-  ToolInputError,
-  type Tool,
-  type ToolDefinition,
-} from "../../model";
+import { ToolInputError, type Tool, type ToolDefinition } from "../../model";
 
 interface Duration {
   years?: number;
@@ -53,7 +41,9 @@ function readDuration(value: unknown): Duration {
       !Number.isInteger(raw) ||
       raw < 0
     ) {
-      throw new ToolInputError(`"olderThan.${key}" must be a non-negative integer`);
+      throw new ToolInputError(
+        `"olderThan.${key}" must be a non-negative integer`,
+      );
     }
 
     duration[key] = raw;
@@ -126,7 +116,8 @@ const definition: ToolDefinition = {
       },
       allowNotDone: {
         type: "boolean",
-        description: "Allow deleting todos that are not done. Defaults to false.",
+        description:
+          "Allow deleting todos that are not done. Defaults to false.",
         default: false,
       },
       allowNotArchived: {

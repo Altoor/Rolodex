@@ -1,7 +1,10 @@
-import { builder } from "../builder";
+import { builder } from "../../builder";
 import { GraphQLError } from "graphql/error";
-import { QueuedTaskEvent } from "./";
-import { queueEvents, type QueuedTaskEvent as QueuedTaskEventPayload } from "../../queue";
+import { QueuedTaskEvent } from "./queued-task";
+import {
+  queueEvents,
+  type QueuedTaskEvent as QueuedTaskEventPayload,
+} from "../../../queue";
 
 builder.subscriptionType({
   fields: (t) => ({
