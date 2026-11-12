@@ -138,6 +138,87 @@ export async function refreshFileEntryEmbedding(
   return row;
 }
 
+/**
+ * Rewrites a file/folder row and, for folders, every descendant path in one
+ * transaction. Used after the physical move succeeded.
+ */
+export async function moveFileEntryTree(
+  rootId: number,
+  fromPath: string,
+  toPath: string,
+  rootValues: Partial<NewFileEntryRow>,
+): Promise<FileEntryRow[]> {
+  return db.transaction(async (tx) => {
+    const liveRows = await tx
+      .select()
+      .from(fileEntries)
+      .where(isNull(fileEntries.deletedAt));
+
+    const subtree = liveRows
+      .filter(
+        (row) =>
+          row.relativePath === fromPath ||
+          row.relativePath.startsWith(`${fromPath}/`),
+      )
+      .sort(
+        (left, right) =>
+          left.relativePath.split("/").length -
+          right.relativePath.split("/").length,
+      );
+
+    const updatedRows: FileEntryRow[] = [];
+
+    for (const row of subtree) {
+      const newPath = toPath + row.relativePath.slice(fromPath.length);
+      const values: Partial<NewFileEntryRow> =
+        row.id === rootId
+          ? { ...rootValues, relativePath: newPath, updatedAt: new Date() }
+          : { relativePath: newPath, updatedAt: new Date() };
+
+      const [updated] = await tx
+        .update(fileEntries)
+        .set(values)
+        .where(eq(fileEntries.id, row.id))
+        .returning();
+
+      if (updated) updatedRows.push(updated);
+    }
+
+    return updatedRows;
+  });
+}
+
+/**
+ * Soft-deletes an entry and every descendant path. Returns how many rows were
+ * touched.
+ */
+export async function softDeleteFileEntryTree(
+  fromPath: string,
+  when: Date = new Date(),
+): Promise<number> {
+  return db.transaction(async (tx) => {
+    const liveRows = await tx
+      .select()
+      .from(fileEntries)
+      .where(isNull(fileEntries.deletedAt));
+
+    const subtree = liveRows.filter(
+      (row) =>
+        row.relativePath === fromPath ||
+        row.relativePath.startsWith(`${fromPath}/`),
+    );
+
+    for (const row of subtree) {
+      await tx
+        .update(fileEntries)
+        .set({ deletedAt: when, updatedAt: when })
+        .where(eq(fileEntries.id, row.id));
+    }
+
+    return subtree.length;
+  });
+}
+
 /** Soft-deletes an entry so scans can report removals without unique clashes. */
 export async function softDeleteFileEntryRow(
   id: number,

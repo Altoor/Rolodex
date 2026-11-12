@@ -11,13 +11,43 @@ import ToolOutputTypeField from "./toolOutputTypeField";
 import ToolSelectField from "./toolSelectField";
 import type { TaskOption } from "../taskCard.types";
 
-const PATH_AWARE_TOOLS = new Set(["if", "filter_tool_state", "display_block"]);
+const FILE_PATH_AWARE_TOOLS = [
+  "find_file",
+  "find_files",
+  "find_folder",
+  "find_folders",
+  "scan_files",
+  "update_file_metadata",
+  "detect_file_type",
+  "read_plaintext_file",
+  "read_text_file",
+  "read_image_file",
+  "read_audio_file",
+  "read_video_file",
+  "read_other_file",
+  "create_folder",
+  "create_file",
+  "delete_file_entry",
+] as const;
+
+const FILE_TOOL_HINT =
+  "Use these in `id`, `path`, or `parentPath` where that field is available.";
+
+const PATH_AWARE_TOOLS = new Set<string>([
+  "if",
+  "filter_tool_state",
+  "display_block",
+  ...FILE_PATH_AWARE_TOOLS,
+]);
 
 const PATH_TOOL_HINTS: Record<string, string> = {
   if: "Use these in `path` or in any `where` path.",
   filter_tool_state: "Use these in `path` or in any `where` path.",
   display_block:
     'Use these in `path` or `where`. Set `"select": "first"` to display a single value.',
+  ...Object.fromEntries(
+    FILE_PATH_AWARE_TOOLS.map((key) => [key, FILE_TOOL_HINT]),
+  ),
 };
 
 interface ToolTaskFieldsProps {
