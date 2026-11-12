@@ -12,7 +12,9 @@ import {
   timestamp,
   uuid,
   index,
+  uniqueIndex,
   vector,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 // Tool state is intentionally opaque at the database layer. The tools package
 // owns the precise ToolStateEntry type; keeping this local avoids a package
@@ -48,6 +50,70 @@ export const todos = pgTable(
     index("todos_description_embedding_idx").using(
       "hnsw",
       table.descriptionEmbedding.op("vector_cosine_ops"),
+    ),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Files
+// ---------------------------------------------------------------------------
+
+export const fileEntryKind = pgEnum("fileEntryKind", ["file", "folder"]);
+
+export const fileType = pgEnum("fileType", [
+  "image",
+  "text",
+  "plaintext",
+  "audio",
+  "video",
+  "other",
+]);
+
+/**
+ * One shared tree of files and folders backed by the physical files/ root.
+ * `relativePath` is POSIX-style and relative to FILES_ROOT; there is no owner
+ * column because the workspace is global.
+ */
+export const fileEntries = pgTable(
+  "fileEntries",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    parentId: integer("parentId").references(
+      (): AnyPgColumn => fileEntries.id,
+      { onDelete: "set null" },
+    ),
+    kind: fileEntryKind("kind").notNull(),
+    name: text("name").notNull(),
+    description: text("description").notNull().default(""),
+    relativePath: text("relativePath").notNull(),
+    fileType: fileType("fileType"),
+    mimeType: text("mimeType"),
+    size: bigint("size", { mode: "number" }),
+    contentHash: text("contentHash"),
+    filesystemModifiedAt: timestamp("filesystemModifiedAt", {
+      withTimezone: true,
+    }),
+    lastEditedAt: timestamp("lastEditedAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updatedAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    deletedAt: timestamp("deletedAt", { withTimezone: true }),
+    embedding: vector("embedding", { dimensions: 768 }),
+  },
+  (table) => [
+    // One live entry per path in the shared tree.
+    uniqueIndex("file_entries_path_live_idx")
+      .on(table.relativePath)
+      .where(sql`"deletedAt" IS NULL`),
+    index("file_entries_parent_idx").on(table.parentId),
+    index("file_entries_embedding_idx").using(
+      "hnsw",
+      table.embedding.op("vector_cosine_ops"),
     ),
   ],
 );

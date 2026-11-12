@@ -12,6 +12,18 @@ export function todoEmbeddingText(todo: {
   return `${todo.name}\n\n${todo.description}`;
 }
 
+/**
+ * Text indexed for a file/folder entry. Content is intentionally excluded;
+ * only identity and user/model-authored metadata participate in search.
+ */
+export function fileEntryEmbeddingText(entry: {
+  name: string;
+  relativePath: string;
+  description: string;
+}): string {
+  return `${entry.name}\n${entry.relativePath}\n\n${entry.description}`;
+}
+
 export async function embedText(text: string): Promise<number[]> {
   const response = await ollama.embed({
     model: EMBEDDING_MODEL,

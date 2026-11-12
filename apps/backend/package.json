@@ -30,7 +30,8 @@
     "@types/node": "^26.6.5",
     "@types/pg": "^8.23.1",
     "drizzle-kit": "^1.0.0-rc.4",
-    "tsx": "^4.23.15"
+    "tsx": "^4.23.15",
+    "typescript": "7.0.2"
   },
   "pnpm": {
     "overrides": {
@@ -41,6 +42,9 @@
     "api": "pnpm tsx watch server.ts -w",
     "generate": "drizzle-kit generate",
     "push": "drizzle-kit push",
-    "backfill-embeddings": "tsx src/scripts/backfillTodoEmbeddings.ts"
+    "check-types": "tsc --noEmit",
+    "backfill-embeddings": "tsx src/scripts/backfillTodoEmbeddings.ts",
+    "files:backfill-embeddings": "tsx src/scripts/backfillFileEntryEmbeddings.ts",
+    "files:smoke": "tsx src/scripts/createFileEntrySmoke.ts"
   }
 }

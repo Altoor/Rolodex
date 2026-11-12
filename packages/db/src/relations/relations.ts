@@ -19,6 +19,19 @@ export const relations = defineRelations(schema, (r) => ({
     }),
   },
 
+  fileEntries: {
+    parent: r.one.fileEntries({
+      from: r.fileEntries.parentId,
+      to: r.fileEntries.id,
+      alias: "parent",
+    }),
+    children: r.many.fileEntries({
+      from: r.fileEntries.id,
+      to: r.fileEntries.parentId,
+      alias: "children",
+    }),
+  },
+
   decisions: {
     author: r.one.users({
       from: r.decisions.authorId,
