@@ -63,9 +63,13 @@ const EXTENSIONS: Record<string, ExtensionInfo> = {
   mpg: { fileType: "video", mimeType: "video/mpeg" },
 
   // Text documents / structured formats with dedicated readers
-  md: { fileType: "text", mimeType: "text/markdown" },
-  markdown: { fileType: "text", mimeType: "text/markdown" },
-  mdx: { fileType: "text", mimeType: "text/markdown" },
+  // Markdown is editable verbatim, so it belongs with plaintext.
+  md: { fileType: "plaintext", mimeType: "text/markdown" },
+  markdown: { fileType: "plaintext", mimeType: "text/markdown" },
+  mdx: { fileType: "plaintext", mimeType: "text/markdown" },
+  mdown: { fileType: "plaintext", mimeType: "text/markdown" },
+  mkd: { fileType: "plaintext", mimeType: "text/markdown" },
+  mkdn: { fileType: "plaintext", mimeType: "text/markdown" },
   html: { fileType: "text", mimeType: "text/html" },
   htm: { fileType: "text", mimeType: "text/html" },
   pdf: { fileType: "text", mimeType: "application/pdf" },

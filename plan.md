@@ -125,11 +125,12 @@ This makes existing mechanisms work immediately:
 
 No extra `queuedTaskFiles` join table is required for the first version. If run provenance/replay becomes important, add it later.
 
-### 2.7 Uploads use GraphQL multipart; previews use signed URLs
+### 2.7 Uploads use a streaming HTTP endpoint; previews use signed URLs
 
-Use the GraphQL Multipart Request Specification for uploads:
+Large uploads use a dedicated streaming route so multi-GB files never pass through GraphQL/Yoga multipart:
 
-- `uploadFiles(files: [File!]!, parentId: Int): [FileEntry!]!` mutation.
+- `POST /files/upload?name=<name>&parentId=<id>` — raw body, Bearer auth, streamed directly to disk.
+- `uploadFiles(files: [File!]!, parentId: Int): [FileEntry!]!` remains for small GraphQL multipart uploads and API tests; it is capped by Yoga's total request-body limit.
 - `GET /files/:id/content?token=...` — authenticated/streaming view for binary/media previews.
 
 Text content for editing comes from a GraphQL query with a size limit. Binary/media preview uses the streaming view endpoint because `<img>`, `<audio>`, and `<video>` cannot send GraphQL queries.
@@ -158,7 +159,7 @@ packages/queries
         │
         ▼
 apps/backend
-  GraphQL file schema + multipart upload
+  GraphQL file schema + streaming upload route
   signed file view route
   file services
         │
@@ -344,7 +345,9 @@ Script command:
 - Write atomically: write to a temp file in the same directory, then rename.
 - Rename/move with `fs.rename`; on cross-device errors, fall back to copy + unlink.
 - Delete with `fs.rm`; non-empty folders require `recursive: true`.
-- Enforce a maximum upload size (default 25 MB/file, 20 files/request; configurable).
+- Enforce a maximum upload size:
+  - streaming endpoint: default 10 GiB/file, configurable with `MAX_STREAM_UPLOAD_BYTES`;
+  - GraphQL multipart: 25 MB total request body, 25 MB/file, 20 files/request.
 - Sanitize upload filenames; on collision append ` (1)`, ` (2)`, etc.
 - Upload to a temp directory inside `FILES_ROOT`, then rename into place.
 
@@ -559,6 +562,7 @@ Search strategy is shared with todos:
   - `audio/*` → `audio`
   - `video/*` → `video`
   - UTF-8 text + plaintext extensions → `plaintext`
+  - Markdown extensions (`.md`, `.markdown`, `.mdx`, `.mdown`, `.mkd`, `.mkdn`) → `plaintext` (editable verbatim, MIME `text/markdown`)
   - text-bearing structured/document extensions → `text`
   - everything else → `other`
 
@@ -762,7 +766,7 @@ find_folder
 
 ## 10. Backend API
 
-### 10.1 GraphQL types
+### 10.1 GraphQL types ✅
 
 Add `apps/backend/src/schema/file/`:
 
@@ -770,6 +774,7 @@ Add `apps/backend/src/schema/file/`:
 - `file-queries.ts`
 - `file-mutations.ts`
 - `file-service.ts`
+- `file-upload.ts` — raw streaming upload route (not GraphQL).
 - `index.ts`
 
 Expose:
@@ -830,17 +835,38 @@ type FileViewToken {
 }
 ```
 
-### 10.2 Service rules
+### 10.2 Service rules ✅
 
 - Every mutation calls `requireUserId(ctx)` for authentication only; the file tree is shared, so there is no per-entry ownership check.
 - Name/path validation is shared with the tools.
 - `writeFileText` only allows `plaintext` files (or prominent `text` files explicitly marked editable).
-- `createFileEntry` supports folders and plaintext files; binary uploads use `uploadFiles`.
+- `createFileEntry` supports folders and plaintext files; binary/large uploads use the streaming endpoint (`uploadFiles` remains for small multipart uploads).
 - `deleteFileEntry` is recursive only when `recursive: true`; otherwise reject non-empty folders.
 - All mutations that change a path/name/description refresh the embedding.
 - `indexFileTree` can be used by the UI “refresh” button and by tests; it delegates to `syncFileTree`.
 
-### 10.3 GraphQL multipart upload
+### 10.3 Uploads ✅
+
+#### 10.3.1 Streaming upload endpoint (primary; large files)
+
+```http
+POST /files/upload?name=<filename>&parentId=<optional id>
+Authorization: Bearer <jwt>
+Content-Type: application/octet-stream
+
+<raw file bytes>
+```
+
+- Filename can also come from the `X-File-Name` header.
+- The body is streamed directly into `files/.tmp/`, so memory usage stays flat regardless of file size.
+- After the stream completes, the temp file is atomically moved into place and indexed (type detection, SHA-256, DB row, embedding).
+- Default limit: 10 GiB/file, configurable with `MAX_STREAM_UPLOAD_BYTES`. Declared `Content-Length` is rejected early; the stream is also counted to enforce the limit.
+- Returns `201` with `{ "file": FileEntryRef }`.
+- Cleans up temp and target files if streaming or indexing fails.
+- CORS/preflight is handled on this route because the web app uploads with `fetch()`.
+- Implemented in `apps/backend/src/schema/file/file-upload.ts`.
+
+#### 10.3.2 GraphQL multipart upload (small files)
 
 Add `scalar File` to the Pothos schema and expose:
 
@@ -850,19 +876,15 @@ uploadFiles(files: [File!]!, parentId: Int): [FileEntry!]!
 
 - Auth: the normal `Authorization: Bearer <jwt>` header; `requireUserId` is still called.
 - Content type: `multipart/form-data` per the GraphQL multipart request spec.
-- Each variable is a WHATWG `File` with `name`, `type`, `size`, `stream()`, and `arrayBuffer()`.
-- Implementation:
-  - Configure Yoga multipart limits with `fetchAPI.formDataLimits`:
-    - `fileSize` (default 25 MB),
-    - `files` (default 20),
-    - `fieldSize` and `headerSize` sensible defaults.
-  - Write each file to `files/.tmp/` using `file.stream()` (or `arrayBuffer()` with the size limit).
-  - Sanitize names, resolve collisions, and move into the target folder.
-  - Index each new file (hash, type, embedding) and insert DB rows.
-  - Return partial success only if the schema allows it; otherwise fail the whole mutation with a clear error naming the bad file. Recommended: fail the whole mutation and leave no partial rows.
-- Add `File` to GraphQL codegen’s scalar mapping (`File: "File"`).
+- Each variable is a WHATWG `File` with `name`, `type`, `size`, and `arrayBuffer()`.
+- Yoga's `maxRequestBodySize` caps the entire multipart request at 25 MB.
+- `uploadFilesForApi` additionally enforces 25 MB/file and 20 files/request before reading any file.
+- Write each file to `files/.tmp/`, sanitize names, resolve collisions, move into the target folder, and index it.
+- Fail the whole mutation with a clear error naming the bad file; roll back created rows/files.
+- Do **not** use `fetchAPI.formDataLimits`: the installed Yoga version only accepts Fetch API constructor overrides there. A direct `@whatwg-node/fetch` dependency was removed because it only configured per-part limits and did not solve the total-body/memory limit.
+- Add `File` to GraphQL codegen's scalar mapping (`File: "File"`).
 
-### 10.4 File view endpoint
+### 10.4 File view endpoint ✅
 
 `GET /files/:id/content?token=<signed-token>`
 
@@ -878,18 +900,21 @@ uploadFiles(files: [File!]!, parentId: Int): [FileEntry!]!
 - Support HTTP `Range` requests (`206 Partial Content`) for audio/video.
 - Return `404` for missing/deleted files and `401/403` for invalid or expired tokens.
 
-### 10.5 Server routing and CORS
+### 10.5 Server routing and CORS ✅
 
-`apps/backend/server.ts` currently passes Yoga directly to `createServer`. Change it to a small router:
+`apps/backend/server.ts` uses a small router:
 
 ```text
+/files/upload        → streaming upload handler
 /files/:id/content   → view handler
 everything else      → yoga (including /graphql multipart uploads)
 ```
 
-Yoga handles CORS for `/graphql`, including the multipart upload preflight. The view route is loaded by `<img>`, `<audio>`, and `<video>`, so it does not need CORS for normal preview; add it only if the page starts fetching it with JavaScript.
+- Yoga handles CORS for `/graphql`, including the multipart upload preflight.
+- The streaming upload route handles its own CORS preflight because the web app calls it with `fetch()` and an `Authorization` header.
+- The view route is loaded by `<img>`, `<audio>`, and `<video>`, so it does not need CORS for normal preview; add it only if the page starts fetching it with JavaScript.
 
-### 10.6 Codegen workflow
+### 10.6 Codegen workflow ✅
 
 After backend schema changes:
 
@@ -906,10 +931,16 @@ packages/queries/src/files/file-queries.ts
 packages/queries/src/files/file-mutations.ts
 ```
 
-Include a `FileEntryFields` fragment so every consumer stays in sync. Add `File` to the codegen scalar map in `packages/queries/codegen.ts`:
+Include a `FileEntryFields` fragment so every consumer stays in sync. Add `File` to the codegen scalar map inside the client preset output config in `packages/queries/codegen.ts`:
 
 ```ts
-scalars: { File: "File" }
+generates: {
+  "./src/__generated__/": {
+    preset: "client",
+    config: { scalars: { File: "File" } },
+    // ...
+  }
+}
 ```
 
 ---
@@ -1073,7 +1104,7 @@ packages/ui/src/components/files/
   types.ts
 ```
 
-`file-actions.ts` wraps GraphQL mutations (including `uploadFiles` with `File` variables) so components stay presentational.
+`file-actions.ts` wraps GraphQL mutations and the streaming upload endpoint so components stay presentational. Large uploads use `POST /files/upload`; small API-driven uploads may still use `uploadFiles` with `File` variables.
 
 ---
 
@@ -1081,11 +1112,15 @@ packages/ui/src/components/files/
 
 Each stage is complete and testable on its own. Do not start the next stage until its “Done when” checks pass.
 
+> **Status:** ✅ Stages 1–4 are implemented and verified. ⬜ Stages 5–9 remain.
+
 ---
 
-### Stage 1 — Storage foundation + database model
+### Stage 1 — Storage foundation + database model ✅ DONE
 
 **Goal:** The repository has a real `files/` root, the `fileEntries` table/migration, and safe read/write/index primitives.
+
+**Status:** ✅ Complete — migration applied, storage services and smoke script pass, types pass.
 
 **Tasks:**
 
@@ -1135,9 +1170,11 @@ pnpm --filter @repo/tools check-types
 
 ---
 
-### Stage 2 — Scan/sync engine and change detection
+### Stage 2 — Scan/sync engine and change detection ✅ DONE
 
 **Goal:** A CLI can reconcile the physical tree with `fileEntries` and report added/changed/moved/deleted/unchanged entries.
+
+**Status:** ✅ Complete — add/change/touch/move/delete/type/idempotence/embedding checks passed.
 
 **Tasks:**
 
@@ -1185,9 +1222,11 @@ pnpm --filter @repo/tools check-types
 
 ---
 
-### Stage 3 — File tools
+### Stage 3 — File tools ✅ DONE
 
 **Goal:** All file/folder tools are registered and testable from the Tools page, with PathFormField-compatible outputs.
+
+**Status:** ✅ Complete — 16 file tools registered, runtime checks, PathFormField mapping, types/lint pass.
 
 **Tasks:**
 
@@ -1201,6 +1240,7 @@ pnpm --filter @repo/tools check-types
    - `read_plaintext_file`, `read_text_file`, `read_image_file`, `read_audio_file`, `read_video_file`, `read_other_file`
    - `create_folder`, `create_file`
    - `delete_file_entry` (recommended)
+   - Markdown files (`.md`, `.markdown`, `.mdx`, etc.) are classified as `plaintext` and are accepted by `create_file`.
 3. Add `"file"` to `ToolDefinition.category`.
 4. Update `registry.ts`.
 5. Update `packages/ui/src/lib/toolStatePaths.ts` with the static file tool paths listed in Section 7.8.
@@ -1219,6 +1259,7 @@ For each tool, use the built-in test form with `state`, `toolConfig`, and a hand
 - `read_image_file` returns metadata and a URL/base64 according to config.
 - `create_folder` → physical folder + DB row + vector.
 - `create_file` with content → physical file + DB row + vector.
+- `create_file` with `note.md` → accepted as plaintext; `read_plaintext_file` returns its content.
 - Foreach: `find_folders` and `scan_files` return `foreach` items when `outputType = foreach`.
 
 **Done when:**
@@ -1231,19 +1272,22 @@ For each tool, use the built-in test form with `state`, `toolConfig`, and a hand
 
 ---
 
-### Stage 4 — Backend GraphQL API + signed view endpoint
+### Stage 4 — Backend GraphQL API + signed view endpoint ✅ DONE
 
 **Goal:** The frontend can list, create, rename/move, delete, read, upload, and preview files through the backend.
+
+**Status:** ✅ Complete — GraphQL CRUD, signed view route, GraphQL multipart, and streaming upload verified (including a 50 MB streamed file and Range requests).
 
 **Tasks:**
 
 1. Add GraphQL file schema/service/mutations/queries.
 2. Add `getFileText`, `fileEntries`, `getFileEntry`, `createFileViewToken`, `indexFileTree`.
 3. Add `writeFileText`, `createFileEntry`, `updateFileEntry`, `deleteFileEntry`, `uploadFiles`.
-4. Add the `File` scalar and Yoga multipart limits.
-5. Add the signed view route in `server.ts`.
-6. Add query/mutation documents in `packages/queries/src/files/`.
-7. Run codegen and build.
+4. Add the `File` scalar for small GraphQL multipart uploads.
+5. Add the streaming upload route `POST /files/upload` (raw body, default 10 GiB/file, `MAX_STREAM_UPLOAD_BYTES`).
+6. Add the signed view route in `server.ts`.
+7. Add query/mutation documents in `packages/queries/src/files/`.
+8. Run codegen and build.
 
 **Test with `curl` / GraphQL:**
 
@@ -1253,7 +1297,7 @@ For each tool, use the built-in test form with `state`, `toolConfig`, and a hand
 4. `fileEntries` returns both.
 5. `updateFileEntry` renames the file; physical file renamed; path updated.
 6. `writeFileText` updates content; `getFileText` returns it.
-7. Upload a PNG and a TXT via a GraphQL multipart request:
+7. Upload a PNG and a TXT via a GraphQL multipart request (small-file path):
    ```bash
    curl http://localhost:4000/graphql \
      -H "Authorization: Bearer $TOKEN" \
@@ -1263,23 +1307,33 @@ For each tool, use the built-in test form with `state`, `toolConfig`, and a hand
      -F 1=@note.txt
    ```
    Both appear in `fileEntries`.
-8. `createFileViewToken` + `GET /files/:id/content?token=...`:
-   - returns correct `Content-Type`,
-   - supports `Range` for a media file.
-9. `deleteFileEntry` deletes a file and a non-empty folder with `recursive: true`.
-10. A request without a token is rejected; a token for a different file ID is rejected.
+8. Upload a file larger than the GraphQL body limit via the streaming endpoint:
+   ```bash
+   curl -X POST "http://localhost:4000/files/upload?name=video.mp4" \
+     -H "Authorization: Bearer $TOKEN" \
+     -H "Content-Type: application/octet-stream" \
+     --data-binary @video.mp4
+   ```
+   Verify `201`, correct `size`/`contentHash`, and identical bytes on disk. A 50 MB test file is sufficient to prove streaming past 25 MB.
+9. Streaming upload preflight returns CORS headers; a request without auth returns `401`.
+10. `createFileViewToken` + `GET /files/:id/content?token=...`:
+    - returns correct `Content-Type`,
+    - supports `Range` for a media file.
+11. `deleteFileEntry` deletes a file and a non-empty folder with `recursive: true`.
+12. A request without a view token is rejected; a token for a different file ID is rejected.
 
 **Done when:**
 
 - Full CRUD round-trips work over GraphQL.
-- Upload returns file refs and indexes them.
+- Small GraphQL multipart uploads and large streaming uploads both return refs and are indexed.
+- Streaming uploads work above the 25 MB GraphQL body limit with flat memory usage.
 - View URLs work in a browser tab and in `<img>`/`<audio>`/`<video>`.
 - Codegen output is committed/updated.
 - Types/lint pass.
 
 ---
 
-### Stage 5 — Read-only files page
+### Stage 5 — Read-only files page ⬜ PENDING
 
 **Goal:** `/files` shows the tree and previews the selected file, with breadcrumb, title, and description accordion.
 
@@ -1322,7 +1376,7 @@ For each tool, use the built-in test form with `state`, `toolConfig`, and a hand
 
 ---
 
-### Stage 6 — Editing, creation, and drag-and-drop
+### Stage 6 — Editing, creation, and drag-and-drop ⬜ PENDING
 
 **Goal:** Users can edit metadata/content, create folders/files, delete entries, and upload by drag-and-drop.
 
@@ -1342,7 +1396,7 @@ For each tool, use the built-in test form with `state`, `toolConfig`, and a hand
    - dirty-state warning,
    - size guard.
 4. Add **New folder** and **New file** dialogs.
-5. Add upload button and drag/drop onto folders/root using the `uploadFiles` mutation.
+5. Add upload button and drag/drop onto folders/root using `POST /files/upload` (one parallel request per file); keep GraphQL `uploadFiles` for small API-driven uploads.
 6. Add `file-actions.ts` client wrapper.
 7. Add per-node download action.
 8. Optional: rename/move via drag-and-drop between folders.
@@ -1370,7 +1424,7 @@ For each tool, use the built-in test form with `state`, `toolConfig`, and a hand
 
 ---
 
-### Stage 7 — Prompt tool structured output + PathFormField
+### Stage 7 — Prompt tool structured output + PathFormField ⬜ PENDING
 
 **Goal:** A prompt can return named fields that downstream tools and file metadata fields can use directly.
 
@@ -1417,7 +1471,7 @@ For each tool, use the built-in test form with `state`, `toolConfig`, and a hand
 
 ---
 
-### Stage 8 — Task context, bottom runner, and end-to-end file flows
+### Stage 8 — Task context, bottom runner, and end-to-end file flows ⬜ PENDING
 
 **Goal:** Dropping files starts a task with those files in `toolState`, and scan/foreach flows work end-to-end.
 
@@ -1460,7 +1514,7 @@ For each tool, use the built-in test form with `state`, `toolConfig`, and a hand
 
 ---
 
-### Stage 9 — Hardening and optional enhancements
+### Stage 9 — Hardening and optional enhancements ⬜ PENDING
 
 **Goal:** Make the feature robust and decide which follow-ups to schedule.
 
@@ -1522,7 +1576,7 @@ For each tool, use the built-in test form with `state`, `toolConfig`, and a hand
 | 1 | DB migration + storage smoke script | `pnpm --filter backend check-types`, `pnpm --filter @repo/tools check-types` |
 | 2 | `files:index` against add/change/move/delete fixtures | run twice, compare reports |
 | 3 | Tools page test form for every tool | `pnpm --filter @repo/tools check-types`, `pnpm --filter @repo/ui check-types` |
-| 4 | `curl` GraphQL + upload + view | `pnpm codegen`, `pnpm --filter @repo/queries build` |
+| 4 | `curl` GraphQL CRUD + small multipart + 50 MB streaming upload + view/range | `pnpm codegen`, `pnpm --filter @repo/queries build` |
 | 5 | Browser tree + preview | `pnpm --filter web check-types` |
 | 6 | Browser edit/create/delete/upload | manual regression pass |
 | 7 | Tools page + task builder path suggestions | `pnpm check-types` |
@@ -1535,7 +1589,7 @@ For each tool, use the built-in test form with `state`, `toolConfig`, and a hand
 
 1. **File title vs filename:** This plan makes them identical. If independent display titles are desired, add a separate `title` column and keep `name` as the basename.
 2. **Folder uploads:** Recursive browser folder upload via `webkitGetAsEntry` is useful but adds complexity. Recommend file-only drops in the first version, then folder traversal in Stage 9.
-3. **Large files:** Decide the hash limit and upload limit. Recommended defaults: 25 MB upload/file, 100 MB hash/file in `auto` mode.
+3. **Large files:** Streaming uploads default to 10 GiB/file (`MAX_STREAM_UPLOAD_BYTES`); GraphQL multipart requests are capped at 25 MB total. The hash limit remains 100 MB in `auto` mode. Streaming uploads are not resumable yet; add tus/chunked uploads if unreliable multi-GB transfers become common.
 4. **PDF/DOCX:** They are classified as `text` but cannot be extracted in the MVP. The UI should say “preview not implemented” rather than silently showing binary data.
 5. **Move detection ambiguity:** Duplicate files with identical content can be matched to the wrong path. Use basename/parent similarity as a tie-breaker; document best-effort behavior.
 6. **Embedding backfill:** If the `files/` tree already contains files, run the backfill script after migration.
@@ -1546,13 +1600,13 @@ For each tool, use the built-in test form with `state`, `toolConfig`, and a hand
 
 ## 15. Suggested commit sequence
 
-1. `feat(db): add file entries schema and migration`
-2. `feat(files): add filesystem paths, storage, hashing, and type detection`
-3. `feat(files): add scan and sync engine with change detection`
-4. `feat(tools): add file and folder tools`
-5. `feat(api): add file GraphQL schema and multipart upload/view route`
-6. `feat(web): add read-only files page`
-7. `feat(web): add file editing, creation, and uploads`
-8. `feat(tools): add structured prompt output fields`
-9. `feat(tasks): seed file context into queued tasks`
-10. `chore(files): hardening, docs, and regression fixes`
+1. ✅ `feat(db): add file entries schema and migration`
+2. ✅ `feat(files): add filesystem paths, storage, hashing, and type detection`
+3. ✅ `feat(files): add scan and sync engine with change detection`
+4. ✅ `feat(tools): add file and folder tools`
+5. ✅ `feat(api): add file GraphQL schema, streaming upload, and view route`
+6. ⬜ `feat(web): add read-only files page`
+7. ⬜ `feat(web): add file editing, creation, and uploads`
+8. ⬜ `feat(tools): add structured prompt output fields`
+9. ⬜ `feat(tasks): seed file context into queued tasks`
+10. ⬜ `chore(files): hardening, docs, and regression fixes`

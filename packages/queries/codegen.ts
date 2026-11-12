@@ -8,6 +8,11 @@ const config: CodegenConfig = {
     "./src/__generated__/": {
       preset: "client",
       plugins: [],
+      config: {
+        scalars: {
+          File: "File",
+        },
+      },
       presetConfig: {
         gqlTagName: "gql",
         // Keep operation results usable without unmasking every fragment.

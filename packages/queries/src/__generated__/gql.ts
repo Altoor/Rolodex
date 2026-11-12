@@ -20,6 +20,17 @@ type Documents = {
     "\n  query systemOneChoiceQuery(\n    $decisionPremise: String!\n    $instruction: String!\n    $type: DecisionType!\n    $state: String!\n    $options: [String!]\n    $optionDescriptions: [String!]\n  ) {\n    systemOnePrompt(\n      decisionPremise: $decisionPremise\n      instruction: $instruction\n      type: $type\n      state: $state\n      options: $options\n      optionDescriptions: $optionDescriptions\n    ) {\n      answer\n      model\n    }\n  }\n": typeof types.SystemOneChoiceQueryDocument,
     "\n  query Decisions {\n    decisions {\n      type\n      name\n      instruction\n      id\n      decisionPremise\n    }\n  }\n": typeof types.DecisionsDocument,
     "\n  query Decision($id: Int!) {\n    getDecision(id: $id) {\n      type\n      options\n      optionDescriptions\n      name\n      instruction\n      id\n      decisionPremise\n    }\n  }\n": typeof types.DecisionDocument,
+    "\n  mutation CreateFileEntry(\n    $kind: FileEntryKind!\n    $parentId: Int\n    $name: String!\n    $description: String\n    $content: String\n  ) {\n    createFileEntry(\n      kind: $kind\n      parentId: $parentId\n      name: $name\n      description: $description\n      content: $content\n    ) {\n      ...FileEntryFields\n    }\n  }\n": typeof types.CreateFileEntryDocument,
+    "\n  mutation UpdateFileEntry(\n    $id: Int!\n    $name: String\n    $description: String\n    $parentId: Int\n  ) {\n    updateFileEntry(\n      id: $id\n      name: $name\n      description: $description\n      parentId: $parentId\n    ) {\n      ...FileEntryFields\n    }\n  }\n": typeof types.UpdateFileEntryDocument,
+    "\n  mutation DeleteFileEntry($id: Int!, $recursive: Boolean = false) {\n    deleteFileEntry(id: $id, recursive: $recursive)\n  }\n": typeof types.DeleteFileEntryDocument,
+    "\n  mutation WriteFileText($id: Int!, $content: String!) {\n    writeFileText(id: $id, content: $content) {\n      ...FileEntryFields\n    }\n  }\n": typeof types.WriteFileTextDocument,
+    "\n  mutation UploadFiles($files: [File!]!, $parentId: Int) {\n    uploadFiles(files: $files, parentId: $parentId) {\n      ...FileEntryFields\n    }\n  }\n": typeof types.UploadFilesDocument,
+    "\n  mutation IndexFileTree($path: String, $apply: Boolean) {\n    indexFileTree(path: $path, apply: $apply)\n  }\n": typeof types.IndexFileTreeDocument,
+    "\n  fragment FileEntryFields on FileEntry {\n    id\n    parentId\n    kind\n    name\n    description\n    path\n    fileType\n    mimeType\n    size\n    contentHash\n    lastEditedAt\n    filesystemModifiedAt\n    createdAt\n    updatedAt\n    deletedAt\n  }\n": typeof types.FileEntryFieldsFragmentDoc,
+    "\n  query GetFileEntries($parentId: Int, $includeDeleted: Boolean = false) {\n    fileEntries(parentId: $parentId, includeDeleted: $includeDeleted) {\n      ...FileEntryFields\n    }\n  }\n": typeof types.GetFileEntriesDocument,
+    "\n  query GetFileEntry($id: Int!) {\n    getFileEntry(id: $id) {\n      ...FileEntryFields\n    }\n  }\n": typeof types.GetFileEntryDocument,
+    "\n  query GetFileText($id: Int!, $maxBytes: Int) {\n    getFileText(id: $id, maxBytes: $maxBytes)\n  }\n": typeof types.GetFileTextDocument,
+    "\n  query CreateFileViewToken($id: Int!) {\n    createFileViewToken(id: $id) {\n      url\n      expiresAt\n    }\n  }\n": typeof types.CreateFileViewTokenDocument,
     "\n  mutation UpdateModelDescription($name: String!, $description: String!) {\n    updateModel(name: $name, description: $description) {\n      size\n      name\n      description\n      model\n      capabilities\n      pulled\n    }\n  }\n": typeof types.UpdateModelDescriptionDocument,
     "\n  mutation CreateModelDescription($name: String!, $description: String) {\n    createModel(name: $name, description: $description) {\n      size\n      name\n      description\n      model\n      capabilities\n      pulled\n    }\n  }\n": typeof types.CreateModelDescriptionDocument,
     "\n  query GetModels {\n    models {\n      size\n      name\n      description\n      model\n      capabilities\n      pulled\n    }\n  }\n": typeof types.GetModelsDocument,
@@ -64,6 +75,17 @@ const documents: Documents = {
     "\n  query systemOneChoiceQuery(\n    $decisionPremise: String!\n    $instruction: String!\n    $type: DecisionType!\n    $state: String!\n    $options: [String!]\n    $optionDescriptions: [String!]\n  ) {\n    systemOnePrompt(\n      decisionPremise: $decisionPremise\n      instruction: $instruction\n      type: $type\n      state: $state\n      options: $options\n      optionDescriptions: $optionDescriptions\n    ) {\n      answer\n      model\n    }\n  }\n": types.SystemOneChoiceQueryDocument,
     "\n  query Decisions {\n    decisions {\n      type\n      name\n      instruction\n      id\n      decisionPremise\n    }\n  }\n": types.DecisionsDocument,
     "\n  query Decision($id: Int!) {\n    getDecision(id: $id) {\n      type\n      options\n      optionDescriptions\n      name\n      instruction\n      id\n      decisionPremise\n    }\n  }\n": types.DecisionDocument,
+    "\n  mutation CreateFileEntry(\n    $kind: FileEntryKind!\n    $parentId: Int\n    $name: String!\n    $description: String\n    $content: String\n  ) {\n    createFileEntry(\n      kind: $kind\n      parentId: $parentId\n      name: $name\n      description: $description\n      content: $content\n    ) {\n      ...FileEntryFields\n    }\n  }\n": types.CreateFileEntryDocument,
+    "\n  mutation UpdateFileEntry(\n    $id: Int!\n    $name: String\n    $description: String\n    $parentId: Int\n  ) {\n    updateFileEntry(\n      id: $id\n      name: $name\n      description: $description\n      parentId: $parentId\n    ) {\n      ...FileEntryFields\n    }\n  }\n": types.UpdateFileEntryDocument,
+    "\n  mutation DeleteFileEntry($id: Int!, $recursive: Boolean = false) {\n    deleteFileEntry(id: $id, recursive: $recursive)\n  }\n": types.DeleteFileEntryDocument,
+    "\n  mutation WriteFileText($id: Int!, $content: String!) {\n    writeFileText(id: $id, content: $content) {\n      ...FileEntryFields\n    }\n  }\n": types.WriteFileTextDocument,
+    "\n  mutation UploadFiles($files: [File!]!, $parentId: Int) {\n    uploadFiles(files: $files, parentId: $parentId) {\n      ...FileEntryFields\n    }\n  }\n": types.UploadFilesDocument,
+    "\n  mutation IndexFileTree($path: String, $apply: Boolean) {\n    indexFileTree(path: $path, apply: $apply)\n  }\n": types.IndexFileTreeDocument,
+    "\n  fragment FileEntryFields on FileEntry {\n    id\n    parentId\n    kind\n    name\n    description\n    path\n    fileType\n    mimeType\n    size\n    contentHash\n    lastEditedAt\n    filesystemModifiedAt\n    createdAt\n    updatedAt\n    deletedAt\n  }\n": types.FileEntryFieldsFragmentDoc,
+    "\n  query GetFileEntries($parentId: Int, $includeDeleted: Boolean = false) {\n    fileEntries(parentId: $parentId, includeDeleted: $includeDeleted) {\n      ...FileEntryFields\n    }\n  }\n": types.GetFileEntriesDocument,
+    "\n  query GetFileEntry($id: Int!) {\n    getFileEntry(id: $id) {\n      ...FileEntryFields\n    }\n  }\n": types.GetFileEntryDocument,
+    "\n  query GetFileText($id: Int!, $maxBytes: Int) {\n    getFileText(id: $id, maxBytes: $maxBytes)\n  }\n": types.GetFileTextDocument,
+    "\n  query CreateFileViewToken($id: Int!) {\n    createFileViewToken(id: $id) {\n      url\n      expiresAt\n    }\n  }\n": types.CreateFileViewTokenDocument,
     "\n  mutation UpdateModelDescription($name: String!, $description: String!) {\n    updateModel(name: $name, description: $description) {\n      size\n      name\n      description\n      model\n      capabilities\n      pulled\n    }\n  }\n": types.UpdateModelDescriptionDocument,
     "\n  mutation CreateModelDescription($name: String!, $description: String) {\n    createModel(name: $name, description: $description) {\n      size\n      name\n      description\n      model\n      capabilities\n      pulled\n    }\n  }\n": types.CreateModelDescriptionDocument,
     "\n  query GetModels {\n    models {\n      size\n      name\n      description\n      model\n      capabilities\n      pulled\n    }\n  }\n": types.GetModelsDocument,
@@ -140,6 +162,50 @@ export function gql(source: "\n  query Decisions {\n    decisions {\n      type\
  * The gql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
 export function gql(source: "\n  query Decision($id: Int!) {\n    getDecision(id: $id) {\n      type\n      options\n      optionDescriptions\n      name\n      instruction\n      id\n      decisionPremise\n    }\n  }\n"): (typeof documents)["\n  query Decision($id: Int!) {\n    getDecision(id: $id) {\n      type\n      options\n      optionDescriptions\n      name\n      instruction\n      id\n      decisionPremise\n    }\n  }\n"];
+/**
+ * The gql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function gql(source: "\n  mutation CreateFileEntry(\n    $kind: FileEntryKind!\n    $parentId: Int\n    $name: String!\n    $description: String\n    $content: String\n  ) {\n    createFileEntry(\n      kind: $kind\n      parentId: $parentId\n      name: $name\n      description: $description\n      content: $content\n    ) {\n      ...FileEntryFields\n    }\n  }\n"): (typeof documents)["\n  mutation CreateFileEntry(\n    $kind: FileEntryKind!\n    $parentId: Int\n    $name: String!\n    $description: String\n    $content: String\n  ) {\n    createFileEntry(\n      kind: $kind\n      parentId: $parentId\n      name: $name\n      description: $description\n      content: $content\n    ) {\n      ...FileEntryFields\n    }\n  }\n"];
+/**
+ * The gql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function gql(source: "\n  mutation UpdateFileEntry(\n    $id: Int!\n    $name: String\n    $description: String\n    $parentId: Int\n  ) {\n    updateFileEntry(\n      id: $id\n      name: $name\n      description: $description\n      parentId: $parentId\n    ) {\n      ...FileEntryFields\n    }\n  }\n"): (typeof documents)["\n  mutation UpdateFileEntry(\n    $id: Int!\n    $name: String\n    $description: String\n    $parentId: Int\n  ) {\n    updateFileEntry(\n      id: $id\n      name: $name\n      description: $description\n      parentId: $parentId\n    ) {\n      ...FileEntryFields\n    }\n  }\n"];
+/**
+ * The gql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function gql(source: "\n  mutation DeleteFileEntry($id: Int!, $recursive: Boolean = false) {\n    deleteFileEntry(id: $id, recursive: $recursive)\n  }\n"): (typeof documents)["\n  mutation DeleteFileEntry($id: Int!, $recursive: Boolean = false) {\n    deleteFileEntry(id: $id, recursive: $recursive)\n  }\n"];
+/**
+ * The gql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function gql(source: "\n  mutation WriteFileText($id: Int!, $content: String!) {\n    writeFileText(id: $id, content: $content) {\n      ...FileEntryFields\n    }\n  }\n"): (typeof documents)["\n  mutation WriteFileText($id: Int!, $content: String!) {\n    writeFileText(id: $id, content: $content) {\n      ...FileEntryFields\n    }\n  }\n"];
+/**
+ * The gql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function gql(source: "\n  mutation UploadFiles($files: [File!]!, $parentId: Int) {\n    uploadFiles(files: $files, parentId: $parentId) {\n      ...FileEntryFields\n    }\n  }\n"): (typeof documents)["\n  mutation UploadFiles($files: [File!]!, $parentId: Int) {\n    uploadFiles(files: $files, parentId: $parentId) {\n      ...FileEntryFields\n    }\n  }\n"];
+/**
+ * The gql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function gql(source: "\n  mutation IndexFileTree($path: String, $apply: Boolean) {\n    indexFileTree(path: $path, apply: $apply)\n  }\n"): (typeof documents)["\n  mutation IndexFileTree($path: String, $apply: Boolean) {\n    indexFileTree(path: $path, apply: $apply)\n  }\n"];
+/**
+ * The gql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function gql(source: "\n  fragment FileEntryFields on FileEntry {\n    id\n    parentId\n    kind\n    name\n    description\n    path\n    fileType\n    mimeType\n    size\n    contentHash\n    lastEditedAt\n    filesystemModifiedAt\n    createdAt\n    updatedAt\n    deletedAt\n  }\n"): (typeof documents)["\n  fragment FileEntryFields on FileEntry {\n    id\n    parentId\n    kind\n    name\n    description\n    path\n    fileType\n    mimeType\n    size\n    contentHash\n    lastEditedAt\n    filesystemModifiedAt\n    createdAt\n    updatedAt\n    deletedAt\n  }\n"];
+/**
+ * The gql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function gql(source: "\n  query GetFileEntries($parentId: Int, $includeDeleted: Boolean = false) {\n    fileEntries(parentId: $parentId, includeDeleted: $includeDeleted) {\n      ...FileEntryFields\n    }\n  }\n"): (typeof documents)["\n  query GetFileEntries($parentId: Int, $includeDeleted: Boolean = false) {\n    fileEntries(parentId: $parentId, includeDeleted: $includeDeleted) {\n      ...FileEntryFields\n    }\n  }\n"];
+/**
+ * The gql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function gql(source: "\n  query GetFileEntry($id: Int!) {\n    getFileEntry(id: $id) {\n      ...FileEntryFields\n    }\n  }\n"): (typeof documents)["\n  query GetFileEntry($id: Int!) {\n    getFileEntry(id: $id) {\n      ...FileEntryFields\n    }\n  }\n"];
+/**
+ * The gql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function gql(source: "\n  query GetFileText($id: Int!, $maxBytes: Int) {\n    getFileText(id: $id, maxBytes: $maxBytes)\n  }\n"): (typeof documents)["\n  query GetFileText($id: Int!, $maxBytes: Int) {\n    getFileText(id: $id, maxBytes: $maxBytes)\n  }\n"];
+/**
+ * The gql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function gql(source: "\n  query CreateFileViewToken($id: Int!) {\n    createFileViewToken(id: $id) {\n      url\n      expiresAt\n    }\n  }\n"): (typeof documents)["\n  query CreateFileViewToken($id: Int!) {\n    createFileViewToken(id: $id) {\n      url\n      expiresAt\n    }\n  }\n"];
 /**
  * The gql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
