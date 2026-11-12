@@ -27,6 +27,7 @@ export const TEMP_DIR_NAME = ".tmp";
 
 const IGNORED_NAMES = new Set([
   ".gitkeep",
+  TEMP_DIR_NAME,
   ".DS_Store",
   "Thumbs.db",
   "desktop.ini",

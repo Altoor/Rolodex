@@ -45,6 +45,7 @@
     "check-types": "tsc --noEmit",
     "backfill-embeddings": "tsx src/scripts/backfillTodoEmbeddings.ts",
     "files:backfill-embeddings": "tsx src/scripts/backfillFileEntryEmbeddings.ts",
+    "files:index": "tsx src/scripts/indexFiles.ts",
     "files:smoke": "tsx src/scripts/createFileEntrySmoke.ts"
   }
 }

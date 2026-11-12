@@ -1,4 +1,6 @@
+import fs from "node:fs/promises";
 import path from "node:path";
+import { FilesystemError, resolveFilesPath } from "./paths";
 
 export type FileTypeKind =
   "image" | "text" | "plaintext" | "audio" | "video" | "other";
@@ -337,3 +339,39 @@ export function detectFileTypeFromBuffer(
 }
 
 export { fileTypeFromMime };
+
+/**
+ * Detects a file's type from its name, falling back to magic-byte sniffing for
+ * unknown extensions. Known extensions avoid reading the file at all.
+ */
+export async function detectFileType(
+  relativePath: string,
+): Promise<DetectedFileType> {
+  const absolutePath = resolveFilesPath(relativePath);
+
+  const stat = await fs.lstat(absolutePath).catch((err) => {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw err;
+  });
+
+  if (!stat) throw new FilesystemError(`file "${relativePath}" not found`);
+  if (!stat.isFile()) {
+    throw new FilesystemError(`"${relativePath}" is not a file`);
+  }
+
+  const name = path.basename(absolutePath);
+  const byName = detectFileTypeFromName(name);
+  if (byName.confidence === "high") return byName;
+
+  const handle = await fs.open(absolutePath, "r");
+  try {
+    const length = Math.min(stat.size, 4096);
+    const buffer = Buffer.alloc(length);
+    if (length > 0) {
+      await handle.read(buffer, 0, length, 0);
+    }
+    return detectFileTypeFromBuffer(name, buffer);
+  } finally {
+    await handle.close();
+  }
+}
