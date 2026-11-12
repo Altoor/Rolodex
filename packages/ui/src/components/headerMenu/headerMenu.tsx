@@ -13,6 +13,7 @@ import { useAuth } from "../auth/auth-provider";
 const NAV_ITEMS = [
   { href: "/", label: "Main", requiresAuth: false },
   { href: "/todos", label: "Todos", requiresAuth: true },
+  { href: "/files", label: "Files", requiresAuth: true },
   { href: "/decisions", label: "Decisions", requiresAuth: true },
   { href: "/task-queue", label: "Task queue", requiresAuth: true },
   { href: "/tools", label: "Tools", requiresAuth: true },
