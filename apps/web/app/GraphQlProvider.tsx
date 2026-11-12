@@ -6,6 +6,8 @@ import {
   Observable,
 } from "@apollo/client/core";
 import { ApolloProvider } from "@apollo/client/react";
+import { getMainDefinition } from "@apollo/client/utilities";
+import UploadHttpLink from "apollo-upload-client/UploadHttpLink.mjs";
 import { print } from "graphql";
 import {
   createClient,
@@ -13,6 +15,15 @@ import {
   Client,
   RequestParams,
 } from "graphql-sse";
+
+const GRAPHQL_URL = "http://localhost:4000/graphql";
+
+function authHeaders(): Record<string, string> {
+  const token =
+    typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
+
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 class SSELink extends ApolloLink {
   private client: Client;
@@ -62,20 +73,43 @@ class SSELink extends ApolloLink {
     });
   }
 }
-export const link = new SSELink({
-  url: "http://localhost:4000/graphql",
-  headers: () => {
-    const token =
-      typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
-    return {
-      Authorization: token ? `Bearer ${token}` : "",
-    };
-  },
+const sseLink = new SSELink({
+  url: GRAPHQL_URL,
+  headers: () => authHeaders(),
 });
+
+const authLink = new ApolloLink((operation, forward) => {
+  operation.setContext({
+    headers: {
+      ...operation.getContext().headers,
+      ...authHeaders(),
+    },
+  });
+
+  return forward(operation);
+});
+
+const httpLink = authLink.concat(
+  new UploadHttpLink({
+    uri: GRAPHQL_URL,
+  }),
+);
+
+export const link = ApolloLink.split(
+  ({ query }) => {
+    const definition = getMainDefinition(query);
+    return (
+      definition.kind === "OperationDefinition" &&
+      definition.operation === "subscription"
+    );
+  },
+  sseLink,
+  httpLink,
+);
 
 const client = new ApolloClient({
   ssrMode: typeof window === "undefined",
-  link: link,
+  link,
   cache: new InMemoryCache(),
 });
 

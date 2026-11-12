@@ -1,904 +1,1558 @@
-# Plan: `display block`, `userDecision`, and forced user decisions
+# Filesystem Feature — Implementation Plan
 
-Date: 2026-11-11
-Status: planning only — no implementation yet
+## 1. Goal
 
-## 0. Summary
+Add a user-facing filesystem backed by a real `files/` folder in the repository, an indexed database representation, a `/files` page, and a set of tools that let tasks discover, read, create, and edit files and folders.
 
-This plan adds two capabilities:
+The feature should let a user:
 
-1. **`display_block`** — a stateless, output-only **tool** that selects a fragment of `toolState` and renders it with the existing block registry. Starting with todos, but not todo-specific.
-2. **`userDecision`** — a new **task type**, not a tool. It suspends a task flow on a user choice, supports predefined and tool-state-derived options, and uses the same choice UI as forced decision tasks.
+- Browse a real folder tree in the UI.
+- Preview images, text, plaintext, audio, video, and other files.
+- Edit plaintext files in place.
+- Create folders and plaintext files from the UI.
+- Drag-and-drop files into folders.
+- Select a task at the bottom of the page and run it with dropped/selected files as context.
+- Use task tools to scan the filesystem, search files/folders, read file contents, and create/update file metadata.
 
-It also changes decision tasks:
-
-- Add **force user to decide if no match**, default **on**.
-- When on, a decision that matches a result still auto-routes to that result's
-  next task. Only when nothing matches does it present the decision's result
-  outputs as a user choice instead of using the fallback.
-- When off, a no-match decision uses its fallback as before.
-- Waiting choices do **not** block other queued tasks.
-- Waiting task flows stay visible in the COT until answered.
-
-The central architectural recommendation is:
-
-> `display_block` should be a tool because it is stateless and only produces presentation output.
-> `userDecision` should be a task type because it is stateful, suspendable, and owns multiple control-flow outputs.
+This plan is split into independently testable stages. Each stage ends with a concrete test procedure and a “done when” checklist.
 
 ---
 
-## 1. Current architecture relevant to this work
+## 2. Key decisions and recommendations
 
-- Tasks are graph nodes with `TaskType = "decision" | "textPrompt" | "tool"`.
-- Decision tasks call System One, match `taskResults`, and enqueue either a matching result's `resultTaskId` or `fallbackTaskId`.
-- Tool tasks return a `ToolExecution`, which the processor turns into `result.output`, optional `toolState` changes, and a next task via `nextTaskId`, `branch`, or fallback.
-- The queue loop only picks rows with `status = "queued"`; `running` rows are reset on restart.
-- `activeQueuedTasks` currently treats only `queued`/`running` runs as active.
-- The COT on `landing.tsx` renders active runs and their `result.output` through `Block`.
-- Blocks are matched by `toolKey` or output shape.
-- `filter_tool_state` and `if` already support an optional `path` selector for evaluating array items such as `find_todos`' `{ todos: [...] }`.
+These are the recommended defaults. They can be changed before implementation starts.
 
-Key files:
+### 2.1 One `fileEntries` table instead of separate file/folder tables
 
-- `packages/db/src/schema.ts`
-- `apps/backend/src/queue/processor.ts`
-- `apps/backend/src/queue/processors/decision-step.ts`
-- `apps/backend/src/queue/step-store.ts`
-- `apps/backend/src/schema/task/task/task-service.ts`
-- `apps/backend/src/schema/task/queuedtask/*`
-- `packages/tools/src/tools/toolState/filterToolState.ts`
-- `packages/tools/src/tools/if/ifTool.ts`
-- `packages/ui/src/pages/landing.tsx`
-- `packages/ui/src/components/blocks/*`
-- `packages/ui/src/components/task/taskBuilder/*`
-- `packages/ui/src/components/task/taskFlow/*`
+Use one polymorphic table, `fileEntries`, with `kind = "file" | "folder"`.
+
+Why:
+
+- A tree is naturally self-referential (`parentId`).
+- Search, rename/move, path updates, and embedding refresh are shared.
+- The tools need a single resolver (`find file or folder by id/path/query`).
+- GraphQL can expose one `FileEntry` type with a `kind` field.
+
+The user-facing language is still “file” and “folder”; the database row just stores which one it is.
+
+### 2.2 Single shared `files/` tree
+
+Physical layout:
+
+```text
+files/
+  .gitkeep
+  notes/
+    shopping.txt
+  image.png
+```
+
+- `FILES_ROOT` defaults to `<repo>/files`.
+- There is one global tree shared by all users of the app.
+- The UI presents `files/` directly as the root.
+- `fileEntries` rows are global; there is no `ownerId` and no per-user filtering.
+- If attribution is wanted later, add nullable `createdBy` / `updatedBy` audit columns, but do **not** use them for access control unless the storage model changes.
+- The API never accepts a raw filesystem path from the browser; it accepts IDs and relative paths that are validated against `FILES_ROOT`.
+
+This is a shared workspace. If per-user isolation is needed later, add a `workspaceId`/`rootPath` column and scope every query and filesystem operation by it.
+
+### 2.3 Change detection: mtime/size as a cheap prefilter, SHA-256 as the source of truth
+
+Do **not** rely on native “last edited” (mtime) alone. mtime is unreliable because:
+
+- Copying a file can preserve the old mtime.
+- `touch` changes mtime without changing content.
+- Some editors replace files or write in stages.
+- mtime granularity differs by filesystem.
+
+Recommended algorithm:
+
+1. Use `(size, mtimeMs)` as a cheap “possibly changed” check.
+2. If size/mtime differs, stream the file through SHA-256.
+3. Compare the new hash with the stored `contentHash`.
+4. If the hash is the same, update only filesystem metadata and report `unchanged`.
+5. If the hash differs, report `changed`.
+
+For files larger than a configurable limit, allow a `hash: "auto" | "always" | "never"` option. Default `auto` trusts size+mtime for very large files unless `always` is requested.
+
+Folder move detection:
+
+- Store a `contentHash` for folders too, computed from the sorted direct children’s `(name, kind, contentHash)`.
+- A folder that disappears and reappears elsewhere with the same folder hash is a move/rename.
+- If the hash changed at the same time, fall back to path/subtree matching.
+
+Move detection for files:
+
+- A deleted path plus an added path with the same `contentHash` and `size` is reported as `moved`.
+- If several identical files exist, match the closest basename/parent as a tie-breaker. Document that move detection is best-effort for duplicate content.
+
+### 2.4 “Name” is the filename; “title” edits rename the file
+
+The UI calls it the title, but it maps to the filesystem basename:
+
+- Editing a file/folder title renames the physical entry and updates `relativePath`/descendant paths.
+- Editing the description changes only database metadata.
+- The vector is refreshed when `name` or `description` changes.
+- A rename never accepts `/`, `\`, `..`, control characters, or an empty name.
+
+Keeping title and filename identical avoids a second source of truth and keeps the tree trustworthy.
+
+### 2.5 `text` vs `plaintext`
+
+Recommended definitions:
+
+- **`plaintext`**: UTF-8 text that can be shown and edited verbatim. Examples: `.txt`, `.log`, `.csv`, source code, YAML, JSON.
+- **`text`**: text-bearing documents where a format-specific reader/renderer is useful. Examples: `.md`, `.html`, `.pdf`, `.docx`. Initially, `.md`/`.html` can be read as text; PDF/DOCX return metadata and a “reader not implemented yet” error in the first pass.
+
+This distinction lets the UI decide between a raw editor (`plaintext`) and a formatted/read-only preview (`text`), and lets future per-type tools add OCR/PDF extraction without changing the file model.
+
+### 2.6 File context is seeded into `toolState`
+
+When a task is started with files, pre-seed its `toolState`:
+
+```json
+[
+  { "files": [ { "id": 12, "name": "invoice.txt", "path": "inbox/invoice.txt", ... } ] },
+  { "folders": [ { "id": 4, "name": "inbox", "path": "inbox", ... } ] }
+]
+```
+
+This makes existing mechanisms work immediately:
+
+- `mergeToolInput` exposes `files` and `folders` to tools.
+- `if`, `filter_tool_state`, and `display_block` can use paths like `files.0.name`.
+- PathFormField can offer `files.0.name`, `files.0.path`, etc.
+
+No extra `queuedTaskFiles` join table is required for the first version. If run provenance/replay becomes important, add it later.
+
+### 2.7 Uploads use GraphQL multipart; previews use signed URLs
+
+Use the GraphQL Multipart Request Specification for uploads:
+
+- `uploadFiles(files: [File!]!, parentId: Int): [FileEntry!]!` mutation.
+- `GET /files/:id/content?token=...` — authenticated/streaming view for binary/media previews.
+
+Text content for editing comes from a GraphQL query with a size limit. Binary/media preview uses the streaming view endpoint because `<img>`, `<audio>`, and `<video>` cannot send GraphQL queries.
+
+### 2.8 Per-file-type content tools
+
+Each file type gets its own read tool. They share services internally, but each tool can later use a different model (vision for images, OCR/PDF extraction for text, transcription for audio).
 
 ---
 
-## 2. `display_block` tool
+## 3. Architecture overview
 
-### 2.1 Goal
-
-Given any accumulated `toolState`, select the entries/items that match a block definition and show them in the COT. The tool must not know about specific block types in the backend; it only selects data. The frontend block registry decides how to render it.
-
-This is intentionally a tool, not a task type:
-
-- It is stateless.
-- It never waits for input.
-- It only produces presentation output.
-- It fits the existing tool lifecycle (`toolState` in, `output` out, next/fallback routing).
-
-### 2.2 Tool contract
-
-Add `packages/tools/src/tools/display/displayBlock.ts` and register it in `packages/tools/src/registry/registry.ts`.
-
-Proposed config:
-
-```json
-{
-  "path": "todos",
-  "where": {
-    "eq": { "path": "done", "value": false }
-  },
-  "block": "todo",
-  "select": "all"
-}
+```text
+apps/web
+  /files page
+  file tree, preview, editor, upload, task runner
+        │
+        ▼
+packages/ui
+  files page components
+  shadcn file-tree + breadcrumb primitives
+        │
+        ▼
+packages/queries
+  file queries/mutations + generated types
+        │
+        ▼
+apps/backend
+  GraphQL file schema + multipart upload
+  signed file view route
+  file services
+        │
+        ├── packages/db ──────► PostgreSQL + pgvector
+        │
+        └── packages/tools
+              file tools
+              filesystem services
+              scan/index engine
+              embeddings
+                    │
+                    ▼
+                 files/
 ```
 
-Input schema:
+Recommended placement of the filesystem domain code, following the existing todo-tool pattern:
 
-- `path?: string` — optional path to an array on each tool-state entry, e.g. `todos` or `result.todos`.
-- `where?: WhereExpression` — same recursive language as `if`/`filter_tool_state`.
-- `block?: string` — optional block id to force, e.g. `"todo"`. If omitted, the frontend auto-matches by output shape.
-- `select?: "all" | "first"` — default `"all"`.
-
-Selection semantics:
-
-| `path`  | `where` | Behaviour                                                                   |
-| ------- | ------- | --------------------------------------------------------------------------- |
-| omitted | omitted | Select all tool-state entries.                                              |
-| omitted | set     | Keep entries whose `where` matches.                                         |
-| set     | omitted | Select all items in the array at `path`.                                    |
-| set     | set     | Keep items in the array at `path` whose `where` matches; drop empty arrays. |
-
-This reuses the recent `path` semantics from `filter_tool_state` and `if`. Extract the shared selection logic into a helper, for example `packages/tools/src/tools/toolState/services/selectToolState.ts`, so filtering and display cannot drift.
-
-Example dynamic source from the user's `find_todos` state:
-
-```json
-{
-  "path": "todos",
-  "where": { "eq": { "path": "done", "value": true } },
-  "block": "todo",
-  "select": "all"
-}
+```text
+packages/tools/src/tools/file/
+  services/
+    paths.ts          path safety, shared root, relative paths
+    storage.ts        stat/list/read/write/move/delete
+    hash.ts           streaming SHA-256
+    type.ts           MIME + FileType detection
+    manifest.ts       walk disk, build manifest
+    sync.ts           diff disk vs DB, detect moves, reconcile
+    entry.ts          DB CRUD + embedding helpers
+    search.ts         vector + lexical + decision fallback
+    selection.ts      decision-model fallback for files/folders
+    dto.ts            DB row → tool/GraphQL DTO
+  findFile.ts
+  findFiles.ts
+  findFolder.ts
+  findFolders.ts
+  scanFiles.ts
+  updateFileMetadata.ts
+  detectFileType.ts
+  readPlaintextFile.ts
+  readTextFile.ts
+  readImageFile.ts
+  readAudioFile.ts
+  readVideoFile.ts
+  readOtherFile.ts
+  createFolder.ts
+  createFile.ts
+  deleteFileEntry.ts   (recommended; used by tasks/tests too)
 ```
 
-### 2.3 Output shape
+Backend imports these services directly, as it already does for `saveTodoWithEmbedding`.
 
-```json
-{
-  "block": "todo",
-  "items": [/* selected entries or array items */],
-  "count": 1,
-  "path": "todos"
-}
-```
+If this domain grows beyond tools, it can later be extracted into `packages/files` without changing the tool-facing APIs.
 
-- `block` is `null` when auto-matching.
-- `items` is always an array, even for one result.
-- The execution must set `appendOutput: false` and must not change `toolState`.
-- Routing is the normal tool path: `nextTaskId` if explicitly set, otherwise the task's fallback/“Next” edge.
+---
 
-### 2.4 Frontend block rendering
+## 4. Database design
 
-Extend `BlockProps` in `packages/ui/src/components/blocks/block.tsx`:
+### 4.1 Enums
 
 ```ts
-interface BlockProps {
-  output: unknown;
-  toolKey?: string | null;
-  blockId?: string | null;
-  className?: string;
-  showRaw?: boolean;
-}
-```
+export const fileEntryKind = pgEnum("fileEntryKind", ["file", "folder"]);
 
-Add `blocksById` lookup in `packages/ui/src/components/blocks/registry.tsx`.
-
-`Block` should special-case `toolKey === "display_block"`:
-
-1. Parse `{ block, items }`.
-2. Render each item through `Block` with `blockId={block ?? null}`.
-3. Use the forced block id when present; otherwise use the normal `match` function.
-4. If no block matches, render `RawBlock` for that item.
-
-This keeps `display_block` generic: future blocks only need to be added to the registry, with no backend change.
-
-Update `extractBlockTodos` in `todo-block.tsx` so a bare todo object also matches, not only `{ todo }` / `{ todos }` / `{ candidates }`. Forced block rendering passes individual items directly.
-
-### 2.5 COT integration
-
-`landing.tsx` already renders `step.result.output` through `Block`. No new COT component is required:
-
-```tsx
-<Block toolKey={step.result.toolKey} output={step.result.output} />
-```
-
-`Block` unwraps the `display_block` wrapper and delegates to the matched block. The tool's summary can say, for example, `Displayed 2 todos`.
-
-### 2.6 Examples
-
-Display all matching todos from `find_todos`:
-
-```json
-{ "path": "todos", "block": "todo" }
-```
-
-Display only open todos:
-
-```json
-{
-  "path": "todos",
-  "where": { "eq": { "path": "done", "value": false } },
-  "block": "todo"
-}
-```
-
-Display the single todo from `find_todo`:
-
-```json
-{
-  "where": { "has": { "path": "todo.id" } },
-  "block": "todo"
-}
-```
-
-Display only the first match:
-
-```json
-{
-  "path": "todos",
-  "where": { "has": { "path": "id" } },
-  "select": "first",
-  "block": "todo"
-}
-```
-
-### 2.7 Edge cases
-
-- No matches: return `{ block, items: [], count: 0, path }` and a summary such as `No matching tool-state entries`. Frontend may show nothing or a small empty note.
-- Unknown forced `block` id: frontend falls back to `RawBlock`; no backend failure.
-- `path` points at a non-array: skip that entry (same as `filter_tool_state`).
-- Nested paths such as `result.todos` must work.
-- Legacy entry-level expressions such as `todo.done` must keep working when `path` is omitted.
-
-### 2.8 Files and tasks
-
-- [ ] Add shared `selectToolState` helper under `packages/tools/src/tools/toolState/services/`.
-- [ ] Refactor `filter_tool_state` to use the helper without changing its public semantics.
-- [ ] Add `displayBlock.ts` tool and register it.
-- [ ] Add tests/scripts covering entry mode, item mode, `select: "first"`, empty matches, and nested paths.
-- [ ] Extend `BlockProps`/`Block` for forced block id and `display_block` unwrapping.
-- [ ] Add `blocksById` and bare-todo matching in `todo-block.tsx`.
-
----
-
-## 3. `userDecision`: tool vs task type
-
-### 3.1 Arguments for making it a tool
-
-- Fits the existing tool pipeline: `toolKey`, `toolConfig`, `ToolExecution`, `toolState`, and output rendering.
-- No `TaskType` enum migration.
-- Could be inserted anywhere a tool can go.
-- Tool definitions already appear on the tools page and are validated through `getToolDefinition`.
-- Config is JSON and easy to evolve.
-- A standalone choice that simply appends the selected value and continues could be modelled as a tool.
-
-### 3.2 Arguments against a tool / for a task type
-
-1. **The tool lifecycle is synchronous.** `processToolStep` awaits `tool.execute()` and expects a final `ToolExecution`. A user choice may take minutes or hours. A tool would need a new “suspend” return shape plus a resume protocol, which is effectively a second control-flow system hidden inside tools.
-2. **Tools do not own multi-output control flow.** Tool routing currently supports `nextTaskId`, `true`/`false` branches, and fallback. A user choice needs N named outputs, each with its own target task, plus graph handles and edges. Encoding N task ids inside `toolConfig` duplicates `taskResults` and bypasses task-flow validation.
-3. **Persistence and restart safety belong to queue rows.** A waiting choice needs a persisted row, a non-running status, a snapshot of the options, and a resume path. That is queue/task state, not tool input.
-4. **Configuration is first-class in the task UI.** Choice type, labels, yes/no wording, static options, dynamic selectors, and per-option branch targets need typed GraphQL fields and form state. `toolConfig` is opaque JSON and would remain untyped and unvalidated by the task builder.
-5. **Force user decide is a decision-task behavior.** Implementing it as a tool would split decision routing across two mechanisms: automatic `taskResults` matching and tool-based manual selection.
-6. **Flow graph rendering already special-cases task types.** `TaskFlowNodeHandles` and `buildEdges` understand decision results and `if` branches. A userDecision task type can expose its options as handles; a tool would need the same special case plus a special tool contract.
-7. **COT presentation already keys off task steps.** The queue row has `taskId`, `task.type`, and `result`. A task type can render the choice block directly on the waiting step.
-
-### 3.3 Decision matrix
-
-| Criterion                          | Tool                                    | New task type                     |
-| ---------------------------------- | --------------------------------------- | --------------------------------- |
-| Stateless execution                | Good                                    | N/A                               |
-| Can wait for user without blocking | Needs new suspension protocol           | Native: `awaiting_input`          |
-| Persists across process restart    | Would need extra state anyway           | Natural queue row                 |
-| N named outputs with graph edges   | Poor fit                                | Natural                           |
-| Typed config and validation        | Weak (`toolConfig` JSON)                | Strong                            |
-| Reuses decision result routing     | No                                      | Yes                               |
-| Implementation cost                | Lower initially, higher to make correct | Higher initially, cleaner overall |
-| Fits force-user-decide             | Awkward                                 | Direct                            |
-
-### 3.4 Recommendation
-
-**Make `userDecision` a new task type.** Do not add it to `@repo/tools`.
-
-Use a shared internal execution/resume path so standalone `userDecision` tasks and forced decision tasks produce the same normalized `pendingChoice` payload and use the same frontend choice component.
-
-### 3.5 Rejected hybrid
-
-A tool that returns `{ status: "awaiting_input" }` and is later resumed by the processor would require:
-
-- a new `ToolExecution` suspension shape,
-- tool-specific pending state,
-- a tool-specific answer mutation,
-- tool-specific routing for N outputs,
-- and special cases in the flow graph.
-
-At that point the “tool” is a task type with extra indirection. Reject it.
-
----
-
-## 4. `userDecision` task type design
-
-### 4.1 User-facing behaviour
-
-A `userDecision` task runs and produces a choice. It then stops and waits. The COT shows a choice block for that step. The rest of the queue continues.
-
-Supported choice types:
-
-1. **Yes/No** — two buttons with editable wording.
-2. **Select from list** — a list/grid of buttons; clicking an option answers immediately.
-3. **Select from dropdown** — a select control plus an Accept button.
-
-Options can be:
-
-- **Predefined** on the task-queue page.
-- **Dynamic**, selected from `toolState` with the same `path`/`where` semantics as `filter_tool_state`/`if`.
-
-A dynamic option source may define one target task for all selected items. The selected item is appended to `toolState` so downstream tasks can act on it.
-
-### 4.2 Data model
-
-Add to `packages/db/src/schema.ts`:
-
-```ts
-export const userDecisionType = pgEnum("userDecisionType", [
-  "yesNo",
-  "list",
-  "dropdown",
-]);
-
-export const userDecisionOptionKind = pgEnum("userDecisionOptionKind", [
-  "static",
-  "dynamic",
+export const fileType = pgEnum("fileType", [
+  "image",
+  "text",
+  "plaintext",
+  "audio",
+  "video",
+  "other",
 ]);
 ```
 
-Extend `tasks`:
+### 4.2 `fileEntries` table
 
-```ts
-forceUserDecideIfNoMatch: boolean("forceUserDecideIfNoMatch").default(true).notNull(),
-userDecisionType: userDecisionType("userDecisionType")
-  .default("list")
-  .notNull(),
-userDecisionConfig: json("userDecisionConfig"),
+Recommended columns:
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | integer identity | Primary key, same style as `todos`. |
+| `parentId` | integer nullable | Self-reference; `null` = top level of `files/`. |
+| `kind` | `fileEntryKind` not null | `file` or `folder`. |
+| `name` | text not null | Basename incl. extension for files. |
+| `description` | text not null default `''` | User/model-editable description. |
+| `relativePath` | text not null | POSIX path relative to `FILES_ROOT`, e.g. `inbox/invoice.txt`. |
+| `fileType` | `fileType` nullable | Null for folders and until detected. |
+| `mimeType` | text nullable | Detected MIME type. |
+| `size` | bigint nullable | Bytes; null for folders. |
+| `contentHash` | text nullable | SHA-256 of file contents; synthetic hash for folders. |
+| `filesystemModifiedAt` | timestamp with timezone nullable | Native `mtime`. |
+| `lastEditedAt` | timestamp with timezone not null | Best-known content edit time: max(existing, fs mtime, app write time). |
+| `createdAt` | timestamp with timezone not null default now | |
+| `updatedAt` | timestamp with timezone not null default now | Metadata row update time. |
+| `deletedAt` | timestamp with timezone nullable | Soft delete so scans can report removals and avoid unique collisions. |
+| `embedding` | `vector(768)` nullable | Embedding of name + path + description. |
+
+Indexes:
+
+```sql
+-- One live entry per path in the shared tree.
+CREATE UNIQUE INDEX file_entries_path_live_idx
+  ON "fileEntries" ("relativePath")
+  WHERE "deletedAt" IS NULL;
+
+CREATE INDEX file_entries_parent_idx
+  ON "fileEntries" ("parentId");
+
+CREATE INDEX file_entries_embedding_idx
+  ON "fileEntries"
+  USING hnsw ("embedding" vector_cosine_ops);
 ```
 
-`userDecisionConfig` holds presentation-only data:
+### 4.3 Embedding text
 
-```json
-{
-  "prompt": "Which todo should I complete?",
-  "acceptLabel": "Use selection",
-  "yesLabel": "Yes",
-  "noLabel": "No"
+Use a dedicated helper in `@repo/ai`, analogous to `todoEmbeddingText`:
+
+```ts
+export function fileEntryEmbeddingText(entry: {
+  name: string;
+  relativePath: string;
+  description: string;
+}): string {
+  return `${entry.name}\n${entry.relativePath}\n\n${entry.description}`;
 }
 ```
 
-Add a new table rather than overloading `taskResults`. `taskResults` is tied to System One matching thresholds; userDecision options need labels, descriptions, dynamic selectors, and exactly one target.
+Refresh when:
 
-```ts
-export const userDecisionOptions = pgTable("userDecisionOptions", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-  taskId: integer("taskId").notNull(),
-  kind: userDecisionOptionKind("kind").default("static").notNull(),
-  label: text("label"),
-  description: text("description"),
-  value: text("value"),
-  // Dynamic source: same shape as filter_tool_state config.
-  selector: json("selector"),
-  labelPath: text("labelPath"),
-  descriptionPath: text("descriptionPath"),
-  valuePath: text("valuePath"),
-  resultTaskId: integer("resultTaskId"),
-  appendState: boolean("appendState").default(false).notNull(),
-  sortOrder: integer("sortOrder").default(0).notNull(),
-});
+- `name` changes (including rename).
+- `relativePath` changes (move).
+- `description` changes.
+- A new entry is created.
+- The sync engine discovers a previously unknown entry.
+
+Content changes do **not** change the embedding unless a future “include text excerpt” feature is added.
+
+### 4.4 Relations
+
+Add to `packages/db/src/relations/relations.ts`:
+
+- `fileEntries.parent` → self (`parentId`).
+- `fileEntries.children` → many self.
+
+No user relation unless optional audit columns are added later.
+
+### 4.5 Migration and backfill
+
+- Run `pnpm --filter backend generate` to create the Drizzle migration.
+- Run `pnpm --filter backend push` for local development.
+- Add a backfill script for entries with no embedding:
+
+```text
+apps/backend/src/scripts/backfillFileEntryEmbeddings.ts
 ```
 
-Add relations:
-
-- `tasks.userDecisionOptions` (many)
-- `userDecisionOptions.task` (one)
-- `userDecisionOptions.resultTask` (one task, alias)
-
-Why a separate table instead of reusing `taskResults`:
-
-- Static options need stable ids, ordering, labels, and descriptions.
-- Dynamic sources need a selector and one shared target.
-- Reusing `taskResults` would require nullable decision-only fields and synchronization between config JSON and result rows.
-- The flow graph can render one handle per option row cleanly.
-
-### 4.3 Task-queue configuration UI
-
-Add `userDecision` to `TASK_TYPES` in `packages/ui/src/components/task/taskCard/taskCard.types.ts`.
-
-Extend `TaskFormValues` and `taskToFormValues` with:
-
-- `forceUserDecideIfNoMatch: boolean`
-- `userDecisionType: "yesNo" | "list" | "dropdown"`
-- `userDecisionConfig` fields
-- `userDecisionOptions` form array
-
-Add `UserDecisionFields` and `UserDecisionOptionsSection` under `packages/ui/src/components/task/taskCard/components/` and render them from `TaskCard` when `type === "userDecision"`.
-
-UI sections:
-
-- **Choice type** — yes/no, list, dropdown.
-- **Prompt / accept label** — text fields.
-- **Yes/No wording** — two text fields when `yesNo`.
-- **Static options** — label, description, value, target task, append-to-tool-state.
-- **Dynamic sources** — selector JSON, label path, description path, value path, target task, append-to-tool-state.
-
-Follow the existing task-result pattern:
-
-- `createUserDecisionOption`, `updateUserDecisionOption`, `deleteUserDecisionOption` GraphQL mutations.
-- Shared `useLoadedEntity` / `useSaveEntity` hooks, not page-specific wrappers.
-- Branch target select reuses `BranchTaskSelect` or a small generalization of it.
-
-Dynamic selector validation should call the same `validateWhereExpression` used by the tools. The selector is exactly the filter config shape, for example:
+Script command:
 
 ```json
-{
-  "mode": "whitelist",
-  "path": "todos",
-  "where": { "has": { "path": "id" } }
+"files:backfill-embeddings": "tsx src/scripts/backfillFileEntryEmbeddings.ts"
+```
+
+---
+
+## 5. Filesystem rules and safety
+
+### 5.1 Root and path validation
+
+- `FILES_ROOT` is resolved once at startup; default `<repo>/files`.
+- There is no per-user subroot; every operation resolves paths directly under `FILES_ROOT`.
+- Every accepted relative path is normalized to POSIX separators.
+- Reject:
+  - absolute paths,
+  - `..` segments,
+  - NUL/control characters,
+  - empty names,
+  - paths outside `FILES_ROOT`.
+- After resolving, verify `resolved === root || resolved.startsWith(root + path.sep)`.
+- For reads/writes, also verify `realpath` does not escape via symlink.
+- Never follow symlinks during scans; treat them as `other` or skip them (recommended: skip with a reported warning).
+
+### 5.2 File operations
+
+- Create folders recursively with `fs.mkdir(..., { recursive: false })` after ensuring the parent exists.
+- Create files with exclusive write (`flag: "wx"` unless overwrite is explicitly allowed).
+- Write atomically: write to a temp file in the same directory, then rename.
+- Rename/move with `fs.rename`; on cross-device errors, fall back to copy + unlink.
+- Delete with `fs.rm`; non-empty folders require `recursive: true`.
+- Enforce a maximum upload size (default 25 MB/file, 20 files/request; configurable).
+- Sanitize upload filenames; on collision append ` (1)`, ` (2)`, etc.
+- Upload to a temp directory inside `FILES_ROOT`, then rename into place.
+
+### 5.3 Ignored entries
+
+Ignore and never index:
+
+- `.gitkeep`,
+- `.tmp/` upload staging directory,
+- hidden system files matching a small configurable ignore list (e.g. `.DS_Store`, `Thumbs.db`).
+
+Do not ignore all dotfiles by default; some are real user files.
+
+---
+
+## 6. Scan and change-detection engine
+
+### 6.1 Inputs
+
+`syncFileTree(options)` and the `scan_files` tool accept:
+
+- `path?: string` — optional subtree to scan; default entire `files/` tree.
+- `apply?: boolean` — update DB; default `true`.
+- `includeUnchanged?: boolean` — default `false`.
+- `hash?: "auto" | "always" | "never"` — default `auto`.
+- `detectMoves?: boolean` — default `true`.
+- `maxEntries?: number` — default 5,000; abort with a clear error above this.
+- `maxHashBytes?: number` — default e.g. 100 MB per file in `auto` mode.
+
+### 6.2 Algorithm
+
+1. **Walk disk**
+   - Recursively walk the selected subtree with `opendir`/`lstat`.
+   - Build entries: `{ relativePath, parentPath, kind, name, size, mtimeMs }`.
+   - Skip ignored paths and symlinks.
+   - Sort by depth so parent IDs can be resolved before children.
+
+2. **Load DB snapshot**
+   - Load all non-deleted `fileEntries` in the scanned subtree. The tree is shared, so there is no owner filter.
+
+3. **Diff by path**
+   - Path on disk only → `added`.
+   - Path in DB only → candidate `deleted` (or `moved` in step 5).
+   - Path in both:
+     - Kind changed (`file` ↔ `folder`) → delete old + add new; report `changed`.
+     - File size/mtime unchanged → `unchanged`.
+     - File size/mtime changed → hash and compare:
+       - same hash → `unchanged` (metadata refresh only),
+       - different hash → `changed`.
+     - Folder → recompute folder hash from direct children and compare.
+
+4. **Update metadata**
+   - Always refresh `size`, `mimeType`, `filesystemModifiedAt`, `contentHash`, `lastEditedAt`, `updatedAt` where applicable.
+   - Detect `fileType` (see Section 7.5) and persist it.
+   - Compute/refresh the vector when `name`, `relativePath`, or `description` changed.
+   - For new/changed files, hash first, then insert/update so the row is consistent.
+
+5. **Detect moves**
+   - Hash new files before declaring them purely “added”.
+   - Match removed file rows to added disk paths by `contentHash` + `size`.
+   - Match removed folder rows to added disk paths by folder `contentHash`.
+   - On match:
+     - Update the existing row’s `relativePath`, `parentId`, and `name`.
+     - For folders, rewrite descendant paths with a prefix replacement in one transaction.
+     - Refresh embeddings for renamed/moved entries.
+     - Report `moved` with `fromPath` and `toPath`.
+   - Unmatched removed rows → `deleted` (soft delete by setting `deletedAt`).
+
+6. **Return report**
+
+```ts
+interface ScanReport {
+  counts: {
+    added: number;
+    changed: number;
+    moved: number;
+    deleted: number;
+    unchanged: number;
+  };
+  entries: ScanEntry[];
 }
 ```
 
-For `yesNo`, create two static options with values `"yes"` and `"no"`; their labels come from `yesLabel`/`noLabel`. For `list` and `dropdown`, static options are free-form.
+Each `ScanEntry`:
 
-### 4.4 Runtime: creating a pending choice
+```ts
+interface ScanEntry {
+  kind: "file" | "folder";
+  change: "added" | "changed" | "moved" | "deleted" | "unchanged";
+  id: number | null;
+  name: string;
+  path: string;
+  fromPath?: string;
+  fileType?: string | null;
+  mimeType?: string | null;
+  size?: number | null;
+  lastEditedAt?: string | null;
+  filesystemModifiedAt?: string | null;
+  contentHash?: string | null;
+}
+```
 
-Add `apps/backend/src/queue/processors/user-decision-step.ts` and dispatch it from `processor.ts` when `task.type === "userDecision"`.
+### 6.3 Safety
 
-Algorithm:
+- Reconcile in a transaction where possible.
+- Never delete a DB row for a path outside the scanned subtree.
+- On errors, leave the DB unchanged for the failed entry and continue with others, collecting warnings.
+- The tool/test output should include warnings without failing the entire scan unless nothing could be scanned.
 
-1. Load the task and its `userDecisionOptions` ordered by `sortOrder`, then `id`.
-2. Build static options:
-   - `id`: `static:<option.id>` (or `yes`/`no` for yes/no).
-   - `label`: option label or value.
-   - `description`: option description.
-   - `value`: option value.
-   - `resultTaskId`: option result target.
-   - `appendState`: option flag.
-3. Build dynamic options:
-   - Evaluate the selector against `row.toolState` with the shared `selectToolState` helper.
-   - Flatten matched items.
-   - Label from `labelPath` (default `name`, then `label`, then `title`, then `id`).
-   - Description from `descriptionPath`.
-   - Value: the whole matched item. `valuePath` is only for display/logging.
-   - `resultTaskId`: the dynamic source's target.
-   - `appendState`: force `true` for dynamic **items** (a selector with `path`) so the next task can use the selection. Without a `path`, the selection is an existing entry, so use the option's flag to avoid duplicating it.
-   - Deduplicate by `valuePath`/`id` when available.
-4. If no options remain, finish the step with a clear note such as `user decision has no options for this run`.
-5. Otherwise create a `pendingChoice` payload and move the row to `awaiting_input`; do **not** enqueue a next task yet.
+---
 
-Proposed `pendingChoice` payload stored on the queue row:
+## 7. Tool catalog
+
+Add `"file"` to `ToolDefinition.category` (`"ai" | "todo" | "file" | "ui"`) and register every tool in `packages/tools/src/registry/registry.ts`.
+
+### 7.1 Shared output shape
+
+Every file/folder DTO should be stable:
+
+```ts
+interface FileEntryRef {
+  id: number;
+  kind: "file" | "folder";
+  name: string;
+  description: string;
+  path: string;
+  parentId: number | null;
+  fileType: string | null;
+  mimeType: string | null;
+  size: number | null;
+  contentHash: string | null;
+  lastEditedAt: string | null;
+  filesystemModifiedAt: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  deletedAt: string | null;
+}
+```
+
+Tools should output and append the same DTO so PathFormField paths are predictable.
+
+### 7.2 Search tools
+
+#### `find_file`
+
+- Like `find_todo`, filtered to `kind = "file"`.
+- Input: `query?`, `id?`, `path?`, `limit? = 5`, `decisionModel?`.
+- Output: `{ file, score, candidates }`.
+- Appends: `{ file }`.
+
+#### `find_files`
+
+- Like `find_todos`, filtered to `kind = "file"`.
+- Input: `query?`, `limit? = 15`, `decisionModel?`.
+- Output: `{ files, candidates }`.
+- Appends: `{ files }`.
+- Supports `outputTypes: ["normal", "foreach"]`.
+- Foreach items: `{ file }`.
+
+#### `find_folder`
+
+- Like `find_todo`, filtered to `kind = "folder"`.
+- Output: `{ folder, score, candidates }`.
+- Appends: `{ folder }`.
+
+#### `find_folders`
+
+- Like `find_todos`, filtered to `kind = "folder"`.
+- Output: `{ folders, candidates }`.
+- Appends: `{ folders }`.
+- Supports `outputTypes: ["normal", "foreach"]`.
+- Foreach items: `{ folder }`.
+
+Search strategy is shared with todos:
+
+1. explicit id/path,
+2. pgvector similarity on `embedding`,
+3. lexical `ILIKE` fallback on `name` / `description` / `relativePath`,
+4. decision-model selection fallback.
+
+### 7.3 `scan_files`
+
+- Runs the sync engine.
+- Input: `path?`, `apply?`, `includeUnchanged?`, `hash?`, `detectMoves?`, `maxEntries?`.
+- Output: `{ counts, entries, warnings }`.
+- Appends: `{ changes: entries }` (only changed entries unless `includeUnchanged`).
+- Supports `outputTypes: ["normal", "foreach"]`.
+- Foreach items: `{ entry }`, where `entry` includes `change`, `kind`, `id`, `path`, `fromPath`, etc.
+- Example configs:
+  - preview only: `{ "apply": false, "includeUnchanged": false }`
+  - full resync: `{ "apply": true }`
+
+### 7.4 `update_file_metadata`
+
+- Input: `id?`, `path?`, `name?`, `description?`, `parentId?`.
+- Resolves a file or folder from id/path/toolState.
+- Renames the physical entry if `name` changes.
+- Moves the physical entry if `parentId` changes (recommended in stage 6; can be deferred).
+- Refreshes the vector when name/path/description changes.
+- Output: `{ file }` or `{ folder }` based on kind; appends the same.
+- This is the tool used by “add a name and description”.
+
+### 7.5 `detect_file_type`
+
+- Input: `id?`, `path?`.
+- Uses extension + MIME sniffing (`file-type` for binary formats, extension map for text).
+- Persists `fileType` and `mimeType`.
+- Output: `{ file, type, mimeType, confidence, reason }`.
+- Appends: `{ file }`.
+- Mapping:
+  - `image/*` → `image`
+  - `audio/*` → `audio`
+  - `video/*` → `video`
+  - UTF-8 text + plaintext extensions → `plaintext`
+  - text-bearing structured/document extensions → `text`
+  - everything else → `other`
+
+### 7.6 Per-type content tools
+
+All take `id?` or `path?`, resolve the file, verify it exists, and enforce a size limit.
+
+| Tool | Returns / appends | Notes |
+| --- | --- | --- |
+| `read_plaintext_file` | `{ file, content }` | UTF-8 text; supports `maxBytes`; used by the editor. |
+| `read_text_file` | `{ file, content, format }` | Structured text/document extraction; may return `unsupported` for PDF/DOCX in MVP. |
+| `read_image_file` | `{ file, image: { mimeType, width?, height?, base64? }, url? }` | `includeBase64` defaults false; `url` is a signed view URL for preview/vision later. |
+| `read_audio_file` | `{ file, audio: { mimeType, duration?, url } }` | Transcription can be added later. |
+| `read_video_file` | `{ file, video: { mimeType, duration?, url } }` | Metadata + signed URL in MVP. |
+| `read_other_file` | `{ file, url, base64? }` | Download/opaque binary. |
+
+Each tool appends its full output object so paths like `content`, `image.url`, `audio.url` are available downstream.
+
+### 7.7 Creation tools
+
+#### `create_folder`
+
+- Input: `parentId?`, `parentPath?`, `name`, `description?`.
+- Creates the physical folder and DB row.
+- Refreshes embedding.
+- Output: `{ folder }`; appends `{ folder }`.
+
+#### `create_file`
+
+- MVP supports plaintext only.
+- Input: `parentId?`, `parentPath?`, `name`, `content?`, `description?`, `overwrite? = false`.
+- Creates the physical UTF-8 file and DB row, detects type, hashes, refreshes embedding.
+- Output: `{ file }`; appends `{ file }`.
+- Rejects non-plaintext extensions unless a `fileType` is explicitly requested later.
+
+#### `delete_file_entry` (recommended)
+
+- Not explicitly requested for tools, but useful for tests and task flows.
+- Input: `id?`, `path?`, `recursive? = false`.
+- Deletes physical entry and soft-deletes/removes DB row.
+- Output: `{ id, kind, name, path }`.
+
+### 7.8 PathFormField expectations
+
+Every tool output must be documented in `packages/ui/src/lib/toolStatePaths.ts`:
+
+- `find_file` → `file.*`
+- `find_files` → `files`, `files.0.*`, and foreach `file.*`
+- `find_folder` → `folder.*`
+- `find_folders` → `folders`, `folders.0.*`, and foreach `folder.*`
+- `scan_files` → `changes`, `changes.0.*`, `counts.*`, and foreach `entry.*`
+- `update_file_metadata` → `file.*` / `folder.*`
+- `detect_file_type` → `file.*`
+- `read_plaintext_file` / `read_text_file` → `file.*`, `content`
+- `read_image_file` → `file.*`, `image.*`, `url`
+- `read_audio_file` / `read_video_file` → `file.*`, `audio.*` / `video.*`, `url`
+- `create_folder` → `folder.*`
+- `create_file` → `file.*`
+
+Also add every path-aware file tool to `PATH_AWARE_TOOLS` in `packages/ui/src/components/task/taskCard/components/toolTaskFields.tsx` so its config JSON can reference earlier paths.
+
+---
+
+## 8. Prompt tool changes
+
+Current output is `{ text }`. Extend it so a prompt can produce named fields that become first-class toolState paths.
+
+### 8.1 New optional config
 
 ```json
 {
-  "kind": "userDecision",
-  "taskId": 12,
-  "prompt": "Which todo should I complete?",
-  "choiceType": "list",
-  "acceptLabel": "Use selection",
-  "recommendedOptionId": null,
-  "options": [
-    {
-      "id": "dynamic:3:0",
-      "label": "Buy gift",
-      "description": "for mormor",
-      "value": { "id": 24, "name": "Buy gift", "done": false },
-      "resultTaskId": 18,
-      "appendState": true,
-      "source": "dynamic"
+  "prompt": "Write a name and description for the folder {{folder.name}}.",
+  "system": "You name files and folders clearly and briefly.",
+  "fields": {
+    "name": {
+      "type": "string",
+      "description": "Short folder name. No slashes."
+    },
+    "description": {
+      "type": "string",
+      "description": "One or two sentences describing the contents."
+    },
+    "content": {
+      "type": "string",
+      "description": "Plaintext to write into the file."
     }
-  ]
+  }
 }
 ```
 
-The client receives the option labels and values but never chooses the target task. The answer mutation only sends an option id; the server reads `resultTaskId` from its stored snapshot.
+### 8.2 Behavior
 
-### 4.5 Answering and resuming
+- If `fields` is omitted, behavior stays exactly as today: output `{ text, thinking, model }`, append `{ text }`.
+- If `fields` is present:
+  - Build a JSON schema from the field definitions.
+  - Pass it as Ollama’s `format`.
+  - Parse the response as JSON.
+  - Validate required fields.
+  - Return `output = { text, thinking, model, ...parsedFields }`.
+  - Append `{ text, ...parsedFields }` so downstream tasks get `name`, `description`, `content`, etc.
+- Support field types: `string`, `number`, `boolean`, `object`, `array`, `enum`.
+- Add an `onInvalid` option:
+  - `"fail"` (default): throw a `ToolInputError` containing the raw model output.
+  - `"text"`: keep the raw response in `text` and omit structured fields.
+- Keep `format` as an escape hatch; if both `format` and `fields` are set, merge them or reject the combination with a clear error (recommended: reject to avoid ambiguity).
 
-Add a GraphQL mutation:
+### 8.3 PathFormField support
+
+Update `inferToolStatePaths` for `prompt`:
+
+- Always add `text`.
+- Parse `toolConfig.fields` and add one path per key.
+- If `fields` is empty/invalid, only `text` is offered.
+
+This makes a prompt task’s output immediately usable as:
+
+- `name` for `create_folder`,
+- `description` for `update_file_metadata`,
+- `content` for `create_file` or a plaintext write,
+- `text` as generic context.
+
+### 8.4 Optional follow-up
+
+Add `contextPaths?: string[]` later to inject specific toolState values into a prompt without dumping all of `toolState`. Not required for the first version because `useToolState` already exists.
+
+---
+
+## 9. Task and file context integration
+
+### 9.1 `createQueuedTask` mutation
+
+Add optional args:
 
 ```graphql
-mutation AnswerUserDecision($queuedTaskId: Int!, $optionId: String!) {
-  answerUserDecision(queuedTaskId: $queuedTaskId, optionId: $optionId) {
-    id
-    status
-    result
-  }
+createQueuedTask(
+  taskId: Int
+  state: String!
+  fileIds: [Int!]
+  folderIds: [Int!]
+): QueuedTask
+```
+
+Service behavior:
+
+1. Resolve and validate every ID exists.
+2. Build `FileEntryRef` DTOs.
+3. Seed `toolState`:
+   - `{ files: [...] }` when file IDs are present.
+   - `{ folders: [...] }` when folder IDs are present.
+4. Keep `state` as the user’s text. If empty, use a short summary like `Files: invoice.txt, photo.png`.
+5. Insert the queued task and trigger the queue as today.
+
+This is backwards-compatible: existing callers omit the new args and get `toolState: []`.
+
+### 9.2 Tool resolution from context
+
+The shared resolver should accept any of:
+
+- `input.id`, `input.fileId`, `input.folderId`
+- `input.path`
+- `input.file`, `input.files`
+- `input.folder`, `input.folders`
+- `input.entry`, `input.entries`
+- a query fallback against `context.state`
+
+This lets `scan_files` foreach → `read_plaintext_file` work with `{ entry }`, `find_files` foreach → `update_file_metadata` work with `{ file }`, and a user-provided context work with `{ files }`.
+
+### 9.3 Files page bottom runner
+
+- Bottom bar contains:
+  - task select (`TASKS` query),
+  - optional state textarea,
+  - “Run with files” button,
+  - a drop zone labeled “Drop files here to run or upload”.
+- Dropping onto a folder in the tree uploads into that folder.
+- Dropping onto the bottom bar:
+  1. uploads the files,
+  2. indexes them,
+  3. calls `createQueuedTask` with their IDs,
+  4. shows a “Run started” notice with a link to `/` (where live runs are shown).
+- If no task is selected, use the user’s default task; if neither exists, show an inline error.
+
+### 9.4 Task flow example
+
+```text
+scan_files (foreach)
+  └── read_plaintext_file
+        └── prompt with fields { summary }
+              └── update_file_metadata (description = summary)
+```
+
+Or:
+
+```text
+find_folder
+  └── prompt with fields { name, description }
+        └── create_folder
+```
+
+---
+
+## 10. Backend API
+
+### 10.1 GraphQL types
+
+Add `apps/backend/src/schema/file/`:
+
+- `file.ts` — `FileEntry` object, `FileEntryKind` enum, `FileType` enum.
+- `file-queries.ts`
+- `file-mutations.ts`
+- `file-service.ts`
+- `index.ts`
+
+Expose:
+
+```graphql
+scalar File
+
+enum FileEntryKind { file folder }
+enum FileType { image text plaintext audio video other }
+
+type FileEntry {
+  id: Int!
+  parentId: Int
+  kind: FileEntryKind!
+  name: String!
+  description: String!
+  path: String!
+  fileType: FileType
+  mimeType: String
+  size: Int
+  contentHash: String
+  lastEditedAt: DateTime!
+  filesystemModifiedAt: DateTime
+  createdAt: DateTime!
+  updatedAt: DateTime!
+  deletedAt: DateTime
 }
 ```
 
-Service behaviour (`apps/backend/src/schema/task/queuedtask/user-decision-service.ts`):
+The `File` scalar is the WHATWG `File` object provided by Yoga’s multipart parser.
 
-1. `requireUserId(ctx)`.
-2. In a transaction, load the row with a lock/conditional update.
-3. Verify `queued_by === userId`.
-4. Verify `status === "awaiting_input"` and `pendingChoice` exists.
-5. Find the option by id in the stored snapshot. Never trust a client-supplied target.
-6. Compute `nextToolState`:
-   - If `option.appendState`, append `option.value`.
-   - For forced decision outputs, append a normalized answer object including the selected result id.
-7. Update the row:
-   - `status = "completed"`.
-   - `result = { ...previousResult, branch: "result", nextTaskId, selectedOptionId, answer, summary }`.
-   - `pendingChoice = null`.
-8. If `nextTaskId` exists and depth is below `MAX_CHAIN_DEPTH`, enqueue the next step with:
-   - same `runId`,
-   - same `state`,
-   - computed `toolState`,
-   - `depth + 1`,
-   - `parentQueuedTaskId = answered row id`.
-9. Publish the updated row, then `triggerQueue()`.
-10. If the row is no longer awaiting input, return a `BAD_USER_INPUT` error such as `This choice has already been answered`.
+Queries:
 
-Use a conditional update (`where id = ? and status = 'awaiting_input'`) so double-clicks and concurrent tabs cannot enqueue the next step twice.
+```graphql
+fileEntries(parentId: Int, includeDeleted: Boolean): [FileEntry!]!
+getFileEntry(id: Int!): FileEntry
+getFileText(id: Int!, maxBytes: Int): String
+createFileViewToken(id: Int!): FileViewToken!
+```
 
-### 4.6 Non-blocking queue semantics
+Mutations:
 
-- Add `awaiting_input` to the `queuedTaskStatus` enum.
-- `findNextQueuedStep` continues to select only `queued`, so waiting rows never block other runs.
-- `resetRunningSteps` continues to reset only `running`; waiting rows survive restarts.
-- `activeQueuedTasks` must include `awaiting_input` when deciding which runs are active, so the COT still shows waiting runs.
-- The `QUEUED_TASK_EVENT` subscription should include `pendingChoice`; answering publishes an update and the next step publishes normally.
-- If the waiting row is deleted, the run simply stops; a future “cancel run” action can be added separately.
+```graphql
+createFileEntry(kind: FileEntryKind!, parentId: Int, name: String!, description: String, content: String): FileEntry!
+updateFileEntry(id: Int!, name: String, description: String, parentId: Int): FileEntry!
+deleteFileEntry(id: Int!, recursive: Boolean): String
+writeFileText(id: Int!, content: String!): FileEntry!
+uploadFiles(files: [File!]!, parentId: Int): [FileEntry!]!
+indexFileTree(path: String, apply: Boolean): JSON
+```
 
-### 4.7 COT rendering
+`FileViewToken`:
 
-In `landing.tsx`:
+```graphql
+type FileViewToken {
+  url: String!
+  expiresAt: DateTime!
+}
+```
 
-- Extend `QueuedTaskStep.status` with `"awaiting_input"`.
-- Add `pendingChoice` to `QueuedTaskRow`/`QueuedTaskStep`.
-- Include `awaiting_input` in `run.pending`.
-- Render `awaiting_input` as an active step with a waiting icon and description such as `waiting for your choice`.
-- Render the shared choice component beneath the step, for example:
+### 10.2 Service rules
+
+- Every mutation calls `requireUserId(ctx)` for authentication only; the file tree is shared, so there is no per-entry ownership check.
+- Name/path validation is shared with the tools.
+- `writeFileText` only allows `plaintext` files (or prominent `text` files explicitly marked editable).
+- `createFileEntry` supports folders and plaintext files; binary uploads use `uploadFiles`.
+- `deleteFileEntry` is recursive only when `recursive: true`; otherwise reject non-empty folders.
+- All mutations that change a path/name/description refresh the embedding.
+- `indexFileTree` can be used by the UI “refresh” button and by tests; it delegates to `syncFileTree`.
+
+### 10.3 GraphQL multipart upload
+
+Add `scalar File` to the Pothos schema and expose:
+
+```graphql
+uploadFiles(files: [File!]!, parentId: Int): [FileEntry!]!
+```
+
+- Auth: the normal `Authorization: Bearer <jwt>` header; `requireUserId` is still called.
+- Content type: `multipart/form-data` per the GraphQL multipart request spec.
+- Each variable is a WHATWG `File` with `name`, `type`, `size`, `stream()`, and `arrayBuffer()`.
+- Implementation:
+  - Configure Yoga multipart limits with `fetchAPI.formDataLimits`:
+    - `fileSize` (default 25 MB),
+    - `files` (default 20),
+    - `fieldSize` and `headerSize` sensible defaults.
+  - Write each file to `files/.tmp/` using `file.stream()` (or `arrayBuffer()` with the size limit).
+  - Sanitize names, resolve collisions, and move into the target folder.
+  - Index each new file (hash, type, embedding) and insert DB rows.
+  - Return partial success only if the schema allows it; otherwise fail the whole mutation with a clear error naming the bad file. Recommended: fail the whole mutation and leave no partial rows.
+- Add `File` to GraphQL codegen’s scalar mapping (`File: "File"`).
+
+### 10.4 File view endpoint
+
+`GET /files/:id/content?token=<signed-token>`
+
+- Token payload: `{ sub: userId, fileId, purpose: "file-view" }`, signed with `TOKEN_SECRET`, 5-minute expiry.
+- Validate signature, expiry, and that the resolved DB path is still inside `FILES_ROOT`.
+- The shared tree means any authenticated user may view a file; the token exists to authenticate `<img>`/`<audio>`/`<video>` requests and to avoid exposing raw paths.
+- Set:
+  - `Content-Type: <mimeType>`
+  - `Content-Length`
+  - `Content-Disposition: inline; filename*=UTF-8''<encoded-name>`
+  - `Cache-Control: private, max-age=60`
+  - `Accept-Ranges: bytes`
+- Support HTTP `Range` requests (`206 Partial Content`) for audio/video.
+- Return `404` for missing/deleted files and `401/403` for invalid or expired tokens.
+
+### 10.5 Server routing and CORS
+
+`apps/backend/server.ts` currently passes Yoga directly to `createServer`. Change it to a small router:
+
+```text
+/files/:id/content   → view handler
+everything else      → yoga (including /graphql multipart uploads)
+```
+
+Yoga handles CORS for `/graphql`, including the multipart upload preflight. The view route is loaded by `<img>`, `<audio>`, and `<video>`, so it does not need CORS for normal preview; add it only if the page starts fetching it with JavaScript.
+
+### 10.6 Codegen workflow
+
+After backend schema changes:
+
+1. Start the backend: `pnpm --filter backend api`.
+2. Run `pnpm codegen` (or `pnpm --filter @repo/queries codegen`).
+3. Build queries: `pnpm --filter @repo/queries build`.
+4. Build UI: `pnpm --filter @repo/ui build:components`.
+5. Run `pnpm check-types`.
+
+Add new query/mutation modules:
+
+```text
+packages/queries/src/files/file-queries.ts
+packages/queries/src/files/file-mutations.ts
+```
+
+Include a `FileEntryFields` fragment so every consumer stays in sync. Add `File` to the codegen scalar map in `packages/queries/codegen.ts`:
+
+```ts
+scalars: { File: "File" }
+```
+
+---
+
+## 11. Frontend files page
+
+### 11.1 Route and navigation
+
+- Add `apps/web/app/files/page.tsx`:
 
 ```tsx
-{
-  step.pendingChoice ? (
-    <UserChoiceBlock
-      choice={step.pendingChoice}
-      onAnswer={(optionId) => answerUserDecision(step.id, optionId)}
-    />
-  ) : null;
-}
+import FilesPage from "@repo/ui/pages/files";
+export default function Page() { return <FilesPage />; }
 ```
 
-Add `packages/ui/src/components/userDecision/userChoiceBlock.tsx`:
+- Add `packages/ui/src/pages/files.tsx`, wrapped in `AuthGate`.
+- Add `{ href: "/files", label: "Files", requiresAuth: true }` to `NAV_ITEMS` in `headerMenu.tsx`.
 
-```ts
-interface UserChoiceBlockProps {
-  choice: PendingChoice;
-  onAnswer: (optionId: string) => Promise<void> | void;
-  answering?: boolean;
-  error?: string | null;
-}
+### 11.2 Layout
+
+```text
+PageHeader “Files”
+┌────────────────────────────────────────────────────────────┐
+│ Left: file tree (fixed width / 1/3)                        │
+│  - toolbar: New folder, New file, Refresh, Upload          │
+│  - tree                                                    │
+├────────────────────────────────────────────────────────────┤
+│ Right: preview (2/3)                                       │
+│  - breadcrumb                                              │
+│  - title + Edit + Delete                                   │
+│  - Accordion: Description                                  │
+│  - preview / editor                                        │
+└────────────────────────────────────────────────────────────┘
+Bottom bar: task select + state + drop zone + Run button
 ```
 
-Rendering rules:
+Responsive:
 
-- `yesNo`: two buttons using `yesLabel`/`noLabel`; click answers immediately.
-- `list`: buttons or an item grid; click answers immediately.
-- `dropdown`: `Select` plus an Accept button using `acceptLabel`.
-- Show `prompt` and optional descriptions.
-- Show a `recommended` badge when `recommendedOptionId` is set.
-- Disable controls while `answering`.
+- Desktop: two columns.
+- Mobile: tree above preview, bottom bar sticky.
+- Empty preview: `EmptyState` prompting selection.
+- Loading: `LoadingState`.
+- Error: `ErrorState` with retry.
 
-The same component is used by forced decision tasks. That satisfies “the same components as the userDecision.”
+### 11.3 UI primitives
 
-Waiting steps remain in the COT until answered. Once answered, the step becomes completed and normal routing appears as new steps arrive.
+Add to `packages/ui/src/components/ui/`:
 
-### 4.8 Flow graph
+- `file-tree.tsx` — built on existing `Collapsible` + `Button` per the shadcn AI Elements File Tree docs. Exports:
+  - `FileTree`
+  - `FileTreeFolder`
+  - `FileTreeFile`
+  - `FileTreeIcon`
+  - `FileTreeName`
+  - `FileTreeActions`
+- `breadcrumb.tsx` — from the shadcn base Breadcrumb docs.
+- `alert-dialog.tsx` — for delete confirmation (or use a local dialog; recommended to add the primitive).
 
-Extend:
+The File Tree implementation should follow the documented composition:
 
-- `packages/queries/src/tasks/task-queries.ts` (`TASKS`, `GET_TASK`) with `forceUserDecideIfNoMatch`, `userDecisionType`, `userDecisionConfig`, and `userDecisionOptions`.
-- `packages/ui/src/components/task/taskFlow/taskFlowTypes.ts` with the same fields.
-- `TaskFlowNodeHandles`:
-  - For `userDecision`, render one handle per option row, labeled with the option label (dynamic sources show their source label).
-  - No fallback handle for `userDecision`; options own their targets.
-  - For `decision` with `forceUserDecideIfNoMatch`, render result handles and hide the fallback handle.
-- `buildEdges`:
-  - Emit `e-udo-<optionId>` edges from `userDecisionOptions.resultTaskId`.
-  - Suppress `fallbackTaskId` edges when `forceUserDecideIfNoMatch` is on or the task is `userDecision`.
-- `connection.ts`:
-  - Parse `udo:<id>` source handles to `{ kind: "userDecisionOption", optionId }`.
-  - Parse `e-udo-<id>` edge ids.
-- `useTaskFlowActions`:
-  - On connect/edge delete, update `userDecisionOptions.resultTaskId` through a new mutation.
-- `services/cache.ts`:
-  - Add `setUserDecisionOptionResultInCache`.
-- `computePositions`:
-  - Follow `userDecisionOptions.resultTaskId` links; skip fallback for forced tasks.
+- folder = `Collapsible` with a `CollapsibleTrigger` rendered as a ghost `Button`,
+- file = ghost `Button` that calls `onSelect(path)`,
+- actions render next to the file button, not inside it.
 
-### 4.9 Examples
+### 11.4 Tree data and behavior
 
-**List of todos**
+- Fetch `fileEntries` for the user.
+- Convert the flat list into a nested tree:
+  - sort folders first, then files, then by name,
+  - attach children by `parentId`.
+- Root is synthetic; it is not a DB row.
+- Selection state: `selectedId`.
+- Expansion state: `Set<number>` (folders).
+- Toolbar actions:
+  - **New folder**: inline dialog; parent = selected folder or root.
+  - **New file**: dialog with name; creates an empty plaintext file; parent = selected folder or root.
+  - **Refresh**: call `indexFileTree` and refetch.
+  - **Upload**: file picker.
+- Drag/drop:
+  - Folder nodes are drop targets; highlight on drag-over.
+  - Root/tree background drops into the root.
+  - Multiple files supported.
+  - Dropping a directory: first pass can use `webkitGetAsEntry` to traverse and upload the contained files; if that is too much for the first pass, show a clear “folder upload not supported yet” message and keep file-only drops.
+- Per-node actions (via `FileTreeActions` or context menu):
+  - Rename (same as edit title),
+  - Delete,
+  - Download.
 
-Task config:
+### 11.5 Preview pane
 
-```json
-{
-  "type": "userDecision",
-  "userDecisionType": "list",
-  "userDecisionConfig": {
-    "prompt": "Which todo should I complete?"
-  }
-}
+Header:
+
+- `Breadcrumb`: `Files / folder / subfolder / file.txt`. Each folder segment is clickable and selects/expands that folder.
+- Title: `entry.name`.
+- `Accordion` with one item “Description”:
+  - displays `entry.description` or “No description yet”.
+  - Edit mode shows a textarea.
+- Actions:
+  - **Edit**: toggles metadata editing (title + description). Save calls `updateFileEntry`; refresh tree and embedding.
+  - **Delete**: opens confirmation; calls `deleteFileEntry`; clears selection.
+
+Body by `fileType` / MIME:
+
+| Type | Preview |
+| --- | --- |
+| `plaintext` | `<textarea>` (or lightweight code editor) + Save/Cancel; loads `getFileText`; warns above `maxBytes`. |
+| `text` | Read-only formatted/raw preview initially; later Markdown renderer/PDF extractor. |
+| `image` | `<img src={signedUrl} alt={name} />` with max dimensions and “open in new tab”. |
+| `audio` | `<audio controls src={signedUrl} />`. |
+| `video` | `<video controls src={signedUrl} />`. |
+| `other` | File metadata + Download button. |
+
+- File metadata footer: size, MIME, last edited (DB), filesystem modified (native), hash (truncated), full path.
+- Renaming a file updates the selected breadcrumb/tree after refetch.
+- If the selected file is deleted or renamed externally, handle `404` and clear selection with a toast.
+
+### 11.6 Editing title/description
+
+- A small form with:
+  - `name` (title) input,
+  - `description` textarea.
+- Save is disabled while pending.
+- Server-side name validation errors are shown inline.
+- On success:
+  - refetch `fileEntries`,
+  - keep the same entry selected by ID,
+  - update the preview header.
+- If `name` changes, the physical file is renamed and the tree path updates.
+
+### 11.7 Bottom task runner
+
+- Component: `fileTaskRunner.tsx`.
+- Data: `TASKS` query, user default task.
+- State:
+  - selected task ID,
+  - optional state text,
+  - uploading/running flags,
+  - result/error.
+- Drop handling:
+  - Upload files to the root (or currently selected folder),
+  - create a queued task with uploaded IDs,
+  - show “Run started”.
+- Button “Run with current folder” / “Run with selected files” for non-drop use.
+- Do not block the UI while the task runs; link to `/` for the live chain-of-thought.
+
+### 11.8 Files page client services
+
+Add:
+
+```text
+packages/ui/src/components/files/
+  file-tree-view.tsx
+  file-preview.tsx
+  file-preview-header.tsx
+  file-metadata-editor.tsx
+  file-plaintext-editor.tsx
+  file-upload-dropzone.tsx
+  file-task-runner.tsx
+  file-create-dialogs.tsx
+  file-actions.ts
+  types.ts
 ```
 
-Dynamic option:
-
-```json
-{
-  "kind": "dynamic",
-  "labelPath": "name",
-  "descriptionPath": "description",
-  "valuePath": "id",
-  "selector": {
-    "mode": "whitelist",
-    "path": "todos",
-    "where": { "has": { "path": "id" } }
-  },
-  "resultTaskId": 18,
-  "appendState": true
-}
-```
-
-With the user's `find_todos` state this yields “get gas” and “Buy gift” as buttons. Selecting one appends that todo to `toolState` and continues to task 18.
-
-**Yes/No**
-
-```json
-{
-  "userDecisionType": "yesNo",
-  "userDecisionConfig": {
-    "prompt": "Mark this todo as done?",
-    "yesLabel": "Yes, mark it done",
-    "noLabel": "No, leave it"
-  }
-}
-```
-
-**Dropdown**
-
-```json
-{
-  "userDecisionType": "dropdown",
-  "userDecisionConfig": {
-    "prompt": "Choose a model",
-    "acceptLabel": "Use model"
-  }
-}
-```
-
-### 4.10 Edge cases
-
-- No static or dynamic options: fail the step with a clear note; do not create an empty choice block.
-- Duplicate dynamic items: deduplicate by `valuePath`/`id`.
-- Dynamic item missing the label path: fall back to `id`, then `value`, then `"Option N"`.
-- Option with no target: selecting it completes the run with a note such as `selection had no target task`.
-- Task/option deleted while waiting: the stored snapshot still answers safely; validate the target exists before enqueueing, otherwise complete with a note.
-- User changes task config while a run is waiting: the waiting snapshot is immutable; new runs use the new config.
-- `yesNo` must have exactly two options; validate when options are saved or normalize from `yesLabel`/`noLabel`.
-- Dynamic selectors that match nothing produce no dynamic options; the choice may still have static options.
+`file-actions.ts` wraps GraphQL mutations (including `uploadFiles` with `File` variables) so components stay presentational.
 
 ---
 
-## 5. Force user to decide if no match
+## 12. Staged implementation plan
 
-### 5.1 Semantics
-
-Add a boolean `forceUserDecideIfNoMatch` to decision tasks, default **true**.
-
-When **on**:
-
-- The task still runs System One to produce a recommendation and a COT summary.
-- If the answer matches a result, that result's `resultTaskId` is queued
-  automatically, exactly like a normal decision. `appendState` applies as usual.
-- Only when nothing matches does it skip `fallbackTaskId` and create a
-  `pendingChoice` whose options are the task's result outputs (results with a
-  `resultTaskId`).
-- Routing then uses the selected result: `resultTaskId`, `appendState`, and the
-  normal next-step rules.
-- The fallback handle is hidden in the flow graph and the fallback edge is not
-  built, because that fallback is unreachable while the toggle is on.
-
-When **off**:
-
-- Existing behavior is unchanged: first matching result wins; otherwise
-  fallback; otherwise the run stops.
-
-### 5.2 Data and UI
-
-- Add `forceUserDecideIfNoMatch` to `tasks`, GraphQL `Task`,
-  `TASKS`/`GET_TASK`, task form values, and `createTask`/`updateTask`.
-- Add a toggle in the decision task section, labeled
-  `Force user to decide if no match`, default on.
-- Keep result rows as the choice outputs.
-- Show a short note: matched results auto-queue; a no-match run asks the user to
-  choose between these result outputs; the fallback is hidden while on.
-- Do not clear `fallbackTaskId` when the toggle turns on; hide and ignore it, so
-  toggling off restores the previous configuration without data loss.
-
-### 5.3 Runtime
-
-In `processDecisionStep`:
-
-1. Run System One as today.
-2. Find the first matching result (type and thresholds) with a `resultTaskId`.
-3. If a result matches, queue its target immediately, regardless of the
-   toggle. Store `branch: "result"` and apply the result's `appendState`.
-4. If no result matches and `task.forceUserDecideIfNoMatch`:
-   - Build options from `taskResults` with `resultTaskId != null`.
-   - Label each option with the same logic as `resultLabel`.
-   - Store the model answer/usage when available.
-   - Move the row to `awaiting_input` with
-     `pendingChoice.kind = "decisionOutput"`.
-   - Return without enqueueing and without `recommendedOptionId`, because there
-     was no match.
-5. If no result matches and the toggle is off, use `fallbackTaskId` as before.
-
-When the user answers a no-match decision:
-
-- The selected option carries the corresponding `TaskResult`.
-- Route to its `resultTaskId`.
-- Apply its `appendState`.
-- Append a normalized answer representing the user's selected output:
-  - For choice results, use the selected result's option as the chosen answer.
-  - For score/noul results, keep the model score and add `selectedResultId`.
-- Store `selectedBy: "user"` in the result payload for observability.
-
-If System One fails while `forceUserDecideIfNoMatch` is on:
-
-- Still show the choice options, because the user can decide without the model.
-- Include a note such as `decision model failed; presenting manual choice`.
-- Do not fail the step solely because the recommendation failed.
-
-### 5.4 Flow graph and inference changes
-
-- `TaskFlowNodeHandles`: hide the fallback handle when
-  `data.forceUserDecideIfNoMatch` is true and `data.type === "decision"`.
-- `buildEdges`: skip the fallback edge for those decision tasks.
-- `computePositions`: skip fallback links for those decision tasks.
-- Tool-state inference (`packages/ui/src/lib/toolStatePaths.ts`) also skips the
-  fallback edge for those decision tasks.
-- `connection.ts` / `useTaskFlowActions`: no change needed for result edges; they
-  already update `TaskResult.resultTaskId`.
-
-### 5.5 Edge cases
-
-- No result with a target while the toggle is on: fail with a clear note such as
-  `no matching result and no result output has a target task`.
-- Only one result with a target: a match auto-routes; a no-match still asks.
-- `fallbackTaskId` set while the toggle is on: ignored and hidden, not deleted.
-- Toggling the setting while a run is waiting: the waiting snapshot keeps its
-  options; only future runs change.
-- Existing decision tasks: the column is renamed from `forceUserDecide`, so
-  existing rows keep their previous choice with the new no-match meaning.
+Each stage is complete and testable on its own. Do not start the next stage until its “Done when” checks pass.
 
 ---
 
-## 6. Cross-cutting backend changes
+### Stage 1 — Storage foundation + database model
 
-### 6.1 Queue status
+**Goal:** The repository has a real `files/` root, the `fileEntries` table/migration, and safe read/write/index primitives.
 
-Add `awaiting_input` to `queuedTaskStatus`:
+**Tasks:**
 
-```ts
-export const queuedTaskStatus = pgEnum("queuedTaskStatus", [
-  "queued",
-  "running",
-  "awaiting_input",
-  "completed",
-  "failed",
-]);
+1. Create `files/.gitkeep` and update `.gitignore`:
+   ```gitignore
+   files/*
+   !files/.gitkeep
+   ```
+2. Add `FILES_ROOT` config (default `<repo>/files`) and startup validation. Add it to `turbo.json` `globalEnv` if it can vary by environment.
+3. Add `fileEntryKind` and `fileType` enums and the `fileEntries` table to `packages/db/src/schema.ts`.
+4. Add relations in `packages/db/src/relations/relations.ts`.
+5. Generate and apply the migration.
+6. Add filesystem services:
+   - `paths.ts` — root resolution, relative path normalization, traversal checks.
+   - `storage.ts` — stat/list/read/write/move/delete, atomic writes.
+   - `hash.ts` — streaming SHA-256.
+   - `type.ts` — MIME/extension/type detection.
+   - `entry.ts` — DB CRUD + `fileEntryEmbeddingText`/`saveFileEntryWithEmbedding`.
+7. Add `fileEntryEmbeddingText` to `@repo/ai`.
+8. Add `apps/backend/src/scripts/backfillFileEntryEmbeddings.ts`.
+9. Add a tiny debug script or test harness:
+   - `apps/backend/src/scripts/createFileEntrySmoke.ts` (temporary, or a Vitest test) that creates a folder inside `files/`, writes a test file, inserts a row, reads it back, and deletes it.
+
+**Test:**
+
+```bash
+pnpm --filter backend generate
+pnpm --filter backend push
+pnpm --filter backend check-types
+pnpm --filter @repo/tools check-types
 ```
 
-Add `pendingChoice` JSON to `queuedTasks`:
+- Inspect the table in `psql`:
+  ```sql
+  \d "fileEntries"
+  ```
+- Run the smoke script and verify a row exists with `relativePath`, `size`, `contentHash`, `lastEditedAt`.
+- Verify the embedding is non-null when Ollama is running; verify the script still succeeds when Ollama is down (embedding may be null, as with todos).
 
-```ts
-pendingChoice: json("pendingChoice"),
-```
+**Done when:**
 
-`step-store.ts` additions:
-
-```ts
-export async function awaitStep(
-  id: number,
-  pendingChoice: unknown,
-  result: unknown,
-  message?: string,
-): Promise<void>;
-```
-
-Only transition `running -> awaiting_input`; publish the updated row.
-
-`resetRunningSteps` must not touch `awaiting_input`.
-
-### 6.2 GraphQL
-
-- `TaskType` enum: add `"userDecision"`.
-- `UserDecisionType` enum: `yesNo | list | dropdown`.
-- `Task`: add `forceUserDecideIfNoMatch`, `userDecisionType`, `userDecisionConfig`, `userDecisionOptions`.
-- `QueuedTask`: add `pendingChoice`.
-- Task mutations: add `forceUserDecideIfNoMatch`, `userDecisionType`, `userDecisionConfig`.
-- New option mutations: `createUserDecisionOption`, `updateUserDecisionOption`, `deleteUserDecisionOption`.
-- New answer mutation: `answerUserDecision(queuedTaskId, optionId)`.
-- Update `TASKS`, `GET_TASK`, `QUEUED_TASK`, `ACTIVE_QUEUED_TASKS`, `CREATE_QUEUED_TASK`, and `QUEUED_TASK_EVENT` selections.
-- Regenerate GraphQL types with `pnpm codegen`; do not hand-edit generated files.
-
-### 6.3 Task validation and cleanup
-
-Extend `assertValidTaskConfig`:
-
-- Validate `userDecisionType` when provided.
-- Validate dynamic selectors with `validateWhereExpression`.
-- Validate `userDecisionConfig` is a JSON object.
-- Do not require options at create/update time, because options and task results are added after the task row is created. Validate at option save time and fail at runtime with a clear note if incomplete.
-
-Extend `deleteTask`:
-
-- Delete the task's `userDecisionOptions`.
-- Clear `userDecisionOptions.resultTaskId` references to the deleted task.
-- Keep existing cleanup for `fallbackTaskId`, `onTrueTaskId`, `onFalseTaskId`, and `taskResults`.
-
-### 6.4 Security and concurrency
-
-- `answerUserDecision` must be owner-scoped: `queued_by === current user`.
-- Verify `status === "awaiting_input"` inside a transaction or conditional update.
-- Never accept `nextTaskId`, `resultTaskId`, or option values from the client.
-- Only accept an `optionId` that exists in the stored `pendingChoice`.
-- Publish after commit; enqueue only once.
-- Consider a future TTL/cancel path for abandoned choices; not required for this phase.
+- Migration applies cleanly.
+- `files/` is created safely.
+- A file can be written and indexed manually.
+- Path traversal attempts (`../`, absolute paths, symlink escape) are rejected.
+- Type checking passes.
 
 ---
 
-## 7. Phased implementation
+### Stage 2 — Scan/sync engine and change detection
 
-### Phase 1 — `display_block`
+**Goal:** A CLI can reconcile the physical tree with `fileEntries` and report added/changed/moved/deleted/unchanged entries.
 
-- [ ] Extract shared `selectToolState` helper.
-- [ ] Add `display_block` tool and register it.
-- [ ] Add tool examples and descriptions to the tools page.
-- [ ] Extend `Block`/registry for forced block ids and `display_block` output.
-- [ ] Add bare-todo matching.
-- [ ] Verify with the exact `find_todos` state.
+**Tasks:**
 
-### Phase 2 — schema and config foundations
+1. Implement `manifest.ts`:
+   - recursive walk,
+   - ignore list,
+   - symlink skip,
+   - `lstat` metadata.
+2. Implement `sync.ts`:
+   - diff by path,
+   - mtime/size prefilter + SHA-256,
+   - folder hash,
+   - move detection,
+   - soft delete,
+   - metadata/type/embedding refresh.
+3. Implement `detectFileType` shared service.
+4. Add `apps/backend/src/scripts/indexFiles.ts`:
+   - args: `--path`, `--apply`, `--include-unchanged`, `--hash`,
+   - calls `syncFileTree` and prints the report.
+5. Add script:
+   ```json
+   "files:index": "tsx src/scripts/indexFiles.ts"
+   ```
+6. Add a simple `files:scan` test fixture under `files/` (not committed).
 
-- [ ] Add `userDecision` and `awaiting_input` enums; add `pendingChoice`.
-- [ ] Add `forceUserDecideIfNoMatch`, `userDecisionType`, `userDecisionConfig` to `tasks`.
-- [ ] Add `userDecisionOptions` table, relations, indexes, and migration.
-- [ ] Extend backend GraphQL, task service validation, and delete cleanup.
-- [ ] Extend queries/mutations and run codegen.
-- [ ] Extend task form types and task builder with a disabled/placeholder `userDecision` section.
+**Test matrix:**
 
-### Phase 3 — pending choice runtime
+1. Empty root → scan reports no changes.
+2. Add `notes/a.txt` → scan reports `added`, DB row exists.
+3. Edit content, same filename → scan reports `changed`; hash changes.
+4. `touch notes/a.txt` without content change → scan reports `unchanged`; metadata refreshes.
+5. Rename `a.txt` → `b.txt` → scan reports `moved` (not delete+add) and DB path updates.
+6. Move to a subfolder → scan reports `moved`; parent/path update.
+7. Delete a file → scan reports `deleted`; row gets `deletedAt`.
+8. Add an image, audio file, and unknown binary → types are `image`, `audio`, `other`.
+9. Add a folder, move it with children → folder move is detected and descendant paths update.
+10. Run twice in a row → second run reports no changes (idempotent).
 
-- [ ] Add `awaitStep` and the `awaiting_input` status handling.
-- [ ] Add `processUserDecisionStep`.
-- [ ] Add `answerUserDecision` service and mutation.
-- [ ] Include `awaiting_input` in `activeQueuedTasks`.
-- [ ] Verify a waiting run does not block another queued run.
-- [ ] Verify restart persistence and double-answer protection.
+**Done when:**
 
-### Phase 4 — `userDecision` UI
-
-- [ ] Add static/dynamic option editors to the task builder.
-- [ ] Add `UserChoiceBlock` with yes/no, list, and dropdown modes.
-- [ ] Add COT rendering for `awaiting_input`.
-- [ ] Add flow-graph handles/edges for userDecision options.
-- [ ] Verify refresh while waiting shows the choice.
-
-### Phase 5 — force user decide
-
-- [ ] Add the toggle, default on, to decision tasks.
-- [ ] Build pending choices from decision results.
-- [ ] Hide and ignore fallback while on.
-- [ ] Reuse `UserChoiceBlock` for forced decision outputs.
-- [ ] Verify result routing and `appendState` after selection.
-
-### Phase 6 — cleanup and regression
-
-- [ ] Confirm `display_block` does not mutate `toolState`.
-- [ ] Confirm `filter_tool_state`/`if` legacy entry-level conditions still work.
-- [ ] Confirm forced decision tasks with no options fail clearly.
-- [ ] Confirm selected dynamic options are appended to `toolState`.
-- [ ] Run `pnpm check-types`, `pnpm lint`, and `pnpm build`.
-- [ ] Regenerate and verify GraphQL types in both `packages/queries` and `apps/web`.
+- The DB always matches the disk after an `apply` scan.
+- The report is accurate for all five change kinds.
+- The scan is idempotent.
+- Embeddings update on rename/move and new entries.
 
 ---
 
-## 8. Verification scenarios
+### Stage 3 — File tools
 
-1. **Display all todos** from the exact `find_todos` state.
-2. **Display only open todos** with `path: "todos"` and `eq done false`.
-3. **Display a single todo** from `find_todo`.
-4. **UserDecision list** with two dynamic todos; select “Buy gift”; verify toolState append and next task.
-5. **UserDecision yes/no** with editable labels.
-6. **UserDecision dropdown** requiring Accept.
-7. **Non-blocking queue**: run A waits; run B completes while A is waiting.
-8. **COT persistence**: refresh while waiting; the choice block is still visible.
-9. **Double answer**: second answer is rejected.
-10. **Restart**: waiting row survives; answer still resumes the chain.
-11. **Force decision on**: System One recommends one output; user selects another; routing follows the selected result.
-12. **Force decision off**: existing match/fallback behavior is unchanged.
-13. **No fallback edge** is shown for forced tasks.
-14. **No result target** while force is on: clear failure note.
-15. **No dynamic matches**: the choice falls back to static options or fails clearly.
+**Goal:** All file/folder tools are registered and testable from the Tools page, with PathFormField-compatible outputs.
+
+**Tasks:**
+
+1. Implement shared resolver/search/selection services.
+2. Implement and register:
+   - `find_file`, `find_files`
+   - `find_folder`, `find_folders`
+   - `scan_files`
+   - `update_file_metadata`
+   - `detect_file_type`
+   - `read_plaintext_file`, `read_text_file`, `read_image_file`, `read_audio_file`, `read_video_file`, `read_other_file`
+   - `create_folder`, `create_file`
+   - `delete_file_entry` (recommended)
+3. Add `"file"` to `ToolDefinition.category`.
+4. Update `registry.ts`.
+5. Update `packages/ui/src/lib/toolStatePaths.ts` with the static file tool paths listed in Section 7.8.
+6. Add file tools to `PATH_AWARE_TOOLS` where config can reference earlier paths.
+
+**Test via `/tools` page:**
+
+For each tool, use the built-in test form with `state`, `toolConfig`, and a hand-written `toolState` snapshot:
+
+- `scan_files` with `{ "apply": false }` → returns added/changed/etc. without mutating DB.
+- `find_folder` / `find_folders` → vector search, lexical fallback, and explicit `id`/`path`.
+- `find_file` / `find_files` → same, plus foreach output.
+- `update_file_metadata` with `{ "id": 1, "description": "..." }` → DB + embedding update; verify with a second `find_folder`.
+- `detect_file_type` on a `.txt`, `.png`, `.mp3`, `.pdf`, unknown binary.
+- `read_plaintext_file` returns content; `read_text_file` returns content or a clear unsupported error.
+- `read_image_file` returns metadata and a URL/base64 according to config.
+- `create_folder` → physical folder + DB row + vector.
+- `create_file` with content → physical file + DB row + vector.
+- Foreach: `find_folders` and `scan_files` return `foreach` items when `outputType = foreach`.
+
+**Done when:**
+
+- Every tool appears on the Tools page.
+- Every tool can be run with an empty/synthetic toolState.
+- Outputs match the documented DTOs.
+- PathFormField shows the expected paths for each tool in the task builder.
+- Types/lint pass.
 
 ---
 
-## 9. Open decisions
+### Stage 4 — Backend GraphQL API + signed view endpoint
 
-1. **Force semantics** — recommended: always ask when on. Alternative: only ask when no result matches. Confirm before implementing.
-2. **Existing decision tasks** — schema default `true` makes them forced; alternatively backfill existing rows to `false` and keep `true` for new rows. Decide based on whether existing flows should keep auto-routing.
-3. **Dynamic option routing** — recommended: one target per dynamic source, with the selected item appended to `toolState`. Per-item targets cannot be known before runtime.
-4. **Option storage** — recommended: separate `userDecisionOptions` table. Reusing `taskResults` would be less work initially but mixes decision thresholds with presentation options.
-5. **Abandoned choices** — no timeout in this phase; add a cancel/TTL path later if waiting runs accumulate.
+**Goal:** The frontend can list, create, rename/move, delete, read, upload, and preview files through the backend.
+
+**Tasks:**
+
+1. Add GraphQL file schema/service/mutations/queries.
+2. Add `getFileText`, `fileEntries`, `getFileEntry`, `createFileViewToken`, `indexFileTree`.
+3. Add `writeFileText`, `createFileEntry`, `updateFileEntry`, `deleteFileEntry`, `uploadFiles`.
+4. Add the `File` scalar and Yoga multipart limits.
+5. Add the signed view route in `server.ts`.
+6. Add query/mutation documents in `packages/queries/src/files/`.
+7. Run codegen and build.
+
+**Test with `curl` / GraphQL:**
+
+1. Authenticate and get a token.
+2. `createFileEntry(kind: folder, name: "inbox")`.
+3. `createFileEntry(kind: file, name: "note.txt", content: "hello")`.
+4. `fileEntries` returns both.
+5. `updateFileEntry` renames the file; physical file renamed; path updated.
+6. `writeFileText` updates content; `getFileText` returns it.
+7. Upload a PNG and a TXT via a GraphQL multipart request:
+   ```bash
+   curl http://localhost:4000/graphql \
+     -H "Authorization: Bearer $TOKEN" \
+     -F operations='{"query":"mutation($files:[File!]!){uploadFiles(files:$files){id name path}}","variables":{"files":[null,null]}}' \
+     -F map='{"0":["variables.files.0"],"1":["variables.files.1"]}' \
+     -F 0=@photo.png \
+     -F 1=@note.txt
+   ```
+   Both appear in `fileEntries`.
+8. `createFileViewToken` + `GET /files/:id/content?token=...`:
+   - returns correct `Content-Type`,
+   - supports `Range` for a media file.
+9. `deleteFileEntry` deletes a file and a non-empty folder with `recursive: true`.
+10. A request without a token is rejected; a token for a different file ID is rejected.
+
+**Done when:**
+
+- Full CRUD round-trips work over GraphQL.
+- Upload returns file refs and indexes them.
+- View URLs work in a browser tab and in `<img>`/`<audio>`/`<video>`.
+- Codegen output is committed/updated.
+- Types/lint pass.
+
+---
+
+### Stage 5 — Read-only files page
+
+**Goal:** `/files` shows the tree and previews the selected file, with breadcrumb, title, and description accordion.
+
+**Tasks:**
+
+1. Add route, page, nav item.
+2. Add `file-tree.tsx` and `breadcrumb.tsx` UI primitives.
+3. Build the tree from `fileEntries`.
+4. Add preview header:
+   - breadcrumb,
+   - title,
+   - description accordion,
+   - placeholder Edit/Delete buttons (disabled or hidden until Stage 6).
+5. Add preview renderers for:
+   - plaintext/text (read-only `<pre>` or `<textarea readOnly>`),
+   - image,
+   - audio,
+   - video,
+   - other/download.
+6. Add metadata footer.
+7. Add loading/empty/error states.
+
+**Test:**
+
+1. Start backend + web.
+2. Visit `/files`; tree shows folders first, then files.
+3. Select a folder → expands; select a file → preview loads.
+4. Breadcrumb reflects the path; clicking a folder segment selects/expands it.
+5. Select `.txt`, `.png`, `.mp3`, `.mp4`, unknown binary → each renders the correct preview type.
+6. Description accordion opens/closes and shows the DB description.
+7. Delete/rename externally in the terminal; click Refresh; tree updates.
+8. Empty root shows a friendly empty state.
+
+**Done when:**
+
+- The page is usable read-only.
+- No console errors.
+- All preview types render correctly.
+- Types/lint pass.
+
+---
+
+### Stage 6 — Editing, creation, and drag-and-drop
+
+**Goal:** Users can edit metadata/content, create folders/files, delete entries, and upload by drag-and-drop.
+
+**Tasks:**
+
+1. Wire **Edit**:
+   - title + description form,
+   - save via `updateFileEntry`,
+   - success refreshes tree + preview.
+2. Wire **Delete**:
+   - confirmation dialog,
+   - `deleteFileEntry`,
+   - clear selection.
+3. Add plaintext editor:
+   - load via `getFileText`,
+   - save via `writeFileText`,
+   - dirty-state warning,
+   - size guard.
+4. Add **New folder** and **New file** dialogs.
+5. Add upload button and drag/drop onto folders/root using the `uploadFiles` mutation.
+6. Add `file-actions.ts` client wrapper.
+7. Add per-node download action.
+8. Optional: rename/move via drag-and-drop between folders.
+
+**Test:**
+
+1. Edit a file title → physical file renamed, tree and breadcrumb update.
+2. Edit a description → preview updates; run `find_folder`/`find_file` and verify the new text is searchable.
+3. Edit a `.txt` file → save → re-select → content persists.
+4. Create a folder → appears in tree.
+5. Create a plaintext file → appears and opens empty.
+6. Delete a file → disappears; `files/` no longer has it.
+7. Delete a non-empty folder → confirmation explains recursion.
+8. Drag a PNG from the desktop onto a folder → uploads into that folder and previews.
+9. Drag multiple files → all upload.
+10. Refresh after external changes → tree reconciles.
+
+**Done when:**
+
+- All UI actions round-trip to disk + DB.
+- Renames update the physical filename.
+- Deletes remove the physical entry.
+- Uploads are indexed and searchable.
+- Types/lint pass.
+
+---
+
+### Stage 7 — Prompt tool structured output + PathFormField
+
+**Goal:** A prompt can return named fields that downstream tools and file metadata fields can use directly.
+
+**Tasks:**
+
+1. Extend `prompt.ts`:
+   - `fields` schema,
+   - JSON schema generation,
+   - parse/validate response,
+   - `output`/`toolStateAppend` include parsed fields,
+   - `onInvalid` behavior,
+   - preserve current behavior when `fields` is absent.
+2. Update `toolStatePaths.ts`:
+   - parse `toolConfig.fields` for `prompt`,
+   - add paths for every field,
+   - keep `text`.
+3. Update prompt tool documentation/example config.
+4. Add a task-builder hint showing the generated field paths.
+
+**Test:**
+
+1. Run `prompt` with:
+   ```json
+   {
+     "prompt": "Return a folder name and description for a folder of tax documents.",
+     "fields": {
+       "name": { "type": "string" },
+       "description": { "type": "string" }
+     }
+   }
+   ```
+   Verify output and `toolStateAppend` contain `text`, `name`, `description`.
+2. In a task builder, select a later `create_folder` task and confirm `name`/`description` appear in PathFormField.
+3. Drag `name` into the `create_folder` config; run the flow; folder is created with that name.
+4. Prompt without `fields` → output is still exactly `{ text }`.
+5. Invalid model JSON with `onInvalid: "fail"` → clear error; with `"text"` → raw text preserved.
+6. `prompt` → `update_file_metadata` with `description` path works.
+
+**Done when:**
+
+- Prompt outputs are first-class PathFormField values.
+- Backward compatibility is preserved.
+- Types/lint pass.
+
+---
+
+### Stage 8 — Task context, bottom runner, and end-to-end file flows
+
+**Goal:** Dropping files starts a task with those files in `toolState`, and scan/foreach flows work end-to-end.
+
+**Tasks:**
+
+1. Add `fileIds`/`folderIds` to `createQueuedTask` and seed `toolState`.
+2. Update `packages/queries/src/tasks/task-mutations.ts` and codegen.
+3. Add `fileTaskRunner.tsx` to the files page bottom.
+4. Implement drop → upload → create task.
+5. Add “Run started” feedback with a link to `/`.
+6. Add file context hints in the task builder:
+   - explain that `files`/`folders` are available at runtime,
+   - include them in PathFormField suggestions where feasible (or document them in the files page and task builder).
+7. Add a sample flow and test it:
+   - `scan_files` (foreach) → `read_plaintext_file` → `prompt {fields: summary}` → `update_file_metadata`.
+8. Ensure `mergeToolInput` resolves IDs from `entry`, `file`, `files`, `folder`, `folders`.
+9. Add a `scan_files` “Refresh” path for the UI.
+
+**Test:**
+
+1. Create a task that uses `find_files` or `scan_files`.
+2. Drop one `.txt` file onto the bottom bar with that task selected.
+3. Verify:
+   - file uploaded and indexed,
+   - queued task created,
+   - first step’s `toolState` contains `{ files: [...] }`,
+   - task runs (watch `/`).
+4. Create a task with `scan_files` foreach → `read_plaintext_file`; verify each child gets `{ entry }` and can read its file.
+5. Rename a file externally, run `scan_files`, and verify a `moved` entry flows to the next task.
+6. Drop multiple files → each is present in `files`.
+7. Drop with no task selected → uses default task; with no default → inline error.
+8. Verify a task using `create_file` with content from a `prompt` field works.
+
+**Done when:**
+
+- The bottom runner works.
+- `toolState` context is visible in queued task data.
+- Foreach scanning and reading works.
+- The files page and task flow feel connected.
+
+---
+
+### Stage 9 — Hardening and optional enhancements
+
+**Goal:** Make the feature robust and decide which follow-ups to schedule.
+
+**Tasks (required):**
+
+1. Security review:
+   - traversal/symlink checks,
+   - upload limits,
+   - token expiry,
+   - authentication on every endpoint,
+   - no raw path leakage outside `FILES_ROOT`.
+2. Error handling:
+   - deleted/moved files,
+   - unsupported preview types,
+   - Ollama/embedding failure (do not block file operations),
+   - partial upload failures.
+3. Performance:
+   - scan pagination/max entries,
+   - hash-size limits,
+   - avoid re-embedding unchanged entries,
+   - DB indexes.
+4. Documentation:
+   - `README` section on `files/`, `FILES_ROOT`, upload limits, and indexing.
+   - tool docs/examples.
+5. Add `files:index` to the developer workflow (manual or optional startup trigger).
+6. Run the full checks:
+   ```bash
+   pnpm lint
+   pnpm check-types
+   pnpm build
+   ```
+
+**Optional follow-ups:**
+
+- Filesystem watcher (`chokidar`) for live reindex.
+- PDF/DOCX text extraction.
+- OCR/vision model support for `read_image_file` / `read_text_file`.
+- Audio transcription.
+- Folder upload with recursive traversal.
+- File blocks for the task chain-of-thought output.
+- `queuedTaskFiles` join table for run provenance/replay.
+- Trash/restore UI using `deletedAt`.
+- Real-time tree updates via GraphQL subscription.
+- Markdown/HTML rendering in preview.
+- Code editor (Monaco/CodeMirror) instead of a textarea.
+
+**Done when:**
+
+- The feature passes the full repo checks.
+- The security checklist has no open critical items.
+- Documentation is updated.
+
+---
+
+## 13. Testing matrix
+
+| Stage | Primary test | Automated checks |
+| --- | --- | --- |
+| 1 | DB migration + storage smoke script | `pnpm --filter backend check-types`, `pnpm --filter @repo/tools check-types` |
+| 2 | `files:index` against add/change/move/delete fixtures | run twice, compare reports |
+| 3 | Tools page test form for every tool | `pnpm --filter @repo/tools check-types`, `pnpm --filter @repo/ui check-types` |
+| 4 | `curl` GraphQL + upload + view | `pnpm codegen`, `pnpm --filter @repo/queries build` |
+| 5 | Browser tree + preview | `pnpm --filter web check-types` |
+| 6 | Browser edit/create/delete/upload | manual regression pass |
+| 7 | Tools page + task builder path suggestions | `pnpm check-types` |
+| 8 | Drop-to-run + foreach flow | inspect queued task `toolState` |
+| 9 | Full regression + security checklist | `pnpm lint`, `pnpm check-types`, `pnpm build` |
+
+---
+
+## 14. Risks and open questions
+
+1. **File title vs filename:** This plan makes them identical. If independent display titles are desired, add a separate `title` column and keep `name` as the basename.
+2. **Folder uploads:** Recursive browser folder upload via `webkitGetAsEntry` is useful but adds complexity. Recommend file-only drops in the first version, then folder traversal in Stage 9.
+3. **Large files:** Decide the hash limit and upload limit. Recommended defaults: 25 MB upload/file, 100 MB hash/file in `auto` mode.
+4. **PDF/DOCX:** They are classified as `text` but cannot be extracted in the MVP. The UI should say “preview not implemented” rather than silently showing binary data.
+5. **Move detection ambiguity:** Duplicate files with identical content can be matched to the wrong path. Use basename/parent similarity as a tie-breaker; document best-effort behavior.
+6. **Embedding backfill:** If the `files/` tree already contains files, run the backfill script after migration.
+7. **Codegen dependency:** `pnpm codegen` needs the backend running. Add this to the developer workflow.
+8. **Task builder context hints:** Runtime-seeded `files`/`folders` are not produced by an upstream task, so `inferToolStatePaths` cannot infer them. Document them in the task builder or add a synthetic context source when a task is started from the files page.
+
+---
+
+## 15. Suggested commit sequence
+
+1. `feat(db): add file entries schema and migration`
+2. `feat(files): add filesystem paths, storage, hashing, and type detection`
+3. `feat(files): add scan and sync engine with change detection`
+4. `feat(tools): add file and folder tools`
+5. `feat(api): add file GraphQL schema and multipart upload/view route`
+6. `feat(web): add read-only files page`
+7. `feat(web): add file editing, creation, and uploads`
+8. `feat(tools): add structured prompt output fields`
+9. `feat(tasks): seed file context into queued tasks`
+10. `chore(files): hardening, docs, and regression fixes`
