@@ -7,6 +7,7 @@ import {
   createQueuedTask,
   deleteCompletedQueuedTasksBefore,
   deleteQueuedTask,
+  dismissQueuedTask,
 } from "./queued-task-service";
 
 builder.mutationType({
@@ -43,6 +44,19 @@ builder.mutationType({
       resolve: async (_query, _root, { id }, ctx) => {
         requireUserId(ctx);
         return completeQueuedTask(id);
+      },
+    }),
+
+    dismissQueuedTask: t.field({
+      type: [QueuedTask],
+      description:
+        "Dismisses a choice that is waiting for the user and ends its run.",
+      args: {
+        id: t.arg.int({ required: true }),
+      },
+      resolve: async (_root, { id }, ctx) => {
+        const userId = requireUserId(ctx);
+        return dismissQueuedTask(userId, id);
       },
     }),
 
