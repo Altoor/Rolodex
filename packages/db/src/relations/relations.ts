@@ -40,6 +40,7 @@ export const relations = defineRelations(schema, (r) => ({
 
   tasks: {
     taskResults: r.many.taskResults(),
+    userDecisionOptions: r.many.userDecisionOptions(),
     decision: r.one.decisions({
       from: r.tasks.decisionId,
       to: r.decisions.id,
@@ -48,6 +49,19 @@ export const relations = defineRelations(schema, (r) => ({
       from: r.tasks.fallbackTaskId,
       to: r.tasks.id,
       alias: "fallbackTask",
+    }),
+  },
+
+  userDecisionOptions: {
+    task: r.one.tasks({
+      from: r.userDecisionOptions.taskId,
+      to: r.tasks.id,
+    }),
+
+    resultTask: r.one.tasks({
+      from: r.userDecisionOptions.resultTaskId,
+      to: r.tasks.id,
+      alias: "resultTask",
     }),
   },
 

@@ -34,6 +34,10 @@ export function extractBlockTodos(output: unknown): TodoItemData[] {
   if (!isRecord(output)) return [];
 
   const candidates: TodoInput[] = [];
+  // A display_block forced to the todo block can pass a single bare todo.
+  if (typeof output.name === "string") {
+    candidates.push(output as TodoInput);
+  }
   collectTodos(output.todo, candidates);
   collectTodos(output.todos, candidates);
   collectTodos(output.candidates, candidates);
@@ -60,6 +64,17 @@ export function extractBlockTodos(output: unknown): TodoItemData[] {
 
 function hasTodoShape(output: unknown): boolean {
   if (!isRecord(output)) return false;
+
+  if (typeof output.name === "string") {
+    // A bare todo item from display_block. Require a todo-specific field so
+    // unrelated objects that happen to have a name do not match.
+    return (
+      typeof output.done === "boolean" ||
+      "doByDate" in output ||
+      typeof output.createdAt === "string" ||
+      typeof output.archivedAt === "string"
+    );
+  }
 
   if (isRecord(output.todo) && typeof output.todo.name === "string") {
     return true;

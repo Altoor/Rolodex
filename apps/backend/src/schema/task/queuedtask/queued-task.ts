@@ -1,7 +1,7 @@
 import { builder } from "../../builder";
 
 export const QueuedTaskStatus = builder.enumType("QueuedTaskStatus", {
-  values: ["queued", "running", "completed", "failed"],
+  values: ["queued", "running", "awaiting_input", "completed", "failed"],
 });
 
 export const QueuedTask = builder.drizzleObject("queuedTasks", {
@@ -25,6 +25,11 @@ export const QueuedTask = builder.drizzleObject("queuedTasks", {
       type: "JSON",
       nullable: true,
       resolve: (parent) => parent.result ?? null,
+    }),
+    pendingChoice: t.field({
+      type: "JSON",
+      nullable: true,
+      resolve: (parent) => parent.pendingChoice ?? null,
     }),
     queued_at: t.field({
       type: "DateTime",

@@ -21,6 +21,7 @@ import {
 } from "@repo/queries/tasks/task-mutations";
 import { GET_DECISION } from "@repo/queries/decisions/decision-queries";
 import type { DecisionType } from "@repo/queries/__generated__/graphql";
+import { inferToolStatePaths } from "#lib/toolStatePaths";
 import { useLoadedEntity } from "#hooks/useLoadedEntity";
 import { useSaveEntity } from "#hooks/useSaveEntity";
 import TaskCard from "../taskCard/taskCard";
@@ -36,6 +37,7 @@ import {
   toModelNames,
 } from "./task-builder-service";
 import TaskDecisionSection from "./components/taskDecisionSection";
+import UserDecisionSection from "./components/userDecisionSection";
 
 interface TaskBuilderProps {
   selectedTaskId: number | undefined;
@@ -70,6 +72,10 @@ const TaskBuilder = ({ selectedTaskId }: TaskBuilderProps) => {
     [tasksData],
   );
   const models = useMemo(() => toModelNames(modelsData?.models), [modelsData]);
+  const pathSuggestions = useMemo(
+    () => inferToolStatePaths(tasksData?.tasks, taskId),
+    [tasksData, taskId],
+  );
 
   const [getTask, { error: loadError }] = useLazyQuery(GET_TASK);
   const [getDecision] = useLazyQuery(GET_DECISION);
@@ -222,12 +228,20 @@ const TaskBuilder = ({ selectedTaskId }: TaskBuilderProps) => {
           onAddResult={addTaskResult}
           onSaveResult={saveTaskResult}
           onDeleteResult={deleteTaskResultAt}
+          pathSuggestions={pathSuggestions}
         />
         <TaskDecisionSection
           type={type}
           selectedDecisionId={selectedDecisionId}
           onSelectDecision={setSelectedDecisionId}
         />
+        {type === "userDecision" ? (
+          <UserDecisionSection
+            taskId={taskId}
+            tasks={branchTasks}
+            pathSuggestions={pathSuggestions}
+          />
+        ) : null}
       </div>
     </FormProvider>
   );

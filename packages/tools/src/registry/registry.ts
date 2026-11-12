@@ -13,6 +13,7 @@ import { filterToolStateTool } from "../tools/toolState/filterToolState";
 import { appendStateTool } from "../tools/toolState/appendState";
 import { setStateTool } from "../tools/toolState/setState";
 import { ifTool } from "../tools/if/ifTool";
+import { displayBlockTool } from "../tools/display/displayBlock";
 
 export const tools: Tool[] = [
   promptTool,
@@ -29,6 +30,7 @@ export const tools: Tool[] = [
   appendStateTool,
   setStateTool,
   ifTool,
+  displayBlockTool,
 ];
 
 const toolsByKey = new Map<string, Tool>(

@@ -54,6 +54,17 @@ export const todos = pgTable(
 
 export const decisionType = pgEnum("decisionType", ["choice", "noul", "score"]);
 
+export const userDecisionType = pgEnum("userDecisionType", [
+  "yesNo",
+  "list",
+  "dropdown",
+]);
+
+export const userDecisionOptionKind = pgEnum("userDecisionOptionKind", [
+  "static",
+  "dynamic",
+]);
+
 export const decisions = pgTable("decisions", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   name: text("name").notNull(),
@@ -63,6 +74,23 @@ export const decisions = pgTable("decisions", {
   options: text("options").array(),
   optionDescriptions: text("optionDescriptions").array(),
   authorId: integer("authorId").notNull(),
+});
+
+export const userDecisionOptions = pgTable("userDecisionOptions", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  taskId: integer("taskId").notNull(),
+  kind: userDecisionOptionKind("kind").default("static").notNull(),
+  label: text("label"),
+  description: text("description"),
+  value: text("value"),
+  // Dynamic source config: { mode, path, where }.
+  selector: json("selector"),
+  labelPath: text("labelPath"),
+  descriptionPath: text("descriptionPath"),
+  valuePath: text("valuePath"),
+  resultTaskId: integer("resultTaskId"),
+  appendState: boolean("appendState").default(false).notNull(),
+  sortOrder: integer("sortOrder").default(0).notNull(),
 });
 
 export const taskResults = pgTable("taskResults", {
@@ -77,7 +105,12 @@ export const taskResults = pgTable("taskResults", {
   appendState: boolean("appendState").default(false).notNull(),
 });
 
-export const TaskType = pgEnum("TaskType", ["decision", "textPrompt", "tool"]);
+export const TaskType = pgEnum("TaskType", [
+  "decision",
+  "textPrompt",
+  "tool",
+  "userDecision",
+]);
 
 export const toolOutputTypeEnum = pgEnum("ToolOutputType", [
   "normal",
@@ -102,11 +135,21 @@ export const tasks = pgTable("tasks", {
   model: text("model"),
   // System One decision model used by decision tasks and todo selection.
   decisionModel: text("decisionModel"),
+  // Decision tasks ask the user to choose when the model finds no match.
+  forceUserDecideIfNoMatch: boolean("forceUserDecideIfNoMatch")
+    .default(true)
+    .notNull(),
+  // Presentation settings for userDecision tasks.
+  userDecisionType: userDecisionType("userDecisionType")
+    .default("list")
+    .notNull(),
+  userDecisionConfig: json("userDecisionConfig"),
 });
 
 export const queuedTaskStatus = pgEnum("queuedTaskStatus", [
   "queued",
   "running",
+  "awaiting_input",
   "completed",
   "failed",
 ]);
@@ -131,6 +174,8 @@ export const queuedTasks = pgTable("queuedTasks", {
     .notNull(),
   // The step's SystemOne answer, chosen branch and any note.
   result: json("result"),
+  // Immutable snapshot of a choice that is waiting for the user.
+  pendingChoice: json("pendingChoice"),
   queued_at: timestamp("queued_at", { withTimezone: true })
     .defaultNow()
     .notNull(),

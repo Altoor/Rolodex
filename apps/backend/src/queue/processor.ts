@@ -1,6 +1,7 @@
 import { db } from "@repo/db";
 import { processDecisionStep } from "./processors/decision-step";
 import { processToolStep } from "./processors/tool-step";
+import { processUserDecisionStep } from "./processors/user-decision-step";
 import {
   claimStep,
   findNextQueuedStep,
@@ -61,6 +62,19 @@ async function processStep(row: QueuedRow): Promise<void> {
 
   if (task.type === "tool") {
     await processToolStep(row, task);
+    return;
+  }
+
+  if (task.type === "userDecision") {
+    try {
+      await processUserDecisionStep(row, task);
+    } catch (err) {
+      await finishStep(row.id, "failed", {
+        note: `user decision error: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      });
+    }
     return;
   }
 

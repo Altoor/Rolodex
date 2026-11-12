@@ -1,7 +1,10 @@
 "use client";
 
 import { useMutation, useQuery, useSubscription } from "@apollo/client/react";
-import { CREATE_QUEUED_TASK } from "@repo/queries/tasks/task-mutations";
+import {
+  ANSWER_USER_DECISION,
+  CREATE_QUEUED_TASK,
+} from "@repo/queries/tasks/task-mutations";
 import { QUEUED_TASK_EVENT } from "@repo/queries/tasks/task-subscriptions";
 import { ACTIVE_QUEUED_TASKS, TASKS } from "@repo/queries/tasks/task-queries";
 import { useAuth } from "../components/auth/auth-provider";
@@ -43,6 +46,9 @@ import {
 import { Spinner } from "#components/ui/spinner";
 import { Textarea } from "#components/ui/textarea";
 import { Separator } from "#components/ui/separator";
+import UserChoiceBlock, {
+  type PendingChoice,
+} from "#components/userDecision/userChoiceBlock";
 
 type Inputs = {
   taskId: string;
@@ -51,7 +57,14 @@ type Inputs = {
 
 /** The executor stores this on each step's `result` column. */
 interface StepResult {
-  branch?: "result" | "fallback" | "tool" | "none" | "true" | "false";
+  branch?:
+    | "result"
+    | "fallback"
+    | "tool"
+    | "none"
+    | "true"
+    | "false"
+    | "awaiting_user";
   nextTaskId?: number | null;
   summary?: string;
   note?: string;
@@ -65,9 +78,10 @@ interface StepResult {
 interface QueuedTaskStep {
   id: number;
   taskId: number | null;
-  status: "queued" | "running" | "completed" | "failed";
+  status: "queued" | "running" | "awaiting_input" | "completed" | "failed";
   runId: string;
   result: StepResult | null;
+  pendingChoice: PendingChoice | null;
   model: string | null;
   decisionModel: string | null;
   state: string | null;
@@ -77,9 +91,11 @@ interface QueuedTaskStep {
 interface QueuedTaskRow {
   id: number | null;
   taskId: number | null;
-  status: "queued" | "running" | "completed" | "failed" | null;
+  status:
+    "queued" | "running" | "awaiting_input" | "completed" | "failed" | null;
   runId: string | null;
   result: unknown;
+  pendingChoice?: unknown;
   model: string | null;
   decisionModel: string | null;
   state: string | null;
@@ -95,6 +111,7 @@ function toStep(row: QueuedTaskRow): QueuedTaskStep | null {
     status: row.status ?? "queued",
     runId: row.runId,
     result: (row.result as StepResult | null) ?? null,
+    pendingChoice: (row.pendingChoice as PendingChoice | null) ?? null,
     model: row.model ?? null,
     decisionModel: row.decisionModel ?? null,
     task: row.task ?? null,
@@ -124,6 +141,9 @@ export default function LandingPage() {
   const tasks = useMemo(() => tasksData?.tasks ?? [], [tasksData]);
 
   const [createQueuedTask] = useMutation(CREATE_QUEUED_TASK);
+  const [answerUserDecision, { error: answerError }] =
+    useMutation(ANSWER_USER_DECISION);
+  const [answeringStepId, setAnsweringStepId] = useState<number | null>(null);
 
   // Live steps for every run the current user has in flight. Completed steps of
   // an active run stay here so each chain-of-thought keeps its history.
@@ -140,6 +160,21 @@ export default function LandingPage() {
       // Never mix steps from a previous session/user.
       steps: upsertStep(prev.userId === userId ? prev.steps : [], step),
     }));
+  };
+
+  const submitChoice = async (stepId: number, optionId: string) => {
+    setAnsweringStepId(stepId);
+    try {
+      const { data } = await answerUserDecision({
+        variables: { queuedTaskId: stepId, optionId },
+      });
+      const step = data?.answerUserDecision
+        ? toStep(data.answerUserDecision)
+        : null;
+      if (step) addLiveStep(step);
+    } finally {
+      setAnsweringStepId(null);
+    }
   };
 
   // Active runs may already exist when the page loads (another tab, a refresh,
@@ -261,7 +296,13 @@ export default function LandingPage() {
           steps: ordered,
           startTaskId: ordered[0]?.taskId ?? null,
           pending: ordered.some(
-            (step) => step.status === "queued" || step.status === "running",
+            (step) =>
+              step.status === "queued" ||
+              step.status === "running" ||
+              step.status === "awaiting_input",
+          ),
+          awaitingInput: ordered.some(
+            (step) => step.status === "awaiting_input",
           ),
           failed: ordered.some((step) => step.status === "failed"),
         };
@@ -386,17 +427,22 @@ export default function LandingPage() {
                       title={
                         run.failed
                           ? `Run failed${startName ? ` — ${startName}` : ""}`
-                          : run.pending
-                            ? `Working${startName ? ` on ${startName}` : ""}`
-                            : `Finished in ${run.steps.length} step${
-                                run.steps.length === 1 ? "" : "s"
-                              }${startName ? ` — ${startName}` : ""}`
+                          : run.awaitingInput
+                            ? `Waiting for your choice${
+                                startName ? ` — ${startName}` : ""
+                              }`
+                            : run.pending
+                              ? `Working${startName ? ` on ${startName}` : ""}`
+                              : `Finished in ${run.steps.length} step${
+                                  run.steps.length === 1 ? "" : "s"
+                                }${startName ? ` — ${startName}` : ""}`
                       }
                     />
                     <ChainOfThoughtContent>
                       {run.steps.map((step) => {
                         const status: StepStatus =
-                          step.status === "running"
+                          step.status === "running" ||
+                          step.status === "awaiting_input"
                             ? "active"
                             : step.status === "queued"
                               ? "pending"
@@ -427,7 +473,9 @@ export default function LandingPage() {
                                       ? step.result.nextTaskId != null
                                         ? `next: ${taskName(step.result.nextTaskId)}`
                                         : "tool result"
-                                      : undefined;
+                                      : step.result?.branch === "awaiting_user"
+                                        ? "waiting for your choice"
+                                        : undefined;
 
                         const detail =
                           [
@@ -475,6 +523,20 @@ export default function LandingPage() {
                                 className="ml-6 mt-1"
                                 toolKey={step.result.toolKey}
                                 output={step.result.output}
+                              />
+                            ) : null}
+                            {step.pendingChoice ? (
+                              <UserChoiceBlock
+                                choice={step.pendingChoice}
+                                answering={answeringStepId === step.id}
+                                error={
+                                  answeringStepId === step.id
+                                    ? (answerError?.message ?? null)
+                                    : null
+                                }
+                                onAnswer={(optionId) =>
+                                  submitChoice(step.id, optionId)
+                                }
                               />
                             ) : null}
                           </div>

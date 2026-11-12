@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { db, queuedTasks } from "@repo/db";
 import { publishQueuedTaskEvent } from "./pubsub";
 import type { QueuedRow } from "./types";
@@ -39,6 +39,27 @@ export async function claimStep(
     .returning();
   if (running) publish(running, `running task "${taskName}"`);
   return running;
+}
+
+/** Parks a running step until the user answers its pending choice. */
+export async function awaitStep(
+  id: number,
+  pendingChoice: unknown,
+  result: unknown,
+  message = "waiting for user input",
+): Promise<QueuedRow | undefined> {
+  const [waiting] = await db
+    .update(queuedTasks)
+    .set({
+      status: "awaiting_input",
+      pendingChoice,
+      result,
+    })
+    .where(and(eq(queuedTasks.id, id), eq(queuedTasks.status, "running")))
+    .returning();
+
+  if (waiting) publish(waiting, message);
+  return waiting;
 }
 
 export async function finishStep(

@@ -3,22 +3,23 @@ import {
   FALLBACK_HANDLE_ID,
   FALSE_HANDLE_ID,
   TRUE_HANDLE_ID,
+  USER_DECISION_HANDLE_PREFIX,
 } from "../taskFlowTypes";
 
-export type TaskLinkField =
-  | "fallbackTaskId"
-  | "onTrueTaskId"
-  | "onFalseTaskId";
+export type TaskLinkField = "fallbackTaskId" | "onTrueTaskId" | "onFalseTaskId";
 
 export type SourceHandle =
   | { kind: "taskField"; field: TaskLinkField }
   | { kind: "taskResult"; resultId: number }
+  | { kind: "userDecisionOption"; optionId: number }
   | null;
 
 /** Maps a source handle id to the relationship it represents. */
 export function parseSourceHandle(
   sourceHandle: string | null | undefined,
 ): SourceHandle {
+  if (sourceHandle == null || sourceHandle === "") return null;
+
   if (sourceHandle === FALLBACK_HANDLE_ID) {
     return { kind: "taskField", field: "fallbackTaskId" };
   }
@@ -27,6 +28,15 @@ export function parseSourceHandle(
   }
   if (sourceHandle === FALSE_HANDLE_ID) {
     return { kind: "taskField", field: "onFalseTaskId" };
+  }
+
+  if (sourceHandle?.startsWith(USER_DECISION_HANDLE_PREFIX)) {
+    const optionId = Number(
+      sourceHandle.slice(USER_DECISION_HANDLE_PREFIX.length),
+    );
+    return Number.isFinite(optionId)
+      ? { kind: "userDecisionOption", optionId }
+      : null;
   }
 
   const resultId = Number(sourceHandle);
@@ -38,6 +48,7 @@ export function parseSourceHandle(
 export type ParsedEdge =
   | { kind: "taskField"; taskId: number; field: TaskLinkField }
   | { kind: "taskResult"; resultId: number }
+  | { kind: "userDecisionOption"; optionId: number }
   | null;
 
 /** Maps an edge id back to the relationship it represents. */
@@ -46,6 +57,13 @@ export function parseEdgeId(edgeId: string): ParsedEdge {
     const taskId = Number(edgeId.slice("e-fallback-".length));
     return Number.isFinite(taskId)
       ? { kind: "taskField", taskId, field: "fallbackTaskId" }
+      : null;
+  }
+
+  if (edgeId.startsWith("e-udo-")) {
+    const optionId = Number(edgeId.slice("e-udo-".length));
+    return Number.isFinite(optionId)
+      ? { kind: "userDecisionOption", optionId }
       : null;
   }
 

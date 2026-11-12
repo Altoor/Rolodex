@@ -1,15 +1,7 @@
 import { ToolInputError, type Tool, type ToolDefinition } from "../../model";
-import {
-  mergeToolInput,
-  readNumberArray,
-  readPath,
-  readString,
-  replacePath,
-} from "../../utils";
-import {
-  evaluateExpression,
-  validateWhereExpression,
-} from "../../conditions/where";
+import { mergeToolInput, readNumberArray, readString } from "../../utils";
+import { validateWhereExpression } from "../../conditions/where";
+import { selectToolState } from "./services/selectToolState";
 
 function readMode(value: unknown): "whitelist" | "blacklist" {
   if (value === undefined || value === null) return "blacklist";
@@ -90,30 +82,23 @@ export const filterToolStateTool: Tool = {
       }
 
       const expression = validateWhereExpression(value);
-      let kept = 0;
-      let removed = 0;
-
-      const filtered = context.toolState.flatMap((entry) => {
-        const items = readPath(entry, itemPath);
-        if (!Array.isArray(items)) return [];
-
-        const matches = items.filter((item) => {
-          const matched = evaluateExpression(item, expression);
-          return mode === "whitelist" ? matched : !matched;
-        });
-
-        kept += matches.length;
-        removed += items.length - matches.length;
-
-        return matches.length === 0
-          ? []
-          : [replacePath(entry, itemPath, matches)];
+      const selection = selectToolState(context.toolState, {
+        path: itemPath,
+        where: expression,
+        mode,
       });
 
       return {
-        output: { kept, removed, scope: "items", toolState: filtered },
-        summary: `Kept ${kept} of ${kept + removed} items at "${itemPath}"`,
-        toolState: filtered,
+        output: {
+          kept: selection.kept,
+          removed: selection.removed,
+          scope: selection.scope,
+          toolState: selection.entries,
+        },
+        summary: `Kept ${selection.kept} of ${
+          selection.kept + selection.removed
+        } items at "${itemPath}"`,
+        toolState: selection.entries,
         appendOutput: false,
       };
     }
@@ -122,11 +107,10 @@ export const filterToolStateTool: Tool = {
 
     if (value !== undefined) {
       const expression = validateWhereExpression(value);
-
-      filtered = context.toolState.filter((entry) => {
-        const matched = evaluateExpression(entry, expression);
-        return mode === "whitelist" ? matched : !matched;
-      });
+      filtered = selectToolState(context.toolState, {
+        where: expression,
+        mode,
+      }).entries;
     } else {
       const fieldInput = readString(input, "field") ?? "index";
       if (fieldInput !== "index") {

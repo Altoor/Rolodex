@@ -14,6 +14,9 @@ export const TASKS = gql(/* GraphQL */ `
       onFalseTaskId
       model
       decisionModel
+      forceUserDecideIfNoMatch
+      userDecisionType
+      userDecisionConfig
       tool {
         key
         name
@@ -30,6 +33,22 @@ export const TASKS = gql(/* GraphQL */ `
         scoreThreshold
         type
         taskId
+        appendState
+      }
+      userDecisionOptions {
+        id
+        taskId
+        kind
+        label
+        description
+        value
+        selector
+        labelPath
+        descriptionPath
+        valuePath
+        resultTaskId
+        appendState
+        sortOrder
       }
       decision {
         id
@@ -54,6 +73,9 @@ export const GET_TASK = gql(/* GraphQL */ `
       onFalseTaskId
       model
       decisionModel
+      forceUserDecideIfNoMatch
+      userDecisionType
+      userDecisionConfig
       tool {
         key
         name
@@ -70,6 +92,22 @@ export const GET_TASK = gql(/* GraphQL */ `
         id
         option
         probabilityThreshold
+        appendState
+      }
+      userDecisionOptions {
+        id
+        taskId
+        kind
+        label
+        description
+        value
+        selector
+        labelPath
+        descriptionPath
+        valuePath
+        resultTaskId
+        appendState
+        sortOrder
       }
       decision {
         id
@@ -94,6 +132,7 @@ export const QUEUED_TASK = gql(/* GraphQL */ `
       queued_by
       queued_at
       result
+      pendingChoice
       model
       decisionModel
       task {
@@ -120,6 +159,7 @@ export const ACTIVE_QUEUED_TASKS = gql(/* GraphQL */ `
       queued_by
       queued_at
       result
+      pendingChoice
       model
       decisionModel
       task {

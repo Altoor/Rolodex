@@ -41,6 +41,12 @@ export function buildNodes({
       onTrueTaskId: task.onTrueTaskId ?? null,
       onFalseTaskId: task.onFalseTaskId ?? null,
       taskResults: (task.taskResults ?? []).filter((result) => result != null),
+      forceUserDecideIfNoMatch: task.forceUserDecideIfNoMatch ?? true,
+      userDecisionType: task.userDecisionType ?? null,
+      userDecisionConfig: task.userDecisionConfig ?? null,
+      userDecisionOptions: (task.userDecisionOptions ?? []).filter(
+        (option) => option != null,
+      ),
       onTaskDelete,
     },
   }));

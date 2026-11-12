@@ -3,6 +3,7 @@ import {
   FALLBACK_HANDLE_ID,
   FALSE_HANDLE_ID,
   TRUE_HANDLE_ID,
+  USER_DECISION_HANDLE_PREFIX,
   type FlowTask,
 } from "../taskFlowTypes";
 
@@ -46,9 +47,28 @@ export function buildEdges(tasks: FlowTask[]): Edge[] {
       );
     }
 
+    if (task.type === "userDecision") {
+      for (const option of task.userDecisionOptions ?? []) {
+        if (option?.id == null || option.resultTaskId == null) continue;
+        const target = String(option.resultTaskId);
+        if (!taskIds.has(target)) continue;
+        result.push(
+          outputEdge(
+            `e-udo-${option.id}`,
+            String(task.id),
+            `${USER_DECISION_HANDLE_PREFIX}${option.id}`,
+            target,
+          ),
+        );
+      }
+    }
+
     if (
       task.fallbackTaskId != null &&
       task.fallbackTaskId !== task.id &&
+      task.type !== "userDecision" &&
+      task.toolKey !== "if" &&
+      !(task.type === "decision" && task.forceUserDecideIfNoMatch) &&
       taskIds.has(String(task.fallbackTaskId))
     ) {
       result.push(

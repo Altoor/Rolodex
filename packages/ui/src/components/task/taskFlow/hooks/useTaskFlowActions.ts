@@ -6,12 +6,17 @@ import {
   DELETE_TASK,
   UPDATE_TASK,
   UPDATE_TASKRESULT,
+  UPDATE_USER_DECISION_OPTION,
 } from "@repo/queries/tasks/task-mutations";
 import { TASKS } from "@repo/queries/tasks/task-queries";
 import { TaskType } from "@repo/queries/__generated__/graphql";
 import type { FlowTask, TaskFlowNode } from "../taskFlowTypes";
 import { setResultTaskIdInCache, setTaskFieldInCache } from "../services/cache";
-import { parseEdgeId, parseSourceHandle } from "../services/connection";
+import {
+  parseEdgeId,
+  parseSourceHandle,
+  type SourceHandle,
+} from "../services/connection";
 
 interface UseTaskFlowActionsArgs {
   tasks: FlowTask[];
@@ -31,6 +36,9 @@ export function useTaskFlowActions({
   const [updateTaskResult] = useMutation(UPDATE_TASKRESULT, {
     refetchQueries: [TASKS],
   });
+  const [updateUserDecisionOption] = useMutation(UPDATE_USER_DECISION_OPTION, {
+    refetchQueries: [TASKS],
+  });
 
   // Deleting a node deletes the underlying task (and, on the backend, all of
   // that task's TaskResults).
@@ -48,8 +56,8 @@ export function useTaskFlowActions({
     [deleteTask],
   );
 
-  // Connecting an output to another task's input updates the relationship.
-  const onConnect = useCallback(
+  // Reusable because both a fresh connection and a rewired edge need it.
+  const applyConnection = useCallback(
     (connection: Connection) => {
       const targetTaskId = Number(connection.target);
       if (!Number.isFinite(targetTaskId)) return;
@@ -74,6 +82,17 @@ export function useTaskFlowActions({
         return;
       }
 
+      if (sourceHandle.kind === "userDecisionOption") {
+        void updateUserDecisionOption({
+          variables: {
+            id: sourceHandle.optionId,
+            resultTaskId: targetTaskId,
+          },
+          refetchQueries: [TASKS],
+        });
+        return;
+      }
+
       void updateTaskResult({
         variables: {
           id: sourceHandle.resultId,
@@ -83,7 +102,75 @@ export function useTaskFlowActions({
           setResultTaskIdInCache(cache, sourceHandle.resultId, targetTaskId),
       });
     },
-    [updateTask, updateTaskResult],
+    [updateTask, updateTaskResult, updateUserDecisionOption],
+  );
+
+  // Connecting an output to another task's input updates the relationship.
+  const onConnect = applyConnection;
+
+  // Clears one output relationship, used when a reconnect moves the source end.
+  const clearSourceLink = useCallback(
+    (sourceTaskId: number, sourceHandle: SourceHandle) => {
+      if (!sourceHandle) return;
+
+      if (sourceHandle.kind === "taskField") {
+        if (!Number.isFinite(sourceTaskId)) return;
+        void updateTask({
+          variables: { id: sourceTaskId, [sourceHandle.field]: null },
+          update: (cache) =>
+            setTaskFieldInCache(cache, sourceTaskId, sourceHandle.field, null),
+        });
+        return;
+      }
+
+      if (sourceHandle.kind === "userDecisionOption") {
+        void updateUserDecisionOption({
+          variables: { id: sourceHandle.optionId, resultTaskId: null },
+          refetchQueries: [TASKS],
+        });
+        return;
+      }
+
+      void updateTaskResult({
+        variables: { id: sourceHandle.resultId, resultTaskId: null },
+        update: (cache) =>
+          setResultTaskIdInCache(cache, sourceHandle.resultId, null),
+      });
+    },
+    [updateTask, updateTaskResult, updateUserDecisionOption],
+  );
+
+  // Dragging an existing edge's endpoint rewires it instead of doing nothing.
+  const onReconnect = useCallback(
+    (oldEdge: Edge, connection: Connection) => {
+      const oldSourceTaskId = Number(oldEdge.source);
+      const oldSourceHandle = parseSourceHandle(oldEdge.sourceHandle);
+      const newSourceHandle = parseSourceHandle(connection.sourceHandle);
+
+      applyConnection(connection);
+
+      if (!oldSourceHandle) return;
+
+      // If only the target moved, applying the new connection overwrites the
+      // same field. If the source moved, the old relationship must be cleared.
+      const sameRelationship =
+        oldSourceHandle.kind === newSourceHandle?.kind &&
+        ((oldSourceHandle.kind === "taskField" &&
+          newSourceHandle?.kind === "taskField" &&
+          oldSourceHandle.field === newSourceHandle.field &&
+          oldSourceTaskId === Number(connection.source)) ||
+          (oldSourceHandle.kind === "taskResult" &&
+            newSourceHandle?.kind === "taskResult" &&
+            oldSourceHandle.resultId === newSourceHandle.resultId) ||
+          (oldSourceHandle.kind === "userDecisionOption" &&
+            newSourceHandle?.kind === "userDecisionOption" &&
+            oldSourceHandle.optionId === newSourceHandle.optionId));
+
+      if (!sameRelationship) {
+        clearSourceLink(oldSourceTaskId, oldSourceHandle);
+      }
+    },
+    [applyConnection, clearSourceLink],
   );
 
   // Deleting an edge clears the matching relationship.
@@ -102,6 +189,14 @@ export function useTaskFlowActions({
           continue;
         }
 
+        if (parsed.kind === "userDecisionOption") {
+          void updateUserDecisionOption({
+            variables: { id: parsed.optionId, resultTaskId: null },
+            refetchQueries: [TASKS],
+          });
+          continue;
+        }
+
         void updateTaskResult({
           variables: { id: parsed.resultId, resultTaskId: null },
           update: (cache) =>
@@ -109,7 +204,7 @@ export function useTaskFlowActions({
         });
       }
     },
-    [updateTask, updateTaskResult],
+    [updateTask, updateTaskResult, updateUserDecisionOption],
   );
 
   // Keyboard delete (Delete/Backspace on a selected node) also removes the
@@ -148,6 +243,9 @@ export function useTaskFlowActions({
           name: `New Task ${tasks.length + 1}`,
           type: "decision" as TaskType,
           fallbackTaskId: targetTaskId,
+          // This placeholder continues through its fallback edge until it has
+          // results; a no-match user choice would ignore that edge.
+          forceUserDecideIfNoMatch: false,
         },
       });
       const newTaskId = data?.createTask?.id;
@@ -163,6 +261,10 @@ export function useTaskFlowActions({
         if (sourceHandle.kind === "taskField") {
           await updateTask({
             variables: { id: sourceTaskId, [sourceHandle.field]: newTaskId },
+          });
+        } else if (sourceHandle.kind === "userDecisionOption") {
+          await updateUserDecisionOption({
+            variables: { id: sourceHandle.optionId, resultTaskId: newTaskId },
           });
         } else {
           await updateTaskResult({
@@ -184,6 +286,7 @@ export function useTaskFlowActions({
       tasks.length,
       updateTask,
       updateTaskResult,
+      updateUserDecisionOption,
     ],
   );
 
@@ -211,6 +314,7 @@ export function useTaskFlowActions({
     insertTaskOnEdge,
     addTaskAtPosition,
     onConnect,
+    onReconnect,
     onEdgesDelete,
     onDelete,
   };
