@@ -11,12 +11,13 @@ import {
 import { TASKS } from "@repo/queries/tasks/task-queries";
 import { TaskType } from "@repo/queries/__generated__/graphql";
 import type { FlowTask, TaskFlowNode } from "../taskFlowTypes";
-import { setResultTaskIdInCache, setTaskFieldInCache } from "../services/cache";
+import { setResultTaskIdInCache, setTaskFieldInCache, setTaskToolConfigInCache } from "../services/cache";
 import {
   parseEdgeId,
   parseSourceHandle,
   type SourceHandle,
 } from "../services/connection";
+import { setSwitchTarget } from "../services/switch-config";
 
 interface UseTaskFlowActionsArgs {
   tasks: FlowTask[];
@@ -57,6 +58,22 @@ export function useTaskFlowActions({
   );
 
   // Reusable because both a fresh connection and a rewired edge need it.
+  const updateSwitchTarget = useCallback(
+    (taskId: number, caseId: string | null, targetTaskId: number | null) => {
+      const task = tasks.find((candidate) => candidate.id === taskId);
+      if (!task) return;
+
+      const toolConfig = setSwitchTarget(task.toolConfig, caseId, targetTaskId);
+      void updateTask({
+        variables: { id: taskId, toolConfig },
+        update: (cache) =>
+          setTaskToolConfigInCache(cache, taskId, toolConfig),
+      });
+    },
+    [tasks, updateTask],
+  );
+
+  // Reusable because both a fresh connection and a rewired edge need it.
   const applyConnection = useCallback(
     (connection: Connection) => {
       const targetTaskId = Number(connection.target);
@@ -64,6 +81,13 @@ export function useTaskFlowActions({
 
       const sourceHandle = parseSourceHandle(connection.sourceHandle);
       if (!sourceHandle) return;
+
+      if (sourceHandle.kind === "switchTarget") {
+        const taskId = Number(connection.source);
+        if (!Number.isFinite(taskId)) return;
+        updateSwitchTarget(taskId, sourceHandle.caseId, targetTaskId);
+        return;
+      }
 
       if (sourceHandle.kind === "taskField") {
         const taskId = Number(connection.source);
@@ -102,7 +126,7 @@ export function useTaskFlowActions({
           setResultTaskIdInCache(cache, sourceHandle.resultId, targetTaskId),
       });
     },
-    [updateTask, updateTaskResult, updateUserDecisionOption],
+    [updateTask, updateTaskResult, updateUserDecisionOption, updateSwitchTarget],
   );
 
   // Connecting an output to another task's input updates the relationship.
@@ -112,6 +136,12 @@ export function useTaskFlowActions({
   const clearSourceLink = useCallback(
     (sourceTaskId: number, sourceHandle: SourceHandle) => {
       if (!sourceHandle) return;
+
+      if (sourceHandle.kind === "switchTarget") {
+        if (!Number.isFinite(sourceTaskId)) return;
+        updateSwitchTarget(sourceTaskId, sourceHandle.caseId, null);
+        return;
+      }
 
       if (sourceHandle.kind === "taskField") {
         if (!Number.isFinite(sourceTaskId)) return;
@@ -137,7 +167,7 @@ export function useTaskFlowActions({
           setResultTaskIdInCache(cache, sourceHandle.resultId, null),
       });
     },
-    [updateTask, updateTaskResult, updateUserDecisionOption],
+    [updateTask, updateTaskResult, updateUserDecisionOption, updateSwitchTarget],
   );
 
   // Dragging an existing edge's endpoint rewires it instead of doing nothing.
@@ -162,6 +192,10 @@ export function useTaskFlowActions({
           (oldSourceHandle.kind === "taskResult" &&
             newSourceHandle?.kind === "taskResult" &&
             oldSourceHandle.resultId === newSourceHandle.resultId) ||
+          (oldSourceHandle.kind === "switchTarget" &&
+            newSourceHandle?.kind === "switchTarget" &&
+            oldSourceHandle.caseId === newSourceHandle.caseId &&
+            oldSourceTaskId === Number(connection.source)) ||
           (oldSourceHandle.kind === "userDecisionOption" &&
             newSourceHandle?.kind === "userDecisionOption" &&
             oldSourceHandle.optionId === newSourceHandle.optionId));
@@ -179,6 +213,11 @@ export function useTaskFlowActions({
       for (const edge of edges) {
         const parsed = parseEdgeId(edge.id);
         if (!parsed) continue;
+
+        if (parsed.kind === "switchTarget") {
+          updateSwitchTarget(parsed.taskId, parsed.caseId, null);
+          continue;
+        }
 
         if (parsed.kind === "taskField") {
           void updateTask({
@@ -204,7 +243,7 @@ export function useTaskFlowActions({
         });
       }
     },
-    [updateTask, updateTaskResult, updateUserDecisionOption],
+    [updateTask, updateTaskResult, updateUserDecisionOption, updateSwitchTarget],
   );
 
   // Keyboard delete (Delete/Backspace on a selected node) also removes the
@@ -258,7 +297,18 @@ export function useTaskFlowActions({
           return;
         }
 
-        if (sourceHandle.kind === "taskField") {
+        if (sourceHandle.kind === "switchTarget") {
+          await updateTask({
+            variables: {
+              id: sourceTaskId,
+              toolConfig: setSwitchTarget(
+                tasks.find((task) => task.id === sourceTaskId)?.toolConfig,
+                sourceHandle.caseId,
+                newTaskId,
+              ),
+            },
+          });
+        } else if (sourceHandle.kind === "taskField") {
           await updateTask({
             variables: { id: sourceTaskId, [sourceHandle.field]: newTaskId },
           });
@@ -283,7 +333,7 @@ export function useTaskFlowActions({
       createTask,
       deleteTask,
       onSelectTaskId,
-      tasks.length,
+      tasks,
       updateTask,
       updateTaskResult,
       updateUserDecisionOption,

@@ -13,6 +13,7 @@ import { filterToolStateTool } from "../tools/toolState/filterToolState";
 import { appendStateTool } from "../tools/toolState/appendState";
 import { setStateTool } from "../tools/toolState/setState";
 import { ifTool } from "../tools/if/ifTool";
+import { switchTool } from "../tools/switch/switchTool";
 import { displayBlockTool } from "../tools/display/displayBlock";
 import { findFileTool } from "../tools/file/findFile";
 import { findFilesTool } from "../tools/file/findFiles";
@@ -46,6 +47,7 @@ export const tools: Tool[] = [
   appendStateTool,
   setStateTool,
   ifTool,
+  switchTool,
   displayBlockTool,
   findFileTool,
   findFilesTool,

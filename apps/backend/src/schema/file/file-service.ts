@@ -49,6 +49,7 @@ import {
 } from "@repo/tools/tools/file/services/entry";
 import { ensureFileType } from "@repo/tools/tools/file/services/fileType";
 import { syncFileTree } from "@repo/tools/tools/file/services/sync";
+import { publishFileEvent } from "./file-events";
 
 const DEFAULT_TEXT_MAX_BYTES = 5 * 1024 * 1024;
 const VIEW_TOKEN_TTL_MS = 5 * 60 * 1000;
@@ -158,12 +159,21 @@ export async function completeStreamedUpload(input: {
     await moveEntry(input.tempRelativePath, relativePath);
 
     try {
-      return await indexCreatedFile({
+      const row = await indexCreatedFile({
         relativePath,
         name,
         parentId: parent?.id ?? null,
         description: "",
       });
+
+      publishFileEvent({
+        type: "created",
+        id: row.id,
+        parentId: row.parentId,
+        path: row.relativePath,
+      });
+
+      return row;
     } catch (err) {
       await deleteEntry(relativePath, { recursive: false }).catch(
         () => undefined,
@@ -267,6 +277,12 @@ export async function createFileEntryForApi(input: {
           lastEditedAt: now,
         });
         await saveFileEntryWithEmbedding(row);
+        publishFileEvent({
+          type: "created",
+          id: row.id,
+          parentId: row.parentId,
+          path: row.relativePath,
+        });
         return row;
       } catch (err) {
         await deleteEntry(relativePath, { recursive: false }).catch(
@@ -294,12 +310,21 @@ export async function createFileEntryForApi(input: {
     });
 
     try {
-      return await indexCreatedFile({
+      const row = await indexCreatedFile({
         relativePath,
         name,
         parentId: parent?.id ?? null,
         description: input.description ?? "",
       });
+
+      publishFileEvent({
+        type: "created",
+        id: row.id,
+        parentId: row.parentId,
+        path: row.relativePath,
+      });
+
+      return row;
     } catch (err) {
       await deleteEntry(relativePath, { recursive: false }).catch(
         () => undefined,
@@ -368,7 +393,14 @@ export async function updateFileEntryForApi(input: {
           await refreshFileEntryEmbedding(changed.id);
         }
 
-        return updated.find((candidate) => candidate.id === row.id) ?? row;
+        const root = updated.find((candidate) => candidate.id === row.id) ?? row;
+        publishFileEvent({
+          type: "updated",
+          id: root.id,
+          parentId: root.parentId,
+          path: root.relativePath,
+        });
+        return root;
       } catch (err) {
         await moveEntry(newPath, row.relativePath).catch(() => undefined);
         throw err;
@@ -389,6 +421,12 @@ export async function updateFileEntryForApi(input: {
     });
 
     await refreshFileEntryEmbedding(updated.id);
+    publishFileEvent({
+      type: "updated",
+      id: updated.id,
+      parentId: updated.parentId,
+      path: updated.relativePath,
+    });
     return updated;
   } catch (err) {
     throw asGraphQLError(err);
@@ -418,6 +456,13 @@ export async function deleteFileEntryForApi(
 
     await softDeleteFileEntryTree(row.relativePath);
 
+    publishFileEvent({
+      type: "deleted",
+      id: row.id,
+      parentId: row.parentId,
+      path: row.relativePath,
+    });
+
     return `Deleted ${row.kind} "${row.relativePath}"`;
   } catch (err) {
     throw asGraphQLError(err);
@@ -443,7 +488,7 @@ export async function writeFileTextForApi(
     });
     const contentHash = await hashFile(typedRow.relativePath);
 
-    return await updateFileEntryRow(typedRow.id, {
+    const updated = await updateFileEntryRow(typedRow.id, {
       size: stat.size,
       contentHash,
       filesystemModifiedAt: stat.mtime,
@@ -451,6 +496,15 @@ export async function writeFileTextForApi(
         Math.max(typedRow.lastEditedAt.getTime(), stat.mtimeMs),
       ),
     });
+
+    publishFileEvent({
+      type: "updated",
+      id: updated.id,
+      parentId: updated.parentId,
+      path: updated.relativePath,
+    });
+
+    return updated;
   } catch (err) {
     throw asGraphQLError(err);
   }
@@ -510,6 +564,12 @@ export async function uploadFilesForApi(
         description: "",
       });
       createdRows.push(row);
+      publishFileEvent({
+        type: "created",
+        id: row.id,
+        parentId: row.parentId,
+        path: row.relativePath,
+      });
     }
 
     return createdRows;
@@ -531,10 +591,19 @@ export async function indexFileTreeForApi(options: {
   apply?: boolean | null;
 }) {
   try {
-    return await syncFileTree({
+    const report = await syncFileTree({
       path: options.path ?? undefined,
       apply: options.apply ?? true,
     });
+
+    publishFileEvent({
+      type: "indexed",
+      id: null,
+      parentId: null,
+      path: options.path ?? null,
+    });
+
+    return report;
   } catch (err) {
     throw asGraphQLError(err);
   }

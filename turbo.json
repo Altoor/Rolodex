@@ -8,7 +8,8 @@
     "FILES_ROOT",
     "OLLAMA_BASE_URL",
     "WHISPER_API_URL",
-    "WHISPER_BACKEND"
+    "WHISPER_BACKEND",
+    "VISION_MODEL"
   ],
   "tasks": {
     "codegen": {

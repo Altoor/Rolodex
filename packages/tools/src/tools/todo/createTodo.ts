@@ -6,7 +6,7 @@ import {
   requireNonEmptyString,
 } from "../../utils";
 import type { Tool, ToolDefinition } from "../../model";
-import { parseTodoDateTime } from "./services/date";
+import { parseTodoDateTimeLenient, todoDateWarning } from "./services/date";
 import { saveTodoWithEmbedding, toToolTodo } from "./services/todo";
 
 function readDateInput(input: Record<string, unknown>): string | undefined {
@@ -69,7 +69,19 @@ export const createTodoTool: Tool = {
     ).trim();
     const description = readString(input, "description")?.trim() ?? "";
     const done = readBoolean(input, "done") ?? false;
-    const doByDate = parseTodoDateTime(readDateInput(input));
+    const dateInput = readDateInput(input);
+    const parsedDate = parseTodoDateTimeLenient(dateInput);
+    const doByDate = parsedDate.date;
+
+    const warnings: string[] = [];
+    if (parsedDate.invalid && dateInput !== undefined) {
+      const warning = todoDateWarning(
+        dateInput,
+        "not an ISO 8601 date-time; the todo was created without a due date",
+      );
+      console.warn(`[create_todo] ${warning}`);
+      warnings.push(warning);
+    }
 
     const [todo] = await db
       .insert(todos)
@@ -92,6 +104,7 @@ export const createTodoTool: Tool = {
     return {
       output: {
         todo: toToolTodo(todo),
+        ...(warnings.length > 0 ? { warnings } : {}),
       },
       summary: doByDate
         ? `Created todo "${name}" (due ${doByDate.toISOString()})`

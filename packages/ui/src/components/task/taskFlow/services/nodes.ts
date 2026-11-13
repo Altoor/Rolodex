@@ -36,6 +36,7 @@ export function buildNodes({
       type: task.type,
       decisionType: task.decision?.type ?? null,
       toolKey: task.toolKey ?? null,
+      toolConfig: task.toolConfig ?? null,
       model: task.model ?? null,
       decisionModel: task.decisionModel ?? null,
       onTrueTaskId: task.onTrueTaskId ?? null,

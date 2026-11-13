@@ -29,6 +29,9 @@ export function buildToolResult({
     outputType,
     branch,
     nextTaskId,
+    ...(execution.branchLabel
+      ? { branchLabel: execution.branchLabel }
+      : {}),
     ...(itemCount !== undefined ? { itemCount } : {}),
     ...(childQueuedTaskIds.length > 0 ? { childQueuedTaskIds } : {}),
     ...(note ? { note } : {}),

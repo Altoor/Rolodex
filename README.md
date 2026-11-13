@@ -39,6 +39,15 @@ operation still succeeds; repair missing vectors later with:
 pnpm files:backfill-embeddings
 ```
 
+### Live updates
+
+The backend publishes file changes through the `fileEntryEvent` GraphQL
+subscription (SSE). The `/files` page subscribes and debounces refetches by
+250 ms, so uploads, edits, deletes, and indexing appear without pressing
+**Refresh**. Selection and expanded folders are preserved because they are
+keyed by entry id. **Refresh** remains available as a manual fallback if the
+subscription drops.
+
 ### Upload limits
 
 - `POST /files/upload` streams one file per request (default limit 10 GiB,
@@ -74,6 +83,30 @@ The `/settings` page stores installation-wide endpoints in the singleton
 The Settings page requires an authenticated user. If the table is empty, the
 backend falls back to `OLLAMA_BASE_URL`, `WHISPER_BACKEND`, and
 `WHISPER_API_URL`.
+
+### Vision and OCR
+
+`read_image_file` supports `describe: true`, `ocr: true`, or a custom `prompt`.
+The model comes from the user's **Vision model** setting on `/user`, then the
+`VISION_MODEL` environment variable. There is no built-in text-only fallback: if
+neither is configured, the tool reports a clear warning and still returns the
+image metadata and preview URL. Vision errors never fail the task, and image
+bytes only enter toolState when `includeBase64: true`.
+
+### Rule-based branching
+
+The `switch` tool continues on the first matching ordered condition, or on its
+default target. Each case is a separate output handle on the task flow, and
+targets can be wired by dragging from that handle. `switch` is deterministic;
+the `decision` task asks the configured decision model instead. See
+`packages/tools/README.md` for an example config.
+
+### Task output blocks
+
+Tool results are rendered by the UI block registry. File-shaped outputs
+(`read_*`, `scan_files`, created/updated entries, and arrays) show compact cards
+with preview and download actions. `display_block` can force this with
+`"block": "file"`. Unrecognised outputs still fall back to the raw JSON block.
 
 ## Docker Compose
 

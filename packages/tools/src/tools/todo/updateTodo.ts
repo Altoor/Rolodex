@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { db, todos } from "@repo/db";
 import { mergeToolInput, readBoolean, readString } from "../../utils";
 import { ToolInputError, type Tool, type ToolDefinition } from "../../model";
-import { parseTodoDateTime } from "./services/date";
+import { parseTodoDateTimeLenient, todoDateWarning } from "./services/date";
 import {
   resolveTodoId,
   saveTodoWithEmbedding,
@@ -80,9 +80,20 @@ export const updateTodoTool: Tool = {
     const name = suppliedName?.trim();
     const description = readString(input, "description")?.trim();
     const dateInput = readDateInput(input);
-    const doByDate =
-      dateInput !== undefined ? parseTodoDateTime(dateInput) : undefined;
+    const parsedDate =
+      dateInput !== undefined ? parseTodoDateTimeLenient(dateInput) : undefined;
+    const doByDate = parsedDate?.invalid ? undefined : parsedDate?.date;
     const done = readBoolean(input, "done");
+
+    const warnings: string[] = [];
+    if (parsedDate?.invalid && dateInput !== undefined) {
+      const warning = todoDateWarning(
+        dateInput,
+        "not an ISO 8601 date-time; the existing due date was kept",
+      );
+      console.warn(`[update_todo] ${warning}`);
+      warnings.push(warning);
+    }
 
     if (
       name === undefined &&
@@ -90,6 +101,23 @@ export const updateTodoTool: Tool = {
       doByDate === undefined &&
       done === undefined
     ) {
+      if (warnings.length > 0) {
+        const [current] = await db
+          .select()
+          .from(todos)
+          .where(eq(todos.id, todo.id))
+          .limit(1);
+
+        if (!current) {
+          throw new ToolInputError(`todo ${todo.id} not found`);
+        }
+
+        return {
+          output: { todo: toToolTodo(current), warnings },
+          summary: `Kept todo "${current.name}" unchanged (invalid doByDate ignored)`,
+        };
+      }
+
       throw new ToolInputError(
         "update_todo requires at least one of name, description, doByDate, or done",
       );
@@ -115,7 +143,10 @@ export const updateTodoTool: Tool = {
     }
 
     return {
-      output: { todo: toToolTodo(updated) },
+      output: {
+        todo: toToolTodo(updated),
+        ...(warnings.length > 0 ? { warnings } : {}),
+      },
       summary: `Updated todo "${updated.name}"`,
     };
   },

@@ -32,6 +32,31 @@ export async function getDecisionModelForUser(userId: number): Promise<string> {
   return settings?.defaultDecisionModelName ?? DEFAULT_DECISION_MODEL;
 }
 
+/**
+ * Vision model used by image description/OCR. Unlike the generation model,
+ * there is no safe built-in default: a text-only model would silently fail.
+ * Resolution order: the user's settings, then VISION_MODEL.
+ */
+export async function getVisionModelForUser(userId: number): Promise<string> {
+  const [settings] = await db
+    .select({ defaultVisionModelName: userSettings.defaultVisionModelName })
+    .from(userSettings)
+    .where(eq(userSettings.userId, userId))
+    .limit(1);
+
+  const configured =
+    settings?.defaultVisionModelName?.trim() ||
+    process.env.VISION_MODEL?.trim();
+
+  if (!configured) {
+    throw new Error(
+      "No vision model configured. Choose one in User settings or set VISION_MODEL.",
+    );
+  }
+
+  return configured;
+}
+
 export async function assertPulledModel(name: string): Promise<void> {
   const [model] = await db
     .select({ name: models.name, pulled: models.pulled })

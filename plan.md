@@ -21,12 +21,17 @@ transcription, real-time tree updates, and file blocks.
 
 ---
 
-## 1. Switch tool — rule-based branches ⬜
+## 1. Switch tool — rule-based branches ✅
 
 **Goal:** Branch to different tasks using ordered conditions, like a `switch`
 statement. It behaves like the decision task (one branch wins), but the branch is
 chosen by `if`-style conditions instead of an LLM. Each case is its own output on
 the task flow node.
+
+**Implemented:** `switchTool.ts` and `validateSwitchConfig` reuse the `if`
+condition language; the backend validates targets and clears deleted task
+references; task results carry `branchLabel`; the task builder has a structured
+case editor; and the flow renders stable case handles plus a Default handle.
 
 **Config shape:**
 
@@ -94,9 +99,14 @@ the task flow node.
 
 ---
 
-## 2. OCR and vision support ⬜
+## 2. OCR and vision support ✅
 
 **Goal:** Let `read_image_file` describe or OCR images.
+
+**Implemented:** `getVisionModelForUser` resolves the per-user setting then
+`VISION_MODEL`; `describeImageFile` calls Ollama with a timeout; `read_image_file`
+adds `describe`, `ocr`, `prompt`, and `maxBytes` inputs and returns vision text or
+a non-fatal `warning`. The user settings page exposes the vision model.
 
 **Tasks:**
 
@@ -154,10 +164,15 @@ preview URL.
 
 ---
 
-## 4. Real-time file tree updates ⬜
+## 4. Real-time file tree updates ✅
 
 **Goal:** The files page reflects uploads, edits, deletes, and indexing without a
 manual Refresh.
+
+**Implemented:** `fileEvents` emits from create/upload/update/delete/write/index
+paths; the authenticated `fileEntryEvent` subscription streams over SSE; the
+files page debounces refetches by 250 ms, preserves selection/expansion, and
+shows a small live-update notice. Refresh remains the manual fallback.
 
 **Tasks:**
 
@@ -179,10 +194,15 @@ manual Refresh.
 
 ---
 
-## 5. File blocks in task output ⬜
+## 5. File blocks in task output ✅
 
 **Goal:** File-shaped tool results render as compact cards with preview/download
 actions instead of raw JSON.
+
+**Implemented:** the `file` block extracts `FileEntryRef` objects from single
+outputs and arrays, renders type icon/name/path/size/description, and uses the
+existing lazy view token for preview and download. It is registered for
+automatic matching and for `display_block` with `block: "file"`.
 
 **Tasks:**
 
@@ -205,10 +225,14 @@ actions instead of raw JSON.
 
 ---
 
-## 6. Lenient dates from model output ⬜
+## 6. Lenient dates from model output ✅
 
 **Goal:** When a generative model supplies an unparseable date, do not fail the
 task. Treat the value as "no date supplied" and continue.
+
+**Implemented:** `parseTodoDateTimeLenient` and `todoDateWarning` power
+`create_todo`/`update_todo`; invalid dates store no date on create, leave the
+existing date on update, and emit a `warnings` entry plus a server log line.
 
 **Tasks:**
 

@@ -1,5 +1,6 @@
 import type { XYPosition } from "@xyflow/react";
 import type { FlowTask } from "../taskFlowTypes";
+import { switchTargetTaskIds } from "./switch-config";
 
 export const COLUMN_WIDTH = 460;
 export const ROW_HEIGHT = 200;
@@ -35,12 +36,14 @@ export const computePositions = (
           .filter((id): id is number => id != null),
         ...(task?.fallbackTaskId != null &&
         task.toolKey !== "if" &&
+        task.toolKey !== "switch" &&
         task.type !== "userDecision" &&
         !(task.type === "decision" && task.forceUserDecideIfNoMatch)
           ? [task.fallbackTaskId]
           : []),
         ...(task?.onTrueTaskId != null ? [task.onTrueTaskId] : []),
         ...(task?.onFalseTaskId != null ? [task.onFalseTaskId] : []),
+        ...(task?.toolKey === "switch" ? switchTargetTaskIds(task) : []),
       ];
       for (const targetId of relatedIds) {
         if (!byId.has(targetId) || depth.has(targetId)) {

@@ -27,8 +27,14 @@ export function resolveToolBranch(
   }
 
   const note =
-    execution.branch && nextTaskId == null
-      ? `branch "${execution.branch}" has no target task configured — run stopped`
+    nextTaskId == null
+      ? execution.branch
+        ? `branch "${execution.branch}" has no target task configured — run stopped`
+        : task.toolKey === "switch"
+          ? execution.branchLabel === "No match"
+            ? "switch matched no case and no default task — run stopped"
+            : `switch case "${execution.branchLabel ?? "default"}" has no target task configured — run stopped`
+          : undefined
       : undefined;
 
   return { nextTaskId, branch, note };

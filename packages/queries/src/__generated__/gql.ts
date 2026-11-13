@@ -31,6 +31,7 @@ type Documents = {
     "\n  query GetFileEntry($id: Int!) {\n    getFileEntry(id: $id) {\n      ...FileEntryFields\n    }\n  }\n": typeof types.GetFileEntryDocument,
     "\n  query GetFileText($id: Int!, $maxBytes: Int) {\n    getFileText(id: $id, maxBytes: $maxBytes)\n  }\n": typeof types.GetFileTextDocument,
     "\n  query CreateFileViewToken($id: Int!) {\n    createFileViewToken(id: $id) {\n      url\n      expiresAt\n    }\n  }\n": typeof types.CreateFileViewTokenDocument,
+    "\n  subscription FileEntryEvent {\n    fileEntryEvent {\n      type\n      id\n      parentId\n      path\n      at\n    }\n  }\n": typeof types.FileEntryEventDocument,
     "\n  mutation UpdateModelDescription($name: String!, $description: String!) {\n    updateModel(name: $name, description: $description) {\n      size\n      name\n      description\n      model\n      capabilities\n      pulled\n    }\n  }\n": typeof types.UpdateModelDescriptionDocument,
     "\n  mutation CreateModelDescription($name: String!, $description: String) {\n    createModel(name: $name, description: $description) {\n      size\n      name\n      description\n      model\n      capabilities\n      pulled\n    }\n  }\n": typeof types.CreateModelDescriptionDocument,
     "\n  query GetModels {\n    models {\n      size\n      name\n      description\n      model\n      capabilities\n      pulled\n    }\n  }\n": typeof types.GetModelsDocument,
@@ -67,8 +68,8 @@ type Documents = {
     "\n  query GetTool($key: String!) {\n    getTool(key: $key) {\n      key\n      name\n      description\n      category\n      inputMode\n      inputSchema\n      outputDescription\n      outputTypes\n      foreachOutputDescription\n      exampleConfig\n    }\n  }\n": typeof types.GetToolDocument,
     "\n  mutation Login($email: String!, $password: String!) {\n    login(email: $email, password: $password)\n  }\n": typeof types.LoginDocument,
     "\n  mutation MyMutation($email: String!, $name: String!, $password: String!) {\n    createUser(email: $email, name: $name, password: $password)\n  }\n": typeof types.MyMutationDocument,
-    "\n  mutation UpdateUserSettings(\n    $defaultTaskId: Int\n    $defaultModelName: String\n    $defaultDecisionModelName: String\n  ) {\n    updateUserSettings(\n      defaultTaskId: $defaultTaskId\n      defaultModelName: $defaultModelName\n      defaultDecisionModelName: $defaultDecisionModelName\n    ) {\n      userId\n      defaultTaskId\n      defaultModelName\n      defaultDecisionModelName\n    }\n  }\n": typeof types.UpdateUserSettingsDocument,
-    "\n  query GetMe {\n    me {\n      email\n      id\n      name\n      settings {\n        defaultTaskId\n        defaultModelName\n        defaultDecisionModelName\n      }\n    }\n  }\n": typeof types.GetMeDocument,
+    "\n  mutation UpdateUserSettings(\n    $defaultTaskId: Int\n    $defaultModelName: String\n    $defaultDecisionModelName: String\n    $defaultVisionModelName: String\n  ) {\n    updateUserSettings(\n      defaultTaskId: $defaultTaskId\n      defaultModelName: $defaultModelName\n      defaultDecisionModelName: $defaultDecisionModelName\n      defaultVisionModelName: $defaultVisionModelName\n    ) {\n      userId\n      defaultTaskId\n      defaultModelName\n      defaultDecisionModelName\n      defaultVisionModelName\n    }\n  }\n": typeof types.UpdateUserSettingsDocument,
+    "\n  query GetMe {\n    me {\n      email\n      id\n      name\n      settings {\n        defaultTaskId\n        defaultModelName\n        defaultDecisionModelName\n        defaultVisionModelName\n      }\n    }\n  }\n": typeof types.GetMeDocument,
 };
 const documents: Documents = {
     "\n  mutation createSystemOneChoiceDescision(\n    $decisionPremise: String!\n    $instruction: String!\n    $type: DecisionType!\n    $name: String!\n    $options: [String!]\n    $optionDescriptions: [String!]\n  ) {\n    createDecision(\n      decisionPremise: $decisionPremise\n      instruction: $instruction\n      type: $type\n      name: $name\n      options: $options\n      optionDescriptions: $optionDescriptions\n    ) {\n      id\n      decisionPremise\n      instruction\n      name\n      optionDescriptions\n      options\n      type\n    }\n  }\n": types.CreateSystemOneChoiceDescisionDocument,
@@ -88,6 +89,7 @@ const documents: Documents = {
     "\n  query GetFileEntry($id: Int!) {\n    getFileEntry(id: $id) {\n      ...FileEntryFields\n    }\n  }\n": types.GetFileEntryDocument,
     "\n  query GetFileText($id: Int!, $maxBytes: Int) {\n    getFileText(id: $id, maxBytes: $maxBytes)\n  }\n": types.GetFileTextDocument,
     "\n  query CreateFileViewToken($id: Int!) {\n    createFileViewToken(id: $id) {\n      url\n      expiresAt\n    }\n  }\n": types.CreateFileViewTokenDocument,
+    "\n  subscription FileEntryEvent {\n    fileEntryEvent {\n      type\n      id\n      parentId\n      path\n      at\n    }\n  }\n": types.FileEntryEventDocument,
     "\n  mutation UpdateModelDescription($name: String!, $description: String!) {\n    updateModel(name: $name, description: $description) {\n      size\n      name\n      description\n      model\n      capabilities\n      pulled\n    }\n  }\n": types.UpdateModelDescriptionDocument,
     "\n  mutation CreateModelDescription($name: String!, $description: String) {\n    createModel(name: $name, description: $description) {\n      size\n      name\n      description\n      model\n      capabilities\n      pulled\n    }\n  }\n": types.CreateModelDescriptionDocument,
     "\n  query GetModels {\n    models {\n      size\n      name\n      description\n      model\n      capabilities\n      pulled\n    }\n  }\n": types.GetModelsDocument,
@@ -124,8 +126,8 @@ const documents: Documents = {
     "\n  query GetTool($key: String!) {\n    getTool(key: $key) {\n      key\n      name\n      description\n      category\n      inputMode\n      inputSchema\n      outputDescription\n      outputTypes\n      foreachOutputDescription\n      exampleConfig\n    }\n  }\n": types.GetToolDocument,
     "\n  mutation Login($email: String!, $password: String!) {\n    login(email: $email, password: $password)\n  }\n": types.LoginDocument,
     "\n  mutation MyMutation($email: String!, $name: String!, $password: String!) {\n    createUser(email: $email, name: $name, password: $password)\n  }\n": types.MyMutationDocument,
-    "\n  mutation UpdateUserSettings(\n    $defaultTaskId: Int\n    $defaultModelName: String\n    $defaultDecisionModelName: String\n  ) {\n    updateUserSettings(\n      defaultTaskId: $defaultTaskId\n      defaultModelName: $defaultModelName\n      defaultDecisionModelName: $defaultDecisionModelName\n    ) {\n      userId\n      defaultTaskId\n      defaultModelName\n      defaultDecisionModelName\n    }\n  }\n": types.UpdateUserSettingsDocument,
-    "\n  query GetMe {\n    me {\n      email\n      id\n      name\n      settings {\n        defaultTaskId\n        defaultModelName\n        defaultDecisionModelName\n      }\n    }\n  }\n": types.GetMeDocument,
+    "\n  mutation UpdateUserSettings(\n    $defaultTaskId: Int\n    $defaultModelName: String\n    $defaultDecisionModelName: String\n    $defaultVisionModelName: String\n  ) {\n    updateUserSettings(\n      defaultTaskId: $defaultTaskId\n      defaultModelName: $defaultModelName\n      defaultDecisionModelName: $defaultDecisionModelName\n      defaultVisionModelName: $defaultVisionModelName\n    ) {\n      userId\n      defaultTaskId\n      defaultModelName\n      defaultDecisionModelName\n      defaultVisionModelName\n    }\n  }\n": types.UpdateUserSettingsDocument,
+    "\n  query GetMe {\n    me {\n      email\n      id\n      name\n      settings {\n        defaultTaskId\n        defaultModelName\n        defaultDecisionModelName\n        defaultVisionModelName\n      }\n    }\n  }\n": types.GetMeDocument,
 };
 
 /**
@@ -210,6 +212,10 @@ export function gql(source: "\n  query GetFileText($id: Int!, $maxBytes: Int) {\
  * The gql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
 export function gql(source: "\n  query CreateFileViewToken($id: Int!) {\n    createFileViewToken(id: $id) {\n      url\n      expiresAt\n    }\n  }\n"): (typeof documents)["\n  query CreateFileViewToken($id: Int!) {\n    createFileViewToken(id: $id) {\n      url\n      expiresAt\n    }\n  }\n"];
+/**
+ * The gql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
+ */
+export function gql(source: "\n  subscription FileEntryEvent {\n    fileEntryEvent {\n      type\n      id\n      parentId\n      path\n      at\n    }\n  }\n"): (typeof documents)["\n  subscription FileEntryEvent {\n    fileEntryEvent {\n      type\n      id\n      parentId\n      path\n      at\n    }\n  }\n"];
 /**
  * The gql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
@@ -357,11 +363,11 @@ export function gql(source: "\n  mutation MyMutation($email: String!, $name: Str
 /**
  * The gql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
-export function gql(source: "\n  mutation UpdateUserSettings(\n    $defaultTaskId: Int\n    $defaultModelName: String\n    $defaultDecisionModelName: String\n  ) {\n    updateUserSettings(\n      defaultTaskId: $defaultTaskId\n      defaultModelName: $defaultModelName\n      defaultDecisionModelName: $defaultDecisionModelName\n    ) {\n      userId\n      defaultTaskId\n      defaultModelName\n      defaultDecisionModelName\n    }\n  }\n"): (typeof documents)["\n  mutation UpdateUserSettings(\n    $defaultTaskId: Int\n    $defaultModelName: String\n    $defaultDecisionModelName: String\n  ) {\n    updateUserSettings(\n      defaultTaskId: $defaultTaskId\n      defaultModelName: $defaultModelName\n      defaultDecisionModelName: $defaultDecisionModelName\n    ) {\n      userId\n      defaultTaskId\n      defaultModelName\n      defaultDecisionModelName\n    }\n  }\n"];
+export function gql(source: "\n  mutation UpdateUserSettings(\n    $defaultTaskId: Int\n    $defaultModelName: String\n    $defaultDecisionModelName: String\n    $defaultVisionModelName: String\n  ) {\n    updateUserSettings(\n      defaultTaskId: $defaultTaskId\n      defaultModelName: $defaultModelName\n      defaultDecisionModelName: $defaultDecisionModelName\n      defaultVisionModelName: $defaultVisionModelName\n    ) {\n      userId\n      defaultTaskId\n      defaultModelName\n      defaultDecisionModelName\n      defaultVisionModelName\n    }\n  }\n"): (typeof documents)["\n  mutation UpdateUserSettings(\n    $defaultTaskId: Int\n    $defaultModelName: String\n    $defaultDecisionModelName: String\n    $defaultVisionModelName: String\n  ) {\n    updateUserSettings(\n      defaultTaskId: $defaultTaskId\n      defaultModelName: $defaultModelName\n      defaultDecisionModelName: $defaultDecisionModelName\n      defaultVisionModelName: $defaultVisionModelName\n    ) {\n      userId\n      defaultTaskId\n      defaultModelName\n      defaultDecisionModelName\n      defaultVisionModelName\n    }\n  }\n"];
 /**
  * The gql function is used to parse GraphQL queries into a document that can be used by GraphQL clients.
  */
-export function gql(source: "\n  query GetMe {\n    me {\n      email\n      id\n      name\n      settings {\n        defaultTaskId\n        defaultModelName\n        defaultDecisionModelName\n      }\n    }\n  }\n"): (typeof documents)["\n  query GetMe {\n    me {\n      email\n      id\n      name\n      settings {\n        defaultTaskId\n        defaultModelName\n        defaultDecisionModelName\n      }\n    }\n  }\n"];
+export function gql(source: "\n  query GetMe {\n    me {\n      email\n      id\n      name\n      settings {\n        defaultTaskId\n        defaultModelName\n        defaultDecisionModelName\n        defaultVisionModelName\n      }\n    }\n  }\n"): (typeof documents)["\n  query GetMe {\n    me {\n      email\n      id\n      name\n      settings {\n        defaultTaskId\n        defaultModelName\n        defaultDecisionModelName\n        defaultVisionModelName\n      }\n    }\n  }\n"];
 
 export function gql(source: string) {
   return (documents as any)[source] ?? {};

@@ -151,6 +151,20 @@ If you prefer different prompt field names, either rename them in the prompt
 `onInvalid: "text"` can still fall back to raw text, but then the create/update
 fields will be missing and `create_todo` will fail with a clear validation error.
 
+### Invalid dates are ignored
+
+Models sometimes return values like `"next friday"` or `"2026-13-45"`. Those no
+longer fail the task:
+
+- `create_todo` stores `doByDate: null`.
+- `update_todo` keeps the existing due date (the field is treated as omitted).
+- The tool output includes a `warnings` array and the backend logs the same
+  message. Long values are truncated in the message.
+
+Empty strings and `"none"` still mean "no due date"; ISO 8601 date-times with a
+time-of-day are still parsed normally. If an `update_todo` call supplies only an
+invalid date, it returns the todo unchanged with a warning instead of failing.
+
 ## File tools
 
 File and folder tools share one lookup layer. They accept an explicit `id` or
@@ -193,6 +207,66 @@ scan_files (foreach, fileType: plaintext)
 The files page runner seeds `files` and `folders` into the first step's
 toolState, so a task started by dropping files can process them without a scan.
 The UI Refresh button calls the same indexer as `pnpm files:index`.
+
+### Vision and OCR
+
+`read_image_file` can ask a vision model to describe an image or extract its
+text. Both are opt-in:
+
+```json
+{ "path": "inbox/receipt.png", "ocr": true }
+```
+
+```json
+{ "describe": true }
+```
+
+You can also pass a custom `prompt`, which implies vision even when `describe`
+and `ocr` are false. The model resolves from the user's **Vision model** setting
+(the `/user` page), then the `VISION_MODEL` environment variable. There is no
+silent fallback to a text-only generation model; if neither is configured, the
+tool returns a warning that explains what to set.
+
+Vision failures (model missing, timeout, no text) are non-fatal: the output still
+contains the file metadata and preview URL, plus a `warning` string. Raw image
+bytes are only added to toolState when `includeBase64: true`; vision calls encode
+the image internally and do not require it.
+
+## Branching: if vs switch
+
+Both tools are deterministic and never call a model:
+
+- `if` evaluates one `where` expression and continues on `true` or `false`.
+- `switch` evaluates ordered cases and continues on the first match, or on
+  `defaultTaskId` when nothing matches.
+
+```json
+{
+  "path": "todos",
+  "quantifier": "some",
+  "cases": [
+    {
+      "id": "has-open",
+      "label": "has open todos",
+      "when": { "eq": { "path": "done", "value": false } },
+      "nextTaskId": 12
+    },
+    {
+      "id": "has-todos",
+      "label": "has todos",
+      "when": { "has": { "path": "id" } },
+      "nextTaskId": 13
+    }
+  ],
+  "defaultTaskId": 14
+}
+```
+
+Case `id` values must be stable and unique; case labels must be unique. The task
+flow renders one output handle per case (`switch:<id>`) plus a separate Default
+handle. A matched case without a target stops the run with a note instead of
+falling through. If no case matches and there is no default, the run also stops.
+The task result records `branchLabel` so the run view shows which case fired.
 
 ## Boundaries
 

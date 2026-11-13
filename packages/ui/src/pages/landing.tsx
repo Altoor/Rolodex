@@ -67,6 +67,7 @@ interface StepResult {
     | "false"
     | "awaiting_user";
   nextTaskId?: number | null;
+  branchLabel?: string;
   summary?: string;
   note?: string;
   toolKey?: string | null;
@@ -490,8 +491,9 @@ export default function LandingPage() {
                                     ? `fallback: ${taskName(step.result.nextTaskId)}`
                                     : step.result?.branch === "tool"
                                       ? step.result.nextTaskId != null
-                                        ? `next: ${taskName(step.result.nextTaskId)}`
-                                        : "tool result"
+                                        ? `${step.result.branchLabel ? `${step.result.branchLabel}: ` : "next: "}${taskName(step.result.nextTaskId)}`
+                                        : (step.result.branchLabel ??
+                                          "tool result")
                                       : step.result?.branch === "awaiting_user"
                                         ? "waiting for your choice"
                                         : undefined;

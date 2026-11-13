@@ -305,6 +305,12 @@ export const userSettings = pgTable("userSettings", {
       onDelete: "set null",
     },
   ),
+  defaultVisionModelName: text("defaultVisionModelName").references(
+    () => models.name,
+    {
+      onDelete: "set null",
+    },
+  ),
   updatedAt: timestamp("updatedAt", { withTimezone: true })
     .defaultNow()
     .notNull(),

@@ -12,6 +12,7 @@ import {
 import type { TaskFormValues } from "../../task-form";
 import BranchTaskFields from "./branchTaskFields";
 import DisplayBlockFields from "./displayBlockFields";
+import SwitchTaskFields from "./switchTaskFields";
 import ToolConfigField from "./toolConfigField";
 import ToolOutputTypeField from "./toolOutputTypeField";
 import ToolSelectField from "./toolSelectField";
@@ -41,6 +42,7 @@ const FILE_TOOL_HINT =
 
 const PATH_AWARE_TOOLS = new Set<string>([
   "if",
+  "switch",
   "filter_tool_state",
   "display_block",
   "prompt",
@@ -49,6 +51,7 @@ const PATH_AWARE_TOOLS = new Set<string>([
 
 const FILE_CONTEXT_TOOLS = new Set<string>([
   "if",
+  "switch",
   "filter_tool_state",
   "display_block",
   "prompt",
@@ -57,6 +60,8 @@ const FILE_CONTEXT_TOOLS = new Set<string>([
 
 const PATH_TOOL_HINTS: Record<string, string> = {
   if: "Use these in `path` or in any `where` path.",
+  switch:
+    "Use these in `path` or in any case condition path. Cases run in order; the first match wins.",
   filter_tool_state: "Use these in `path` or in any `where` path.",
   display_block:
     'Use these in `path` or `where`. Set `"select": "first"` to display a single value.',
@@ -193,6 +198,8 @@ const ToolTaskFields = ({
     {toolKey === "display_block" ? <DisplayBlockFields /> : null}
 
     {toolKey === "if" ? <BranchTaskFields tasks={tasks} /> : null}
+
+    {toolKey === "switch" ? <SwitchTaskFields tasks={tasks} /> : null}
 
     {toolKey === "prompt" ? <PromptFieldsHint /> : null}
 

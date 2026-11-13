@@ -1,10 +1,13 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import { useMutation, useQuery } from "@apollo/client/react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useMutation, useQuery, useSubscription } from "@apollo/client/react";
 import { FilePlus, FolderPlus, RefreshCw, Upload } from "lucide-react";
 import { cn } from "cn";
-import { GET_FILE_ENTRIES } from "@repo/queries/files/file-queries";
+import {
+  GET_FILE_ENTRIES,
+} from "@repo/queries/files/file-queries";
+import { FILE_ENTRY_EVENT } from "@repo/queries/files/file-subscriptions";
 import { INDEX_FILE_TREE } from "@repo/queries/files/file-mutations";
 import { AuthGate } from "../components/auth/auth-gate";
 import {
@@ -62,13 +65,52 @@ function FilesPageContent() {
   const [dragOverId, setDragOverId] = useState<number | null>(null);
   const [rootDragOver, setRootDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [liveNotice, setLiveNotice] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { data, loading, error, refetch } = useQuery(GET_FILE_ENTRIES, {
     fetchPolicy: "cache-and-network",
   });
   const [indexFileTree, { loading: refreshing }] = useMutation(INDEX_FILE_TREE);
   const fileActions = useFileActions();
+
+  // File mutations and indexing run in the backend process, so the tree is
+  // refreshed from a subscription instead of polling. Coalesce bursts (an
+  // upload or folder indexing emits one event per file).
+  useSubscription(FILE_ENTRY_EVENT, {
+    onData: ({ data: subscriptionData }) => {
+      const event = subscriptionData.data?.fileEntryEvent;
+      if (!event) return;
+
+      if (refetchTimerRef.current) clearTimeout(refetchTimerRef.current);
+      refetchTimerRef.current = setTimeout(() => {
+        refetchTimerRef.current = null;
+        void refetch();
+      }, 250);
+
+      setLiveNotice(
+        event.type === "indexed"
+          ? "File tree updated after indexing."
+          : "Files updated live.",
+      );
+
+      if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+      noticeTimerRef.current = setTimeout(() => {
+        noticeTimerRef.current = null;
+        setLiveNotice(null);
+      }, 4000);
+    },
+  });
+
+  useEffect(
+    () => () => {
+      if (refetchTimerRef.current) clearTimeout(refetchTimerRef.current);
+      if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+    },
+    [],
+  );
 
   const entries = useMemo(
     () =>
@@ -84,6 +126,10 @@ function FilesPageContent() {
     [entries],
   );
   const tree = useMemo(() => buildFileTree(entries), [entries]);
+
+  // Selection is deliberately kept as-is across live refreshes; if the entry
+  // disappears (deleted elsewhere) `selectedEntry` becomes undefined and the
+  // page shows its normal empty selection state.
 
   const selectedEntry = selectedId === null ? undefined : byId.get(selectedId);
   const ancestors = selectedEntry ? getAncestors(selectedEntry.id, byId) : [];
@@ -293,6 +339,12 @@ function FilesPageContent() {
         title="Files"
         description="Browse, edit, create, and upload files in the shared tree."
       />
+
+      {liveNotice ? (
+        <p className="text-xs text-muted-foreground" role="status">
+          {liveNotice}
+        </p>
+      ) : null}
 
       {error ? (
         <ErrorState
