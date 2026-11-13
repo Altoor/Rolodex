@@ -44,7 +44,7 @@ export async function tryEmbedText(text: string): Promise<number[] | null> {
   try {
     return await embedText(text);
   } catch (err) {
-    console.warn("todo embedding failed:", err);
+    console.warn("embedding failed:", err);
     return null;
   }
 }

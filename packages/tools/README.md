@@ -151,6 +151,49 @@ If you prefer different prompt field names, either rename them in the prompt
 `onInvalid: "text"` can still fall back to raw text, but then the create/update
 fields will be missing and `create_todo` will fail with a clear validation error.
 
+## File tools
+
+File and folder tools share one lookup layer. They accept an explicit `id` or
+`path`, and also resolve an id from earlier toolState keys `entry`, `file`,
+`files`, `folder`, or `folders`. This means a foreach child can pass
+`{ entry }` or `{ file }` straight to the next task.
+
+Available tools: `find_file`, `find_files`, `find_folder`, `find_folders`,
+`scan_files`, `create_file`, `create_folder`, `read_plaintext_file`,
+`read_text_file`, `read_image_file`, `read_audio_file`, `read_video_file`,
+`read_other_file`, `update_file_metadata`, `delete_file_entry`, and
+`detect_file_type`.
+
+`scan_files` has two output modes:
+
+- Normal: appends `{ changes, counts }`; unchanged entries are omitted unless
+  `includeUnchanged: true`.
+- Foreach: enqueues one child per included entry. It includes unchanged entries
+  by default, skips folders by default (`kind: "file"`), and accepts
+  `fileType` such as `"plaintext"` to match the reader:
+
+```json
+{
+  "path": "notes",
+  "kind": "file",
+  "fileType": "plaintext",
+  "includeUnchanged": true
+}
+```
+
+A typical summarise flow:
+
+```text
+scan_files (foreach, fileType: plaintext)
+  └── read_plaintext_file
+        └── prompt { fields: { description }, prompt: "Summarise:\n\n{{content}}" }
+              └── update_file_metadata
+```
+
+The files page runner seeds `files` and `folders` into the first step's
+toolState, so a task started by dropping files can process them without a scan.
+The UI Refresh button calls the same indexer as `pnpm files:index`.
+
 ## Boundaries
 
 - This package depends on `@repo/db` and `@repo/ai`.

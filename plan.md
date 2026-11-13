@@ -1474,7 +1474,7 @@ For each tool, use the built-in test form with `state`, `toolConfig`, and a hand
 
 ---
 
-### Stage 8 — Task context, bottom runner, and end-to-end file flows ⬜ PENDING
+### Stage 8 — Task context, bottom runner, and end-to-end file flows ✅ DONE
 
 **Goal:** Dropping files starts a task with those files in `toolState`, and scan/foreach flows work end-to-end.
 

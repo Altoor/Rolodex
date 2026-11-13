@@ -24,6 +24,9 @@ function parseArgs(argv: string[]): Args {
     const arg = argv[index];
 
     switch (arg) {
+      case "--":
+        // pnpm may forward its own separator; ignore it.
+        break;
       case "--path": {
         const value = argv[index + 1];
         if (!value) throw new Error("--path requires a value");

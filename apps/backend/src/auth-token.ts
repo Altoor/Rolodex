@@ -14,7 +14,17 @@ export async function extractUser(
 
   try {
     const verified = jwt.verify(token, TOKEN_SECRET);
-    if (typeof verified === "string" || !verified.aud) return null;
+
+    // Reject view tokens, legacy tokens without expiry, and anything that is
+    // not an auth token even if it was signed with the shared secret.
+    if (
+      typeof verified === "string" ||
+      !verified.aud ||
+      verified.purpose !== "auth" ||
+      typeof verified.exp !== "number"
+    ) {
+      return null;
+    }
 
     return await getUser(parseInt(verified.aud as string));
   } catch {

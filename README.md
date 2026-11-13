@@ -10,6 +10,54 @@ Run the following command:
 npx create-turbo@latest -e with-tailwind
 ```
 
+## Files workspace
+
+Files live in a shared `files/` directory at the repository root. Set
+`FILES_ROOT` to an absolute path to use a different location; the backend
+creates it on startup. Uploads and tool-created entries are indexed in the
+`fileEntries` table, and the web app at `/files` browses that index.
+
+### Indexing
+
+Run a manual sync at any time:
+
+```sh
+pnpm files:index
+pnpm files:index --path invoices --preview
+pnpm files:index --include-unchanged --hash always
+```
+
+The same engine powers the **Refresh** button and the `scan_files` tool. Scans
+skip `.tmp/`, `.gitkeep`, common system files, and symlinks. They abort above
+5,000 disk entries (`--max-entries`), and `hash: "auto"` skips hashing files
+larger than 100 MB.
+
+Embeddings are best-effort metadata. If Ollama is unavailable the file
+operation still succeeds; repair missing vectors later with:
+
+```sh
+pnpm files:backfill-embeddings
+```
+
+### Upload limits
+
+- `POST /files/upload` streams one file per request (default limit 10 GiB,
+  configurable with `MAX_STREAM_UPLOAD_BYTES`) and requires a bearer token.
+  This is the primary upload path.
+- GraphQL `uploadFiles` is the small-file fallback: 25 MB total request,
+  25 MB per file, 20 files per request.
+- Text previews are capped at 5 MB; larger files are download-only.
+
+### Security
+
+- Every file GraphQL query/mutation requires authentication.
+- Downloads use short-lived signed view tokens (5 minutes), not bare paths.
+- Paths are normalized to POSIX and checked against `FILES_ROOT`; real-path
+  checks reject symlink escapes. Unexpected errors are logged server-side and
+  returned without absolute paths.
+- Browser auth tokens expire after 7 days by default
+  (`AUTH_TOKEN_TTL_SECONDS`).
+
 ## What's inside?
 
 This Turborepo includes the following packages/apps:

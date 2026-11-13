@@ -3,7 +3,9 @@ import { createReadStream } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { GraphQLError } from "graphql";
 import jwt from "jsonwebtoken";
+import { ToolInputError } from "@repo/tools";
 import { TOKEN_SECRET } from "../../config";
+import { getUser } from "../user/user-service";
 import {
   deleteEntry,
   ensureDirectory,
@@ -18,6 +20,7 @@ import {
   writeTextFile,
 } from "@repo/tools/tools/file/services/storage";
 import {
+  FilesystemError,
   assertRealPathInsideRoot,
   joinRelativePath,
   parentRelativePath,
@@ -76,7 +79,17 @@ function notFound(message: string): GraphQLError {
 
 function asGraphQLError(err: unknown): GraphQLError {
   if (err instanceof GraphQLError) return err;
-  return badInput(err instanceof Error ? err.message : String(err));
+
+  // Filesystem/tool validation errors use relative paths and are safe to show.
+  if (err instanceof FilesystemError || err instanceof ToolInputError) {
+    return badInput(err.message);
+  }
+
+  // Do not leak absolute paths, SQL, or stack details to API clients.
+  console.error("File operation failed:", err);
+  return new GraphQLError("File operation failed", {
+    extensions: { code: "INTERNAL_SERVER_ERROR" },
+  });
 }
 
 async function requireLiveEntry(id: number): Promise<FileEntryRow> {
@@ -544,9 +557,16 @@ export async function verifyFileViewToken(
     typeof payload === "string" ||
     payload.purpose !== "file-view" ||
     typeof payload.fileId !== "number" ||
-    payload.fileId !== id
+    payload.fileId !== id ||
+    typeof payload.sub !== "number"
   ) {
     throw new FileViewError("File view token does not match this file", 403);
+  }
+
+  try {
+    await getUser(payload.sub);
+  } catch {
+    throw new FileViewError("File view token user no longer exists", 401);
   }
 
   const row = await getFileEntryById(id);
@@ -628,22 +648,28 @@ export async function handleFileViewRequest(
 
     await pipeFile(stat.absolutePath, res);
   } catch (err) {
-    const viewError =
-      err instanceof FileViewError
-        ? err
-        : new FileViewError(
-            err instanceof Error ? err.message : String(err),
-            500,
-          );
+    let statusCode = 500;
+    let message = "Could not read file";
+
+    if (err instanceof FileViewError) {
+      statusCode = err.statusCode;
+      message = err.message;
+    } else if (err instanceof FilesystemError) {
+      // Missing files and symlink escapes look the same to the client.
+      statusCode = 404;
+      message = "File not found";
+    } else {
+      console.error("File view failed:", err);
+    }
 
     if (res.headersSent) {
       res.destroy();
       return;
     }
 
-    res.statusCode = viewError.statusCode;
+    res.statusCode = statusCode;
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
-    res.end(viewError.message);
+    res.end(message);
   }
 }
 

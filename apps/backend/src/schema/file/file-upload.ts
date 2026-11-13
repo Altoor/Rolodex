@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { GraphQLError } from "graphql";
 import { extractUser } from "../../auth-token";
 import { toFileEntryRef } from "@repo/tools/tools/file/services/dto";
 import { ensureTempDirectory } from "@repo/tools/tools/file/services/storage";
@@ -124,17 +125,22 @@ export async function handleFileUploadRequest(
       throw err;
     }
   } catch (err) {
-    const uploadError =
-      err instanceof UploadError
-        ? err
-        : new UploadError(
-            err instanceof Error ? err.message : String(err),
-            400,
-          );
+    let statusCode = 500;
+    let message = "Upload failed";
 
-    respondJson(res, uploadError.statusCode, {
-      error: uploadError.message,
-    });
+    if (err instanceof UploadError) {
+      statusCode = err.statusCode;
+      message = err.message;
+    } else if (err instanceof GraphQLError) {
+      const code = err.extensions?.code;
+      statusCode = code === "NOT_FOUND" ? 404 : 400;
+      message = err.message;
+    } else {
+      // Do not echo filesystem errors: they can contain absolute paths.
+      console.error("File upload failed:", err);
+    }
+
+    respondJson(res, statusCode, { error: message });
   }
 }
 

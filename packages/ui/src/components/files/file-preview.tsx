@@ -177,6 +177,20 @@ function OtherPreview({ entry }: { entry: FileEntry }) {
   );
 }
 
+/** Mirrors the backend's readable-text check so we do not request a preview
+ * that the API will reject (for example PDF or DOCX). */
+function canPreviewText(entry: FileEntry): boolean {
+  if (entry.fileType === "plaintext") return true;
+  if (entry.fileType !== "text") return false;
+
+  const mimeType = entry.mimeType;
+  return (
+    !mimeType ||
+    mimeType.startsWith("text/") ||
+    mimeType === "application/x-tex"
+  );
+}
+
 function OversizedTextPreview({ entry }: { entry: FileEntry }) {
   return (
     <EmptyState
@@ -205,6 +219,10 @@ export function FilePreview({
         description="Select a file from the tree to preview its contents."
       />
     );
+  }
+
+  if (entry.fileType === "text" && !canPreviewText(entry)) {
+    return <OtherPreview entry={entry} />;
   }
 
   if (
