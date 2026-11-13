@@ -1,0 +1,81 @@
+name: rolodex-ollama
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg18
+    env_file:
+      - path: ".env"
+        required: true
+    ports:
+      - ${POSTGRES_PORT:-5432}:5432
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - ./apps/backend/drizzle/init.sql:/docker-entrypoint-initdb.d/00-vector.sql:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-tester} -d ${POSTGRES_DB:-rolo}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+      # WSL2 / Docker Desktop GPU passthrough. Remove these three entries on a
+      # native Linux host without /dev/dxg.
+      - /usr/lib/wsl/lib:/usr/lib/wsl/lib
+    environment:
+      OLLAMA_KEEP_ALIVE: 30m
+      OLLAMA_NUM_PARALLEL: 2
+      OLLAMA_CONTEXT_LENGTH: 64000
+      LD_LIBRARY_PATH: /usr/lib/wsl/lib
+    devices:
+      - /dev/dxg:/dev/dxg
+    ipc: host
+    privileged: true
+    tty: true
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      target: backend
+    env_file:
+      - path: ".env"
+        required: true
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-tester}:${POSTGRES_PASSWORD:-pass}@postgres:5432/${POSTGRES_DB:-rolo}
+      FILES_ROOT: /app/files
+      OLLAMA_BASE_URL: http://ollama:11434
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./files:/app/files
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      target: web
+    environment:
+      PORT: 3001
+    ports:
+      - "3001:3001"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  ollama_data:

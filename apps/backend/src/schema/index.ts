@@ -6,5 +6,7 @@ import "./ai/index";
 import "./task/index";
 import "./tool/index";
 import "./llmModel/index";
+import "./file/index";
+import "./appSettings/index";
 
 export const schema = builder.toSchema();

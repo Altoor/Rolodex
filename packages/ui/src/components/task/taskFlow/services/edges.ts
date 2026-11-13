@@ -6,6 +6,12 @@ import {
   USER_DECISION_HANDLE_PREFIX,
   type FlowTask,
 } from "../taskFlowTypes";
+import {
+  parseSwitchConfig,
+  switchEdgeId,
+  switchHandleId,
+  SWITCH_DEFAULT_HANDLE_ID,
+} from "./switch-config";
 
 const outputEdge = (
   id: string,
@@ -68,6 +74,7 @@ export function buildEdges(tasks: FlowTask[]): Edge[] {
       task.fallbackTaskId !== task.id &&
       task.type !== "userDecision" &&
       task.toolKey !== "if" &&
+      task.toolKey !== "switch" &&
       !(task.type === "decision" && task.forceUserDecideIfNoMatch) &&
       taskIds.has(String(task.fallbackTaskId))
     ) {
@@ -116,6 +123,48 @@ export function buildEdges(tasks: FlowTask[]): Edge[] {
           String(task.onFalseTaskId),
         ),
       );
+    }
+
+    if (task.toolKey === "switch") {
+      const config = parseSwitchConfig(task.toolConfig);
+
+      for (const entry of config.cases) {
+        if (
+          entry.nextTaskId == null ||
+          entry.nextTaskId === task.id ||
+          !taskIds.has(String(entry.nextTaskId))
+        ) {
+          continue;
+        }
+
+        result.push(
+          outputEdge(
+            switchEdgeId(task.id, entry.id),
+            String(task.id),
+            switchHandleId(entry.id),
+            String(entry.nextTaskId),
+          ),
+        );
+      }
+
+      if (
+        config.defaultTaskId != null &&
+        config.defaultTaskId !== task.id &&
+        taskIds.has(String(config.defaultTaskId))
+      ) {
+        result.push(
+          outputEdge(
+            switchEdgeId(task.id, null),
+            String(task.id),
+            SWITCH_DEFAULT_HANDLE_ID,
+            String(config.defaultTaskId),
+            {
+              stroke: "var(--color-edge-muted)",
+              strokeDasharray: "5 5",
+            },
+          ),
+        );
+      }
     }
   }
 

@@ -1,7 +1,7 @@
 import { GraphQLError } from "graphql";
 import { builder, db } from "../builder";
 import { Model } from "./llmModel";
-import { ollama } from "@repo/ai";
+import { getOllamaClient } from "@repo/ai";
 import { models } from "@repo/db";
 import { OllamaModelResponse } from "./model";
 import { eq } from "drizzle-orm";
@@ -20,7 +20,8 @@ builder.queryType({
           );
         }
 
-        const response = (await ollama.list()).models as OllamaModelResponse[];
+        const response = (await (await getOllamaClient()).list())
+          .models as OllamaModelResponse[];
 
         let modelsToReturn = await db.query.models.findMany();
 
@@ -91,7 +92,8 @@ builder.queryType({
           );
         }
 
-        const response = (await ollama.list()).models as OllamaModelResponse[];
+        const response = (await (await getOllamaClient()).list())
+          .models as OllamaModelResponse[];
         let modelsInDB = await db.query.models.findMany();
         let modelsToReturn = [];
 

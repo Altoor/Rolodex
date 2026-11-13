@@ -359,9 +359,46 @@ export const ANSWER_USER_DECISION = gql(/* GraphQL */ `
   }
 `);
 
+export const DISMISS_QUEUED_TASK = gql(/* GraphQL */ `
+  mutation DismissQueuedTask($id: Int!) {
+    dismissQueuedTask(id: $id) {
+      id
+      taskId
+      state
+      toolState
+      parentQueuedTaskId
+      depth
+      status
+      runId
+      queued_by
+      queued_at
+      result
+      pendingChoice
+      model
+      decisionModel
+      task {
+        id
+        name
+        type
+        toolKey
+      }
+    }
+  }
+`);
+
 export const CREATE_QUEUED_TASK = gql(/* GraphQL */ `
-  mutation CreateQueuedTask($taskId: Int, $state: String!) {
-    createQueuedTask(taskId: $taskId, state: $state) {
+  mutation CreateQueuedTask(
+    $taskId: Int
+    $state: String!
+    $fileIds: [Int!]
+    $folderIds: [Int!]
+  ) {
+    createQueuedTask(
+      taskId: $taskId
+      state: $state
+      fileIds: $fileIds
+      folderIds: $folderIds
+    ) {
       id
       taskId
       state

@@ -39,6 +39,7 @@ type UpdateSettingsInput = {
   defaultTaskId?: number | null;
   defaultModelName?: string | null;
   defaultDecisionModelName?: string | null;
+  defaultVisionModelName?: string | null;
 };
 
 export const updateUserSettings = async (
@@ -62,6 +63,7 @@ export const updateUserSettings = async (
   for (const modelName of [
     input.defaultModelName,
     input.defaultDecisionModelName,
+    input.defaultVisionModelName,
   ]) {
     if (modelName === undefined || modelName === null) continue;
 
@@ -93,6 +95,9 @@ export const updateUserSettings = async (
         : {}),
       ...(input.defaultDecisionModelName !== undefined
         ? { defaultDecisionModelName: input.defaultDecisionModelName }
+        : {}),
+      ...(input.defaultVisionModelName !== undefined
+        ? { defaultVisionModelName: input.defaultVisionModelName }
         : {}),
       updatedAt: new Date(),
     })

@@ -2,20 +2,38 @@ import "dotenv/config";
 import { createYoga } from "graphql-yoga";
 import { createServer } from "node:http";
 import { schema } from "./src/schema/index.ts";
-import jwt from "jsonwebtoken";
-import { getUser } from "./src/schema/user/user-service.ts";
+import { extractUser } from "./src/auth-token.ts";
 import { resetStaleRunningTasks, triggerQueue } from "./src/queue/index.ts";
-import { users } from "./src/db/index.ts";
-import { TOKEN_SECRET } from "./src/config.ts";
+import { handleFileUploadRequest } from "./src/schema/file/file-upload.ts";
+import { handleFileViewRequest } from "./src/schema/file/file-service.ts";
 
 const yoga = createYoga({
   schema,
+  // Applies to GraphQL JSON and multipart uploads. Per-file and file-count
+  // limits are enforced in uploadFilesForApi before reading each stream.
+  maxRequestBodySize: 25 * 1024 * 1024,
   context: async ({ request }) => {
     const user = await extractUser(request.headers.get("authorization"));
     return { user };
   },
 });
-const server = createServer(yoga);
+
+const server = createServer((req, res) => {
+  const url = new URL(req.url ?? "/", "http://localhost");
+  const pathname = url.pathname;
+
+  if (pathname === "/files/upload" || pathname === "/files/upload/") {
+    void handleFileUploadRequest(req, res);
+    return;
+  }
+
+  if (/^\/files\/\d+\/content\/?$/.test(pathname)) {
+    void handleFileViewRequest(req, res);
+    return;
+  }
+
+  yoga.requestListener(req, res);
+});
 
 // A stray unhandled rejection should log, not take the queue server down.
 process.on("unhandledRejection", (reason) => {
@@ -32,23 +50,3 @@ server.listen(4000, () => {
   void resetStaleRunningTasks();
   triggerQueue();
 });
-
-async function extractUser(
-  auth_header: string | null,
-): Promise<typeof users.$inferSelect | null> {
-  if (!auth_header) return null;
-
-  const token = auth_header.split(" ")[1];
-
-  if (!token) return null;
-
-  try {
-    const theTokenVerified = jwt.verify(token, TOKEN_SECRET);
-    if (typeof theTokenVerified === "string" || !theTokenVerified.aud)
-      return null;
-
-    return await getUser(parseInt(theTokenVerified.aud as string));
-  } catch {
-    return null;
-  }
-}

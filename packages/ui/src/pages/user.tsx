@@ -43,7 +43,9 @@ function AuthenticatedUserPage({ user }: { user: CurrentUser }) {
   const [saved, setSaved] = useState(false);
   const settingsKey = `${user.settings?.defaultTaskId ?? "none"}-${
     user.settings?.defaultModelName ?? "none"
-  }-${user.settings?.defaultDecisionModelName ?? "none"}`;
+  }-${user.settings?.defaultDecisionModelName ?? "none"}-${
+    user.settings?.defaultVisionModelName ?? "none"
+  }`;
 
   return (
     <PageContainer>
@@ -66,6 +68,9 @@ function AuthenticatedUserPage({ user }: { user: CurrentUser }) {
         initialDefaultModelName={user.settings?.defaultModelName ?? null}
         initialDefaultDecisionModelName={
           user.settings?.defaultDecisionModelName ?? null
+        }
+        initialDefaultVisionModelName={
+          user.settings?.defaultVisionModelName ?? null
         }
         onSaved={() => setSaved(true)}
         onDirty={() => setSaved(false)}

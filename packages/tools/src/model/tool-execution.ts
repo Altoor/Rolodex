@@ -40,6 +40,12 @@ export interface ToolExecution {
    */
   branch?: "true" | "false";
 
+  /**
+   * Human-readable branch that fired (for example a switch case label). It is
+   * stored on the task result so the run view can show which output was used.
+   */
+  branchLabel?: string;
+
   /** If set, the next queued step inherits this generation model. */
   nextModel?: string | null;
   /** If set, the next queued step inherits this decision model. */

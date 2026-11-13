@@ -1,4 +1,4 @@
-import { ollama } from "./ollama";
+import { getOllamaClient } from "./ollama";
 
 export const EMBEDDING_MODEL =
   process.env.EMBEDDING_MODEL ?? "nomic-embed-text";
@@ -12,7 +12,20 @@ export function todoEmbeddingText(todo: {
   return `${todo.name}\n\n${todo.description}`;
 }
 
+/**
+ * Text indexed for a file/folder entry. Content is intentionally excluded;
+ * only identity and user/model-authored metadata participate in search.
+ */
+export function fileEntryEmbeddingText(entry: {
+  name: string;
+  relativePath: string;
+  description: string;
+}): string {
+  return `${entry.name}\n${entry.relativePath}\n\n${entry.description}`;
+}
+
 export async function embedText(text: string): Promise<number[]> {
+  const ollama = await getOllamaClient();
   const response = await ollama.embed({
     model: EMBEDDING_MODEL,
     input: text,
@@ -32,7 +45,7 @@ export async function tryEmbedText(text: string): Promise<number[] | null> {
   try {
     return await embedText(text);
   } catch (err) {
-    console.warn("todo embedding failed:", err);
+    console.warn("embedding failed:", err);
     return null;
   }
 }

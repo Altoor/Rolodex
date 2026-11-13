@@ -4,6 +4,7 @@ import { useMutation, useQuery, useSubscription } from "@apollo/client/react";
 import {
   ANSWER_USER_DECISION,
   CREATE_QUEUED_TASK,
+  DISMISS_QUEUED_TASK,
 } from "@repo/queries/tasks/task-mutations";
 import { QUEUED_TASK_EVENT } from "@repo/queries/tasks/task-subscriptions";
 import { ACTIVE_QUEUED_TASKS, TASKS } from "@repo/queries/tasks/task-queries";
@@ -66,6 +67,7 @@ interface StepResult {
     | "false"
     | "awaiting_user";
   nextTaskId?: number | null;
+  branchLabel?: string;
   summary?: string;
   note?: string;
   toolKey?: string | null;
@@ -143,7 +145,10 @@ export default function LandingPage() {
   const [createQueuedTask] = useMutation(CREATE_QUEUED_TASK);
   const [answerUserDecision, { error: answerError }] =
     useMutation(ANSWER_USER_DECISION);
+  const [dismissQueuedTask, { error: dismissError }] =
+    useMutation(DISMISS_QUEUED_TASK);
   const [answeringStepId, setAnsweringStepId] = useState<number | null>(null);
+  const [dismissingStepId, setDismissingStepId] = useState<number | null>(null);
 
   // Live steps for every run the current user has in flight. Completed steps of
   // an active run stay here so each chain-of-thought keeps its history.
@@ -174,6 +179,21 @@ export default function LandingPage() {
       if (step) addLiveStep(step);
     } finally {
       setAnsweringStepId(null);
+    }
+  };
+
+  // Dismissing a choice ends its whole run; the mutation returns every step it
+  // completed so the prompts disappear immediately.
+  const dismissChoice = async (stepId: number) => {
+    setDismissingStepId(stepId);
+    try {
+      const { data } = await dismissQueuedTask({ variables: { id: stepId } });
+      for (const row of data?.dismissQueuedTask ?? []) {
+        const step = toStep(row);
+        if (step) addLiveStep(step);
+      }
+    } finally {
+      setDismissingStepId(null);
     }
   };
 
@@ -471,8 +491,9 @@ export default function LandingPage() {
                                     ? `fallback: ${taskName(step.result.nextTaskId)}`
                                     : step.result?.branch === "tool"
                                       ? step.result.nextTaskId != null
-                                        ? `next: ${taskName(step.result.nextTaskId)}`
-                                        : "tool result"
+                                        ? `${step.result.branchLabel ? `${step.result.branchLabel}: ` : "next: "}${taskName(step.result.nextTaskId)}`
+                                        : (step.result.branchLabel ??
+                                          "tool result")
                                       : step.result?.branch === "awaiting_user"
                                         ? "waiting for your choice"
                                         : undefined;
@@ -529,14 +550,18 @@ export default function LandingPage() {
                               <UserChoiceBlock
                                 choice={step.pendingChoice}
                                 answering={answeringStepId === step.id}
+                                dismissing={dismissingStepId === step.id}
                                 error={
                                   answeringStepId === step.id
                                     ? (answerError?.message ?? null)
-                                    : null
+                                    : dismissingStepId === step.id
+                                      ? (dismissError?.message ?? null)
+                                      : null
                                 }
                                 onAnswer={(optionId) =>
                                   submitChoice(step.id, optionId)
                                 }
+                                onDismiss={() => dismissChoice(step.id)}
                               />
                             ) : null}
                           </div>

@@ -2,7 +2,7 @@ import { GraphQLError } from "graphql";
 import { eq } from "drizzle-orm";
 import { db, taskResults, tasks, userDecisionOptions } from "@repo/db";
 import { assertPulledModel } from "@repo/ai";
-import { getToolDefinition } from "@repo/tools";
+import { getToolDefinition, validateSwitchConfig } from "@repo/tools";
 
 export type TaskOutputType = "normal" | "foreach";
 export type TaskType = "decision" | "textPrompt" | "tool" | "userDecision";
@@ -99,6 +99,34 @@ export async function assertValidTaskConfig(
           throw new GraphQLError(`${label} ${id} does not reference a task`, {
             extensions: { code: "BAD_USER_INPUT" },
           });
+        }
+      }
+    }
+
+    if (input.toolKey === "switch") {
+      let config: ReturnType<typeof validateSwitchConfig>;
+      try {
+        config = validateSwitchConfig(input.toolConfig ?? {});
+      } catch (err) {
+        throw new GraphQLError(
+          err instanceof Error ? err.message : String(err),
+          { extensions: { code: "BAD_USER_INPUT" } },
+        );
+      }
+
+      const targetIds = new Set<number>();
+      for (const entry of config.cases) {
+        if (entry.nextTaskId != null) targetIds.add(entry.nextTaskId);
+      }
+      if (config.defaultTaskId != null) targetIds.add(config.defaultTaskId);
+
+      for (const id of targetIds) {
+        const target = await db.query.tasks.findFirst({ where: { id } });
+        if (!target) {
+          throw new GraphQLError(
+            `switch target ${id} does not reference a task`,
+            { extensions: { code: "BAD_USER_INPUT" } },
+          );
         }
       }
     }
@@ -286,6 +314,54 @@ export async function deleteTask(id: number): Promise<string> {
     .update(userDecisionOptions)
     .set({ resultTaskId: null })
     .where(eq(userDecisionOptions.resultTaskId, id));
+
+  // Switch cases and the default target live inside toolConfig JSON, so they
+  // cannot be cleared with a simple UPDATE ... WHERE.
+  const switchTasks = await db
+    .select({ id: tasks.id, toolConfig: tasks.toolConfig })
+    .from(tasks)
+    .where(eq(tasks.toolKey, "switch"));
+
+  for (const switchTask of switchTasks) {
+    const config = switchTask.toolConfig;
+    if (
+      config === null ||
+      typeof config !== "object" ||
+      Array.isArray(config)
+    ) {
+      continue;
+    }
+
+    const record = config as Record<string, unknown>;
+    let changed = false;
+
+    const cases = Array.isArray(record.cases)
+      ? record.cases.map((entry) => {
+          if (
+            entry !== null &&
+            typeof entry === "object" &&
+            !Array.isArray(entry) &&
+            (entry as Record<string, unknown>).nextTaskId === id
+          ) {
+            changed = true;
+            return { ...(entry as Record<string, unknown>), nextTaskId: null };
+          }
+          return entry;
+        })
+      : record.cases;
+
+    const defaultTaskId =
+      record.defaultTaskId === id ? null : record.defaultTaskId;
+    if (record.defaultTaskId === id) changed = true;
+
+    if (changed) {
+      await db
+        .update(tasks)
+        .set({ toolConfig: { ...record, cases, defaultTaskId } })
+        .where(eq(tasks.id, switchTask.id));
+    }
+  }
+
   await db.delete(tasks).where(eq(tasks.id, id));
 
   return "successfully deleted task";

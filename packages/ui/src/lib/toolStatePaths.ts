@@ -25,6 +25,47 @@ const TODO_FIELDS = [
   "score",
 ] as const;
 
+const FILE_FIELDS = [
+  "id",
+  "kind",
+  "name",
+  "description",
+  "path",
+  "parentId",
+  "fileType",
+  "mimeType",
+  "size",
+  "contentHash",
+  "lastEditedAt",
+  "filesystemModifiedAt",
+  "createdAt",
+  "updatedAt",
+  "deletedAt",
+] as const;
+
+const SCAN_CHANGE_FIELDS = [
+  "kind",
+  "change",
+  "id",
+  "name",
+  "path",
+  "fromPath",
+  "fileType",
+  "mimeType",
+  "size",
+  "lastEditedAt",
+  "filesystemModifiedAt",
+  "contentHash",
+] as const;
+
+const SCAN_COUNT_FIELDS = [
+  "added",
+  "changed",
+  "moved",
+  "deleted",
+  "unchanged",
+] as const;
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -66,6 +107,27 @@ function addFields(
   taskName: string,
 ): void {
   for (const field of fields) addPath(state, field, task, taskName);
+}
+
+/** Field names declared by a prompt task's `fields` config object. */
+export function promptFieldNames(
+  config: Record<string, unknown> | null,
+): string[] {
+  const fields = asRecord(config?.fields);
+  if (!fields) return [];
+
+  return Object.keys(fields).filter((name) => name.trim().length > 0);
+}
+
+/** Reads prompt field names from the task builder's raw config JSON. */
+export function promptFieldNamesFromText(configText: string): string[] {
+  if (!configText.trim()) return [];
+
+  try {
+    return promptFieldNames(asRecord(JSON.parse(configText)));
+  } catch {
+    return [];
+  }
 }
 
 function addTodoPaths(
@@ -172,8 +234,108 @@ function taskStateEffect(task: FlowTask, incoming: TaskState): TaskState {
         }
         break;
 
+      case "find_file":
+        addObjectPaths(state, "file", FILE_FIELDS, task, taskName);
+        break;
+
+      case "find_files":
+        if (task.toolOutputType === "foreach") {
+          addObjectPaths(state, "file", FILE_FIELDS, task, taskName);
+        } else {
+          addArrayPaths(state, "files", FILE_FIELDS, task, taskName);
+        }
+        break;
+
+      case "find_folder":
+        addObjectPaths(state, "folder", FILE_FIELDS, task, taskName);
+        break;
+
+      case "find_folders":
+        if (task.toolOutputType === "foreach") {
+          addObjectPaths(state, "folder", FILE_FIELDS, task, taskName);
+        } else {
+          addArrayPaths(state, "folders", FILE_FIELDS, task, taskName);
+        }
+        break;
+
+      case "scan_files":
+        if (task.toolOutputType === "foreach") {
+          addObjectPaths(state, "entry", SCAN_CHANGE_FIELDS, task, taskName);
+        } else {
+          addArrayPaths(state, "changes", SCAN_CHANGE_FIELDS, task, taskName);
+          addObjectPaths(state, "counts", SCAN_COUNT_FIELDS, task, taskName);
+        }
+        break;
+
+      case "update_file_metadata":
+        addObjectPaths(state, "file", FILE_FIELDS, task, taskName);
+        addObjectPaths(state, "folder", FILE_FIELDS, task, taskName);
+        break;
+
+      case "detect_file_type":
+        addObjectPaths(state, "file", FILE_FIELDS, task, taskName);
+        break;
+
+      case "read_plaintext_file":
+      case "read_text_file":
+        addObjectPaths(state, "file", FILE_FIELDS, task, taskName);
+        addPath(state, "content", task, taskName);
+        break;
+
+      case "read_image_file":
+        addObjectPaths(state, "file", FILE_FIELDS, task, taskName);
+        addObjectPaths(
+          state,
+          "image",
+          ["mimeType", "width", "height", "base64"],
+          task,
+          taskName,
+        );
+        addPath(state, "url", task, taskName);
+        break;
+
+      case "read_audio_file":
+        addObjectPaths(state, "file", FILE_FIELDS, task, taskName);
+        addObjectPaths(
+          state,
+          "audio",
+          ["mimeType", "duration", "url"],
+          task,
+          taskName,
+        );
+        addPath(state, "url", task, taskName);
+        break;
+
+      case "read_video_file":
+        addObjectPaths(state, "file", FILE_FIELDS, task, taskName);
+        addObjectPaths(
+          state,
+          "video",
+          ["mimeType", "duration", "url"],
+          task,
+          taskName,
+        );
+        addPath(state, "url", task, taskName);
+        break;
+
+      case "read_other_file":
+        addObjectPaths(state, "file", FILE_FIELDS, task, taskName);
+        addFields(state, ["url", "base64"], task, taskName);
+        break;
+
+      case "create_folder":
+        addObjectPaths(state, "folder", FILE_FIELDS, task, taskName);
+        break;
+
+      case "create_file":
+        addObjectPaths(state, "file", FILE_FIELDS, task, taskName);
+        break;
+
       case "prompt":
         addFields(state, ["text"], task, taskName);
+        for (const field of promptFieldNames(config)) {
+          addPath(state, field, task, taskName);
+        }
         break;
 
       case "model_selector":

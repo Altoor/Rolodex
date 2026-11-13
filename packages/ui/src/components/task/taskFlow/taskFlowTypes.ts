@@ -28,6 +28,7 @@ export type TaskFlowNodeData = {
   type: string | null;
   decisionType: string | null;
   toolKey: string | null;
+  toolConfig: unknown;
   model: string | null;
   decisionModel: string | null;
   onTrueTaskId: number | null;
