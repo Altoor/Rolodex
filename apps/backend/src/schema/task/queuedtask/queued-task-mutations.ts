@@ -17,10 +17,22 @@ builder.mutationType({
       args: {
         taskId: t.arg.int(),
         state: t.arg.string({ required: true }),
+        fileIds: t.arg.intList({ required: false }),
+        folderIds: t.arg.intList({ required: false }),
       },
-      resolve: async (_query, _root, { taskId, state }, ctx) => {
+      resolve: async (
+        _query,
+        _root,
+        { taskId, state, fileIds, folderIds },
+        ctx,
+      ) => {
         const userId = requireUserId(ctx);
-        return createQueuedTask(userId, { taskId, state });
+        return createQueuedTask(userId, {
+          taskId,
+          state,
+          fileIds,
+          folderIds,
+        });
       },
     }),
 

@@ -3,6 +3,8 @@ import type {
   FileType,
 } from "@repo/queries/__generated__/graphql";
 
+export const TEXT_PREVIEW_MAX_BYTES = 5 * 1024 * 1024;
+
 export type FileEntryKind = "file" | "folder";
 
 export interface FileEntry {

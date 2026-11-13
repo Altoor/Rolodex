@@ -1,11 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db, todos } from "@repo/db";
-import { mergeToolInput, readString } from "../../utils";
+import { mergeToolInput, readBoolean, readString } from "../../utils";
 import { ToolInputError, type Tool, type ToolDefinition } from "../../model";
-import {
-  extractTodoDateTime,
-  extractTodoFields,
-} from "./services/extract-todo-fields";
 import { parseTodoDateTime } from "./services/date";
 import {
   resolveTodoId,
@@ -13,11 +9,19 @@ import {
   toToolTodo,
 } from "./services/todo";
 
+function readDateInput(input: Record<string, unknown>): string | undefined {
+  return (
+    readString(input, "doByDate") ??
+    readString(input, "date") ??
+    readString(input, "dueDate")
+  );
+}
+
 const definition: ToolDefinition = {
   key: "update_todo",
   name: "Update todo",
   description:
-    "Update a todo's name, description, and/or do-by timestamp. The todo can be selected by id, by find_todo output, or inferred from state.",
+    "Update a todo from explicit name, description, do-by date, and done values. Only provided fields change.",
   category: "todo",
   inputMode: "json",
   inputSchema: {
@@ -25,35 +29,40 @@ const definition: ToolDefinition = {
     properties: {
       id: {
         type: "number",
-        description: "Optional todo id.",
+        description:
+          "Todo id. Can be supplied here or by a find_todo task in toolState.",
       },
       name: {
         type: "string",
-        description: "Optional new todo name.",
+        description: "New todo name. Omit to keep the current name.",
       },
       description: {
         type: "string",
-        description: "Optional new todo description.",
+        description:
+          "New todo description. Omit to keep the current description; use an empty string to clear it.",
       },
       doByDate: {
         type: "string",
         description:
-          "Optional new do-by timestamp as an ISO 8601 date-time. Pass an empty string to clear it. Inferred from the request when omitted.",
+          "New do-by timestamp as an ISO 8601 date-time. Omit to keep the current value; use an empty string to clear it. `date` and `dueDate` are accepted aliases.",
       },
-      model: {
-        type: "string",
-        description:
-          "Optional generation model used to infer missing name/description/do-by fields. Defaults to the user's default generation model.",
+      done: {
+        type: "boolean",
+        description: "New done flag. Omit to keep the current value.",
       },
       decisionModel: {
         type: "string",
         description:
-          "Optional decision model used to select the todo. Defaults to the user's default decision model.",
+          "Optional decision model used to select the todo when no id is supplied. Defaults to the user's default decision model.",
       },
     },
   },
-  outputDescription: "The updated todo.",
-  exampleConfig: {},
+  outputDescription:
+    "The updated todo. Set `appendState` to append it as `todo` for later tasks.",
+  exampleConfig: {
+    description: "Updated description.",
+    done: false,
+  },
 };
 
 export const updateTodoTool: Tool = {
@@ -62,33 +71,37 @@ export const updateTodoTool: Tool = {
   async execute(context) {
     const todo = await resolveTodoId(context);
     const input = mergeToolInput(context);
-    let name = readString(input, "name");
-    let description = readString(input, "description");
-    const explicitDoByDate = readString(input, "doByDate");
 
+    const suppliedName = readString(input, "name");
+    if (suppliedName !== undefined && !suppliedName.trim()) {
+      throw new ToolInputError(`"name" cannot be empty`);
+    }
+
+    const name = suppliedName?.trim();
+    const description = readString(input, "description")?.trim();
+    const dateInput = readDateInput(input);
     const doByDate =
-      explicitDoByDate !== undefined
-        ? parseTodoDateTime(explicitDoByDate)
-        : await extractTodoDateTime(context.userId, context);
+      dateInput !== undefined ? parseTodoDateTime(dateInput) : undefined;
+    const done = readBoolean(input, "done");
 
-    // Only infer replacement name/description fields when the request is not
-    // a timestamp-only edit.
     if (
-      (name === undefined || !name.trim()) &&
-      (description === undefined || !description.trim()) &&
-      doByDate === undefined
+      name === undefined &&
+      description === undefined &&
+      doByDate === undefined &&
+      done === undefined
     ) {
-      const extracted = await extractTodoFields(context.userId, context);
-      name = extracted.name;
-      description = extracted.description;
+      throw new ToolInputError(
+        "update_todo requires at least one of name, description, doByDate, or done",
+      );
     }
 
     const [updated] = await db
       .update(todos)
       .set({
-        name: name?.trim() ? name : todo.name,
-        description: description?.trim() ? description : todo.description,
+        ...(name !== undefined ? { name } : {}),
+        ...(description !== undefined ? { description } : {}),
         ...(doByDate !== undefined ? { doByDate } : {}),
+        ...(done !== undefined ? { done } : {}),
       })
       .where(eq(todos.id, todo.id))
       .returning();
@@ -103,9 +116,7 @@ export const updateTodoTool: Tool = {
 
     return {
       output: { todo: toToolTodo(updated) },
-      summary: doByDate
-        ? `Updated todo "${updated.name}" (due ${doByDate.toISOString()})`
-        : `Updated todo "${updated.name}"`,
+      summary: `Updated todo "${updated.name}"`,
     };
   },
 };

@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { GraphQLError } from "graphql";
 import { and, eq, inArray, lt } from "drizzle-orm";
-import { db, queuedTasks } from "@repo/db";
+import { db, fileEntries, queuedTasks } from "@repo/db";
+import { toFileEntryRef } from "@repo/tools/tools/file/services/dto";
 import { getUserSettings } from "../../user/user-settings-service";
 import { triggerQueue } from "../../../queue";
 import { dismissRun, publish } from "../../../queue/step-store";
@@ -9,6 +10,48 @@ import { dismissRun, publish } from "../../../queue/step-store";
 export interface CreateQueuedTaskInput {
   taskId?: number | null;
   state: string;
+  fileIds?: number[] | null;
+  folderIds?: number[] | null;
+}
+
+async function loadContextEntries(
+  ids: number[] | null | undefined,
+  kind: "file" | "folder",
+) {
+  const unique = [
+    ...new Set((ids ?? []).filter((id) => Number.isInteger(id) && id > 0)),
+  ];
+
+  if (unique.length === 0) return [];
+
+  const rows = await db
+    .select()
+    .from(fileEntries)
+    .where(inArray(fileEntries.id, unique));
+
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const missing = unique.filter((id) => !byId.has(id));
+
+  if (missing.length > 0) {
+    throw new GraphQLError(`File entries not found: ${missing.join(", ")}`, {
+      extensions: { code: "BAD_USER_INPUT" },
+    });
+  }
+
+  const wrongKind = unique.filter((id) => byId.get(id)?.kind !== kind);
+
+  if (wrongKind.length > 0) {
+    throw new GraphQLError(
+      `Expected ${kind} entries, got: ${wrongKind.join(", ")}`,
+      {
+        extensions: { code: "BAD_USER_INPUT" },
+      },
+    );
+  }
+
+  // Preserve the caller's order and flatten the selected entries into the
+  // toolState shape the file tools already understand.
+  return unique.map((id) => toFileEntryRef(byId.get(id)!));
 }
 
 export async function createQueuedTask(
@@ -27,10 +70,23 @@ export async function createQueuedTask(
     );
   }
 
+  const [files, folders] = await Promise.all([
+    loadContextEntries(input.fileIds, "file"),
+    loadContextEntries(input.folderIds, "folder"),
+  ]);
+
+  const toolState: Record<string, unknown>[] = [];
+  if (files.length > 0 || folders.length > 0) {
+    toolState.push({
+      ...(files.length > 0 ? { files } : {}),
+      ...(folders.length > 0 ? { folders } : {}),
+    });
+  }
+
   const queuedTask = {
     taskId: resolvedTaskId,
     state: input.state,
-    toolState: [],
+    toolState,
     depth: 0,
     // A new user submission starts a new chain run.
     runId: randomUUID(),

@@ -387,8 +387,18 @@ export const DISMISS_QUEUED_TASK = gql(/* GraphQL */ `
 `);
 
 export const CREATE_QUEUED_TASK = gql(/* GraphQL */ `
-  mutation CreateQueuedTask($taskId: Int, $state: String!) {
-    createQueuedTask(taskId: $taskId, state: $state) {
+  mutation CreateQueuedTask(
+    $taskId: Int
+    $state: String!
+    $fileIds: [Int!]
+    $folderIds: [Int!]
+  ) {
+    createQueuedTask(
+      taskId: $taskId
+      state: $state
+      fileIds: $fileIds
+      folderIds: $folderIds
+    ) {
       id
       taskId
       state

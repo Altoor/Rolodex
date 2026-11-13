@@ -18,18 +18,23 @@ import {
 } from "#components/ui/accordion";
 import { Badge } from "#components/ui/badge";
 import { Button } from "#components/ui/button";
+import { FileDownloadButton } from "./file-download-button";
 import { fileTypeLabel, type FileEntry } from "./types";
 
 interface FilePreviewHeaderProps {
   entry: FileEntry;
   ancestors: FileEntry[];
   onSelectFolder: (id: number | null) => void;
+  onEdit: () => void;
+  onDelete: () => void;
 }
 
 export function FilePreviewHeader({
   entry,
   ancestors,
   onSelectFolder,
+  onEdit,
+  onDelete,
 }: FilePreviewHeaderProps) {
   return (
     <div className="flex flex-col gap-4">
@@ -76,14 +81,9 @@ export function FilePreviewHeader({
           ) : null}
         </div>
 
-        <div className="flex shrink-0 gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled
-            title="Editing arrives in the next stage"
-          >
+        <div className="flex shrink-0 flex-wrap gap-2">
+          {entry.kind === "file" ? <FileDownloadButton entry={entry} /> : null}
+          <Button type="button" variant="outline" size="sm" onClick={onEdit}>
             <Pencil />
             Edit
           </Button>
@@ -91,8 +91,8 @@ export function FilePreviewHeader({
             type="button"
             variant="outline"
             size="sm"
-            disabled
-            title="Deleting arrives in the next stage"
+            onClick={onDelete}
+            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
           >
             <Trash2 />
             Delete

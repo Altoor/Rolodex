@@ -14,6 +14,7 @@ import {
   FileTreeFile,
   FileTreeFolder,
 } from "#components/ui/file-tree";
+import { FileDownloadButton } from "./file-download-button";
 import type { FileEntry, FileTreeNode } from "./types";
 
 interface FileTreeViewProps {
@@ -22,6 +23,10 @@ interface FileTreeViewProps {
   expandedIds: ReadonlySet<number>;
   onSelect: (entry: FileTreeNode) => void;
   onToggle: (id: number, open: boolean) => void;
+  onDropFiles?: (dataTransfer: DataTransfer, parentId: number) => void;
+  dragOverId?: number | null;
+  onFolderDragOver?: (id: number) => void;
+  onFolderDragLeave?: (id: number) => void;
 }
 
 function FileEntryIcon({ entry }: { entry: FileEntry }) {
@@ -54,6 +59,10 @@ export function FileTreeView({
   expandedIds,
   onSelect,
   onToggle,
+  onDropFiles,
+  dragOverId,
+  onFolderDragOver,
+  onFolderDragLeave,
 }: FileTreeViewProps) {
   const entriesById = useMemo(() => {
     const map = new Map<number, FileTreeNode>();
@@ -74,6 +83,29 @@ export function FileTreeView({
           icon={icon}
           open={expandedIds.has(node.id)}
           onOpenChange={(open) => onToggle(node.id, open)}
+          dropTarget={dragOverId === node.id}
+          onDragOver={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            event.dataTransfer.dropEffect = "copy";
+            onFolderDragOver?.(node.id);
+          }}
+          onDragLeave={(event) => {
+            event.stopPropagation();
+            if (
+              event.relatedTarget instanceof Node &&
+              event.currentTarget.contains(event.relatedTarget)
+            ) {
+              return;
+            }
+            onFolderDragLeave?.(node.id);
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onFolderDragLeave?.(node.id);
+            onDropFiles?.(event.dataTransfer, node.id);
+          }}
         >
           {node.children.map(renderNode)}
         </FileTreeFolder>
@@ -81,7 +113,20 @@ export function FileTreeView({
     }
 
     return (
-      <FileTreeFile key={node.id} name={node.name} value={value} icon={icon} />
+      <FileTreeFile
+        key={node.id}
+        name={node.name}
+        value={value}
+        icon={icon}
+        actions={
+          <FileDownloadButton
+            entry={node}
+            iconOnly
+            variant="ghost"
+            size="icon-xs"
+          />
+        }
+      />
     );
   };
 

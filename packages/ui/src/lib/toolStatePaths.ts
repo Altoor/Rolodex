@@ -109,6 +109,27 @@ function addFields(
   for (const field of fields) addPath(state, field, task, taskName);
 }
 
+/** Field names declared by a prompt task's `fields` config object. */
+export function promptFieldNames(
+  config: Record<string, unknown> | null,
+): string[] {
+  const fields = asRecord(config?.fields);
+  if (!fields) return [];
+
+  return Object.keys(fields).filter((name) => name.trim().length > 0);
+}
+
+/** Reads prompt field names from the task builder's raw config JSON. */
+export function promptFieldNamesFromText(configText: string): string[] {
+  if (!configText.trim()) return [];
+
+  try {
+    return promptFieldNames(asRecord(JSON.parse(configText)));
+  } catch {
+    return [];
+  }
+}
+
 function addTodoPaths(
   state: TaskState,
   prefix: string,
@@ -312,6 +333,9 @@ function taskStateEffect(task: FlowTask, incoming: TaskState): TaskState {
 
       case "prompt":
         addFields(state, ["text"], task, taskName);
+        for (const field of promptFieldNames(config)) {
+          addPath(state, field, task, taskName);
+        }
         break;
 
       case "model_selector":

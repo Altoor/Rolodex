@@ -52,7 +52,7 @@ function FileTree({
 }
 
 const rowClassName =
-  "group/file-tree-row flex w-full min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-sm outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50";
+  "group/file-tree-row flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-sm outline-none transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50";
 
 const selectedRowClassName = "bg-muted font-medium text-foreground";
 
@@ -68,6 +68,11 @@ interface FileTreeFolderProps {
   defaultOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
   className?: string;
+  /** Highlights the folder while files are dragged over it. */
+  dropTarget?: boolean;
+  onDragOver?: ComponentProps<"div">["onDragOver"];
+  onDragLeave?: ComponentProps<"div">["onDragLeave"];
+  onDrop?: ComponentProps<"div">["onDrop"];
 }
 
 function FileTreeFolder({
@@ -80,6 +85,10 @@ function FileTreeFolder({
   defaultOpen,
   onOpenChange,
   className,
+  dropTarget,
+  onDragOver,
+  onDragLeave,
+  onDrop,
 }: FileTreeFolderProps) {
   const { selectedValue, onSelect } = useContext(FileTreeContext);
   const selected = selectedValue === value;
@@ -90,28 +99,35 @@ function FileTreeFolder({
       defaultOpen={defaultOpen}
       onOpenChange={(nextOpen) => onOpenChange?.(nextOpen)}
     >
-      <div className="flex items-center gap-1">
-        <CollapsibleTrigger
-          role="treeitem"
-          aria-selected={selected}
+      <div onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
+        <div
           className={cn(
-            rowClassName,
-            selected && selectedRowClassName,
-            className,
+            "flex items-center gap-1 rounded-md",
+            dropTarget && "bg-primary/10 ring-1 ring-primary/40",
           )}
-          onClick={() => onSelect?.(value)}
         >
-          <ChevronRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]/file-tree-row:rotate-90" />
-          <FileTreeIcon>{icon}</FileTreeIcon>
-          <FileTreeName>{name}</FileTreeName>
-        </CollapsibleTrigger>
-        {actions ? <FileTreeActions>{actions}</FileTreeActions> : null}
-      </div>
-      <CollapsibleContent>
-        <div className="ml-3 flex flex-col gap-0.5 border-l pl-2">
-          {children}
+          <CollapsibleTrigger
+            role="treeitem"
+            aria-selected={selected}
+            className={cn(
+              rowClassName,
+              selected && selectedRowClassName,
+              className,
+            )}
+            onClick={() => onSelect?.(value)}
+          >
+            <ChevronRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[panel-open]/file-tree-row:rotate-90" />
+            <FileTreeIcon>{icon}</FileTreeIcon>
+            <FileTreeName>{name}</FileTreeName>
+          </CollapsibleTrigger>
+          {actions ? <FileTreeActions>{actions}</FileTreeActions> : null}
         </div>
-      </CollapsibleContent>
+        <CollapsibleContent>
+          <div className="ml-3 flex flex-col gap-0.5 border-l pl-2">
+            {children}
+          </div>
+        </CollapsibleContent>
+      </div>
     </Collapsible>
   );
 }

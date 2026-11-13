@@ -584,13 +584,14 @@ export async function handleFileViewRequest(
     await assertRealPathInsideRoot(stat.absolutePath);
 
     const mimeType = await fileMimeType(row);
+    const download = url.searchParams.get("download") === "1";
 
     res.setHeader("Content-Type", mimeType);
     res.setHeader("Cache-Control", "private, max-age=60");
     res.setHeader("Accept-Ranges", "bytes");
     res.setHeader(
       "Content-Disposition",
-      `inline; filename*=UTF-8''${encodeURIComponent(row.name)}`,
+      `${download ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(row.name)}`,
     );
 
     const range = parseRangeHeader(req.headers.range, stat.size ?? 0);

@@ -531,11 +531,13 @@ Search strategy is shared with todos:
 ### 7.3 `scan_files`
 
 - Runs the sync engine.
-- Input: `path?`, `apply?`, `includeUnchanged?`, `hash?`, `detectMoves?`, `maxEntries?`.
+- Input: `path?`, `kind?`, `fileType?`, `apply?`, `includeUnchanged?`, `hash?`, `detectMoves?`, `maxEntries?`.
 - Output: `{ counts, entries, warnings }`.
+- `kind` / `fileType` filter `entries`; `counts` still describe the full scan.
 - Appends: `{ changes: entries }` (only changed entries unless `includeUnchanged`).
 - Supports `outputTypes: ["normal", "foreach"]`.
 - Foreach items: `{ entry }`, where `entry` includes `change`, `kind`, `id`, `path`, `fromPath`, etc.
+- Foreach defaults `includeUnchanged` to `true` and `kind` to `"file"`, so re-running a flow over an already-indexed tree still enqueues children. Set `includeUnchanged: false` to process only changes, or `kind: "folder"` / `"all"` to change the entry kind.
 - Example configs:
   - preview only: `{ "apply": false, "includeUnchanged": false }`
   - full resync: `{ "apply": true }`
@@ -656,6 +658,7 @@ Current output is `{ text }`. Extend it so a prompt can produce named fields tha
 ### 8.2 Behavior
 
 - If `fields` is omitted, behavior stays exactly as today: output `{ text, thinking, model }`, append `{ text }`.
+- `prompt` and `system` support `{{path}}` placeholders resolved against merged toolState, for example `{{content}}` or `{{file.name}}`; missing paths fail with a clear error. `useToolState: true` still appends the whole state.
 - If `fields` is present:
   - Build a JSON schema from the field definitions.
   - Pass it as Ollama’s `format`.
@@ -1333,7 +1336,7 @@ For each tool, use the built-in test form with `state`, `toolConfig`, and a hand
 
 ---
 
-### Stage 5 — Read-only files page ⬜ PENDING
+### Stage 5 — Read-only files page ✅ DONE
 
 **Goal:** `/files` shows the tree and previews the selected file, with breadcrumb, title, and description accordion.
 
@@ -1376,7 +1379,7 @@ For each tool, use the built-in test form with `state`, `toolConfig`, and a hand
 
 ---
 
-### Stage 6 — Editing, creation, and drag-and-drop ⬜ PENDING
+### Stage 6 — Editing, creation, and drag-and-drop ✅ DONE
 
 **Goal:** Users can edit metadata/content, create folders/files, delete entries, and upload by drag-and-drop.
 
@@ -1424,7 +1427,7 @@ For each tool, use the built-in test form with `state`, `toolConfig`, and a hand
 
 ---
 
-### Stage 7 — Prompt tool structured output + PathFormField ⬜ PENDING
+### Stage 7 — Prompt tool structured output + PathFormField ✅ DONE
 
 **Goal:** A prompt can return named fields that downstream tools and file metadata fields can use directly.
 
