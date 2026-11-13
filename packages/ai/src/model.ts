@@ -1,8 +1,12 @@
 import { eq } from "drizzle-orm";
 import { db, models, userSettings } from "@repo/db";
 
-export const DEFAULT_MODEL = "tev1:4b";
-export const DEFAULT_DECISION_MODEL = DEFAULT_MODEL;
+/** Default generation model for prompts and other LLM-backed tools. */
+export const DEFAULT_MODEL = "gemma4:e4b";
+
+/** System One decision model. Kept separate because generation models are not
+ * necessarily valid decision models. */
+export const DEFAULT_DECISION_MODEL = "tev1:4b";
 
 export async function getModelForUser(userId: number): Promise<string> {
   const [settings] = await db

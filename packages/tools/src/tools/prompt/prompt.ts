@@ -469,7 +469,7 @@ const definition: ToolDefinition = {
   outputDescription:
     "The model answer as text, plus the model name and optional thinking text. With `fields`, each parsed field is also returned and appended to toolState.",
   exampleConfig: {
-    model: "gemma4:e2b",
+    model: "gemma4:e4b",
     prompt:
       "Return a short folder name and a one-sentence description for a folder of tax documents.",
     fields: {
