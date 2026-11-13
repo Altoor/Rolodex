@@ -18,6 +18,7 @@ const NAV_ITEMS = [
   { href: "/task-queue", label: "Task queue", requiresAuth: true },
   { href: "/tools", label: "Tools", requiresAuth: true },
   { href: "/models", label: "Models", requiresAuth: true },
+  { href: "/settings", label: "Settings", requiresAuth: true },
   { href: "/user", label: "User", requiresAuth: false },
 ];
 

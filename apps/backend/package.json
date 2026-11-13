@@ -40,6 +40,8 @@
   },
   "scripts": {
     "api": "pnpm tsx watch server.ts -w",
+    "start": "tsx server.ts",
+    "start:docker": "drizzle-kit push --force && tsx server.ts",
     "generate": "drizzle-kit generate",
     "push": "drizzle-kit push",
     "check-types": "tsc --noEmit",

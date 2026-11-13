@@ -1,16 +1,23 @@
 import type { Tool, ToolDefinition } from "../../model";
 import { ToolInputError } from "../../model";
+import {
+  mergeToolInput,
+  readBoolean,
+  readNumber,
+  readString,
+} from "../../utils";
 import { asToolInputError } from "./services/errors";
 import { toFileEntryRef } from "./services/dto";
 import { ensureFileType } from "./services/fileType";
 import { resolveFileEntryRow } from "./services/search";
+import { transcribeAudioFile } from "./services/transcribe";
 import { buildFileViewUrl } from "./services/viewUrl";
 
 const definition: ToolDefinition = {
   key: "read_audio_file",
   name: "Read audio file",
   description:
-    "Read audio metadata and a streaming URL. Transcription can be added later.",
+    "Read audio metadata and a streaming URL. Set transcribe to true to send the file to the Whisper API configured on the Settings page.",
   category: "file",
   inputMode: "json",
   inputSchema: {
@@ -24,11 +31,31 @@ const definition: ToolDefinition = {
         type: "string",
         description: "Optional relative path of the file.",
       },
+      transcribe: {
+        type: "boolean",
+        description:
+          "Transcribe the audio with the configured Whisper API. Defaults to false.",
+        default: false,
+      },
+      language: {
+        type: "string",
+        description: "Optional BCP-47 language code, for example `en` or `da`.",
+      },
+      model: {
+        type: "string",
+        description:
+          "Optional Whisper model name. Falls back to the Settings page value.",
+      },
+      maxBytes: {
+        type: "number",
+        description:
+          "Maximum audio size to upload for transcription. Defaults to 25 MB.",
+      },
     },
   },
   outputDescription:
-    "The file, audio metadata, and a streaming URL. Appended to toolState as `{ file, audio, url }`.",
-  exampleConfig: {},
+    "The file, audio metadata, and a streaming URL. When transcription is enabled, `transcription` is included. Appended to toolState.",
+  exampleConfig: { transcribe: false },
 };
 
 export const readAudioFileTool: Tool = {
@@ -36,6 +63,7 @@ export const readAudioFileTool: Tool = {
 
   async execute(context) {
     try {
+      const input = mergeToolInput(context);
       const row = await resolveFileEntryRow(context, { kind: "file" });
       const { row: typedRow, detected } = await ensureFileType(row);
 
@@ -53,11 +81,32 @@ export const readAudioFileTool: Tool = {
         duration: null as number | null,
         url,
       };
-      const output = { file, audio, url };
+
+      const transcribe = readBoolean(input, "transcribe") ?? false;
+      const transcription = transcribe
+        ? await transcribeAudioFile(typedRow, {
+            language: readString(input, "language"),
+            model: readString(input, "model"),
+            maxBytes: readNumber(input, "maxBytes"),
+          })
+        : undefined;
+
+      if (transcription?.duration != null) {
+        audio.duration = transcription.duration;
+      }
+
+      const output = {
+        file,
+        audio,
+        url,
+        ...(transcription ? { transcription } : {}),
+      };
 
       return {
         output,
-        summary: `Read audio "${file.name}"`,
+        summary: transcription
+          ? `Read and transcribed audio "${file.name}"`
+          : `Read audio "${file.name}"`,
         toolStateAppend: output,
       };
     } catch (err) {

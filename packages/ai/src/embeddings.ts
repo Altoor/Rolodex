@@ -1,4 +1,4 @@
-import { ollama } from "./ollama";
+import { getOllamaClient } from "./ollama";
 
 export const EMBEDDING_MODEL =
   process.env.EMBEDDING_MODEL ?? "nomic-embed-text";
@@ -25,6 +25,7 @@ export function fileEntryEmbeddingText(entry: {
 }
 
 export async function embedText(text: string): Promise<number[]> {
+  const ollama = await getOllamaClient();
   const response = await ollama.embed({
     model: EMBEDDING_MODEL,
     input: text,

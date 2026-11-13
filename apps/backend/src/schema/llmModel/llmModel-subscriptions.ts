@@ -1,7 +1,7 @@
 import { builder } from "../builder";
 import { GraphQLError } from "graphql/error";
 import { Progress } from "./llmModel";
-import { ollama } from "@repo/ai";
+import { getOllamaClient } from "@repo/ai";
 
 builder.subscriptionType({
   fields: (t) => ({
@@ -20,6 +20,7 @@ builder.subscriptionType({
           );
         }
 
+        const ollama = await getOllamaClient();
         const response = await ollama.pull({ model: name, stream: true });
 
         return response;

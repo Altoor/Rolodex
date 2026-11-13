@@ -1,4 +1,4 @@
-import { getModelForUser, ollama } from "@repo/ai";
+import { getModelForUser, getOllamaClient } from "@repo/ai";
 import {
   isPlainObject,
   mergeToolInput,
@@ -58,7 +58,7 @@ const FIELD_TYPES: PromptFieldType[] = [
 ];
 
 export async function runPrompt(options: PromptOptions): Promise<PromptResult> {
-  const response = await ollama.generate({
+  const response = await (await getOllamaClient()).generate({
     model: options.model,
     prompt: options.prompt,
     system: options.system,

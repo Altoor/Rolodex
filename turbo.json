@@ -5,7 +5,10 @@
     "DATABASE_URL",
     "TOKEN_SECRET",
     "EMBEDDING_MODEL",
-    "FILES_ROOT"
+    "FILES_ROOT",
+    "OLLAMA_BASE_URL",
+    "WHISPER_API_URL",
+    "WHISPER_BACKEND"
   ],
   "tasks": {
     "codegen": {

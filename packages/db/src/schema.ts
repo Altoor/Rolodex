@@ -266,6 +266,29 @@ export const models = pgTable("models", {
   capabilities: text("capabilities").array(),
 });
 
+export const transcriberBackend = pgEnum("transcriberBackend", [
+  "whisper_cpp",
+  "faster_whisper",
+]);
+
+/**
+ * Global application settings. The table is a singleton: the service always
+ * reads and writes row id 1. Empty strings mean "fall back to the environment
+ * default", which keeps container configuration usable without a migration seed.
+ */
+export const appSettings = pgTable("appSettings", {
+  id: integer("id").primaryKey().default(1),
+  ollamaBaseUrl: text("ollamaBaseUrl").notNull().default(""),
+  transcriberBackend: transcriberBackend("transcriberBackend")
+    .default("faster_whisper")
+    .notNull(),
+  whisperApiUrl: text("whisperApiUrl").notNull().default(""),
+  whisperModel: text("whisperModel"),
+  updatedAt: timestamp("updatedAt", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
 export const userSettings = pgTable("userSettings", {
   userId: integer("userId")
     .primaryKey()

@@ -1,0 +1,76 @@
+name: rolodex-whisper
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg18
+    env_file:
+      - path: ".env"
+        required: true
+    ports:
+      - ${POSTGRES_PORT:-5432}:5432
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - ./apps/backend/drizzle/init.sql:/docker-entrypoint-initdb.d/00-vector.sql:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-tester} -d ${POSTGRES_DB:-rolo}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  whisper:
+    # Set WHISPER_IMAGE=hwdsl2/whisper-server:cuda for an NVIDIA GPU.
+    image: ${WHISPER_IMAGE:-hwdsl2/whisper-server:latest}
+    ports:
+      - "9000:9000"
+    volumes:
+      - whisper_data:/var/lib/whisper
+    environment:
+      WHISPER_MODEL: ${WHISPER_MODEL:-large-v3-turbo}
+      WHISPER_LANGUAGE: ${WHISPER_LANGUAGE:-auto}
+      WHISPER_THREADS: ${WHISPER_THREADS:-4}
+      # Empty disables API-key auth for this internal service.
+      WHISPER_API_KEY: ${WHISPER_API_KEY:-}
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      target: backend
+    env_file:
+      - path: ".env"
+        required: true
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-tester}:${POSTGRES_PASSWORD:-pass}@postgres:5432/${POSTGRES_DB:-rolo}
+      FILES_ROOT: /app/files
+      WHISPER_BACKEND: faster_whisper
+      WHISPER_API_URL: http://whisper:9000/v1/audio/transcriptions
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./files:/app/files
+    depends_on:
+      postgres:
+        condition: service_healthy
+      whisper:
+        condition: service_started
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      target: web
+    environment:
+      PORT: 3001
+    ports:
+      - "3001:3001"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  whisper_data:

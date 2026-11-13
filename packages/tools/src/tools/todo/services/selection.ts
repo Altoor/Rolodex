@@ -1,5 +1,5 @@
 import type { SystemOneChoiceQuestion } from "ollama";
-import { ollama } from "@repo/ai";
+import { getOllamaClient } from "@repo/ai";
 import { ToolInputError } from "../../../model";
 
 interface SelectableTodo {
@@ -64,7 +64,7 @@ export async function selectTodoWithDecision<T extends SelectableTodo>(
     questions: { [premise]: question },
   });
 
-  const response = await ollama.systemone({
+  const response = await (await getOllamaClient()).systemone({
     model,
     state: request,
     questions: { [premise]: question },
