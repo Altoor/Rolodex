@@ -12,7 +12,7 @@ import {
   joinRelativePath,
   resolveFilesPath,
 } from "@repo/tools/tools/file/services/paths";
-import { completeStreamedUpload, resolveUploadParent } from "./file-service";
+import { completeStreamedUpload, resolveUploadParent } from "./file-upload-service";
 
 const MAX_UPLOAD_BYTES = readMaxUploadBytes();
 const TEMP_DIR = ".tmp";

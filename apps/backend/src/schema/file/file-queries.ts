@@ -2,11 +2,11 @@ import { builder } from "../builder";
 import { requireUserId } from "../auth";
 import { FileEntry, FileViewToken } from "./file";
 import {
-  createFileViewTokenForApi,
   getFileEntryForApi,
   getFileTextForApi,
   listFileEntriesForApi,
-} from "./file-service";
+} from "./file-entry-service";
+import { createFileViewTokenForApi } from "./file-view-service";
 
 builder.queryType({
   fields: (t) => ({

@@ -5,7 +5,7 @@ import { schema } from "./src/schema/index.ts";
 import { extractUser } from "./src/auth-token.ts";
 import { resetStaleRunningTasks, triggerQueue } from "./src/queue/index.ts";
 import { handleFileUploadRequest } from "./src/schema/file/file-upload.ts";
-import { handleFileViewRequest } from "./src/schema/file/file-service.ts";
+import { handleFileViewRequest } from "./src/schema/file/file-view-service.ts";
 
 const yoga = createYoga({
   schema,

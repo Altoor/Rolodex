@@ -4,11 +4,11 @@ import { FileEntry, FileEntryKind } from "./file";
 import {
   createFileEntryForApi,
   deleteFileEntryForApi,
-  indexFileTreeForApi,
   updateFileEntryForApi,
-  uploadFilesForApi,
   writeFileTextForApi,
-} from "./file-service";
+} from "./file-entry-write-service";
+import { indexFileTreeForApi } from "./file-index-service";
+import { uploadFilesForApi } from "./file-upload-service";
 
 builder.mutationType({
   fields: (t) => ({
