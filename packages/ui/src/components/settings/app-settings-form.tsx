@@ -164,7 +164,7 @@ export function AppSettingsForm({
           />
           <FieldDescription>
             Optional HuggingFace CTranslate2 model id sent with faster-whisper
-            requests. Speaches uses this to pick and load the model; other
+            requests. The model must already be downloaded on the server; other
             services may ignore it.
           </FieldDescription>
         </Field>

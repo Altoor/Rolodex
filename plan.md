@@ -153,9 +153,9 @@ preview URL.
   defaults when the settings row is empty.
 - The bundled Whisper compose service uses
   [Speaches](https://github.com/speaches-ai/speaches) (faster-whisper,
-  OpenAI-compatible) at `http://whisper:9000/v1/audio/transcriptions`. The
-  service preloads `WHISPER_MODEL` and keeps models in a persistent HuggingFace
-  cache volume.
+  OpenAI-compatible) at `http://whisper:9000/v1/audio/transcriptions`. An init
+  step downloads `WHISPER_MODEL` into a persistent HuggingFace cache volume
+  before the backend starts.
 
 **Done when:**
 

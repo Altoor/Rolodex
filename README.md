@@ -139,8 +139,10 @@ the containers use the `postgres` service hostname.
 The bundled Whisper service is [Speaches](https://github.com/speaches-ai/speaches)
 (`ghcr.io/speaches-ai/speaches:latest-cpu`), an OpenAI-compatible
 faster-whisper server. `WHISPER_MODEL` accepts a HuggingFace CTranslate2 model id
-and is preloaded on startup; the default is
-`Systran/faster-whisper-large-v3`. To use an NVIDIA GPU, set
+and is downloaded into the shared cache before the backend starts; the default
+is `Systran/faster-whisper-large-v3`. If you use a different model on
+`/settings`, set `WHISPER_MODEL` in `.env` to that id so it is downloaded too.
+To use an NVIDIA GPU, set
 `WHISPER_IMAGE=ghcr.io/speaches-ai/speaches:latest-cuda` in `.env`, optionally
 with `WHISPER_COMPUTE_TYPE=float16`. The model cache lives in the
 `whisper_data` volume. The Ollama service keeps the WSL2 `/dev/dxg` passthrough

@@ -34,9 +34,6 @@ services:
       # unchanged from the previous server.
       UVICORN_PORT: 9000
       ENABLE_UI: "false"
-      # Download the model at startup so the first transcription does not time
-      # out. WHISPER_MODEL must be a HuggingFace CTranslate2 model id.
-      PRELOAD_MODELS: '["${WHISPER_MODEL:-Systran/faster-whisper-large-v3}"]'
       WHISPER__COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
       WHISPER__INFERENCE_DEVICE: ${WHISPER_INFERENCE_DEVICE:-auto}
       WHISPER__CPU_THREADS: ${WHISPER_THREADS:-4}
@@ -47,6 +44,25 @@ services:
       retries: 30
       start_period: 300s
     restart: unless-stopped
+
+  # Speaches only transcribes with models that are already downloaded. Fetch
+  # WHISPER_MODEL into the shared cache once, then let the backend start.
+  whisper-init:
+    image: ${WHISPER_IMAGE:-ghcr.io/speaches-ai/speaches:latest-cpu}
+    depends_on:
+      whisper:
+        condition: service_healthy
+    volumes:
+      - whisper_data:/home/ubuntu/.cache/huggingface/hub
+    environment:
+      WHISPER_MODEL: ${WHISPER_MODEL:-Systran/faster-whisper-large-v3}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >-
+        curl --fail --silent --show-error --request POST
+        "http://whisper:9000/v1/models/$${WHISPER_MODEL}"
+    restart: "no"
 
   backend:
     build:
@@ -70,6 +86,8 @@ services:
         condition: service_healthy
       whisper:
         condition: service_healthy
+      whisper-init:
+        condition: service_completed_successfully
     restart: unless-stopped
 
   web:
