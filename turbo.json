@@ -9,6 +9,7 @@
     "OLLAMA_BASE_URL",
     "WHISPER_API_URL",
     "WHISPER_BACKEND",
+    "WHISPER_MODEL",
     "VISION_MODEL"
   ],
   "tasks": {

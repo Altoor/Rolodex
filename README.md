@@ -77,12 +77,15 @@ The `/settings` page stores installation-wide endpoints in the singleton
 - **Whisper backend** — `faster_whisper` (OpenAI-compatible
   `/v1/audio/transcriptions`) or `whisper_cpp` (`/asr`).
 - **Whisper API URL** — the full transcription endpoint.
-- **Whisper model** — optional model name sent with faster-whisper requests.
+- **Whisper model** — optional HuggingFace CTranslate2 model id sent with
+  faster-whisper requests, for example
+  `Systran/faster-whisper-large-v3` or
+  `deepdml/faster-whisper-large-v3-turbo-ct2`.
 
 `read_audio_file` accepts `transcribe: true` to send the file to that endpoint.
 The Settings page requires an authenticated user. If the table is empty, the
-backend falls back to `OLLAMA_BASE_URL`, `WHISPER_BACKEND`, and
-`WHISPER_API_URL`.
+backend falls back to `OLLAMA_BASE_URL`, `WHISPER_BACKEND`, `WHISPER_API_URL`,
+and `WHISPER_MODEL`.
 
 ### Vision and OCR
 
@@ -133,10 +136,15 @@ The web app is served at `http://localhost:3001` and the API at
 backend. Compose reads `.env`; `TOKEN_SECRET` is required. Database URLs inside
 the containers use the `postgres` service hostname.
 
-The bundled Whisper image is `hwdsl2/whisper-server` (faster-whisper). Set
-`WHISPER_IMAGE=hwdsl2/whisper-server:cuda` and `WHISPER_MODEL` in `.env` to use
-an NVIDIA GPU. The Ollama service keeps the WSL2 `/dev/dxg` passthrough from the
-original `compose.yml`; remove those entries on a native Linux host.
+The bundled Whisper service is [Speaches](https://github.com/speaches-ai/speaches)
+(`ghcr.io/speaches-ai/speaches:latest-cpu`), an OpenAI-compatible
+faster-whisper server. `WHISPER_MODEL` accepts a HuggingFace CTranslate2 model id
+and is preloaded on startup; the default is
+`Systran/faster-whisper-large-v3`. To use an NVIDIA GPU, set
+`WHISPER_IMAGE=ghcr.io/speaches-ai/speaches:latest-cuda` in `.env`, optionally
+with `WHISPER_COMPUTE_TYPE=float16`. The model cache lives in the
+`whisper_data` volume. The Ollama service keeps the WSL2 `/dev/dxg` passthrough
+from the original `compose.yml`; remove those entries on a native Linux host.
 
 ## What's inside?
 

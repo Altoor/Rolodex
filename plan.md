@@ -151,9 +151,11 @@ preview URL.
   When `transcribe` is false it behaves exactly as before.
 - `WHISPER_BACKEND`, `WHISPER_API_URL`, and `WHISPER_MODEL` act as environment
   defaults when the settings row is empty.
-- The bundled Whisper compose service uses `hwdsl2/whisper-server`
-  (faster-whisper, OpenAI-compatible) at
-  `http://whisper:9000/v1/audio/transcriptions`.
+- The bundled Whisper compose service uses
+  [Speaches](https://github.com/speaches-ai/speaches) (faster-whisper,
+  OpenAI-compatible) at `http://whisper:9000/v1/audio/transcriptions`. The
+  service preloads `WHISPER_MODEL` and keeps models in a persistent HuggingFace
+  cache volume.
 
 **Done when:**
 

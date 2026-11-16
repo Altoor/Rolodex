@@ -31,12 +31,14 @@ const DEFAULT_TRANSCRIBER_BACKEND: TranscriberBackend =
     ? "whisper_cpp"
     : "faster_whisper";
 
+const DEFAULT_WHISPER_MODEL = process.env.WHISPER_MODEL?.trim() || null;
+
 function defaults(): AppSettingsValues {
   return {
     ollamaBaseUrl: DEFAULT_OLLAMA_BASE_URL,
     transcriberBackend: DEFAULT_TRANSCRIBER_BACKEND,
     whisperApiUrl: DEFAULT_WHISPER_API_URL,
-    whisperModel: null,
+    whisperModel: DEFAULT_WHISPER_MODEL,
     updatedAt: null,
   };
 }
@@ -57,7 +59,7 @@ export async function getAppSettings(): Promise<AppSettingsValues> {
     transcriberBackend:
       row.transcriberBackend || fallback.transcriberBackend,
     whisperApiUrl: row.whisperApiUrl.trim() || fallback.whisperApiUrl,
-    whisperModel: row.whisperModel?.trim() || null,
+    whisperModel: row.whisperModel?.trim() || fallback.whisperModel,
     updatedAt: row.updatedAt,
   };
 }
@@ -105,7 +107,7 @@ export async function updateAppSettings(
     ollamaBaseUrl: row.ollamaBaseUrl.trim() || defaults().ollamaBaseUrl,
     transcriberBackend: row.transcriberBackend,
     whisperApiUrl: row.whisperApiUrl.trim() || defaults().whisperApiUrl,
-    whisperModel: row.whisperModel?.trim() || null,
+    whisperModel: row.whisperModel?.trim() || defaults().whisperModel,
     updatedAt: row.updatedAt,
   };
 }

@@ -43,18 +43,30 @@ services:
     restart: unless-stopped
 
   whisper:
-    # Set WHISPER_IMAGE=hwdsl2/whisper-server:cuda for an NVIDIA GPU.
-    image: ${WHISPER_IMAGE:-hwdsl2/whisper-server:latest}
+    # CPU by default. For NVIDIA GPUs:
+    # WHISPER_IMAGE=ghcr.io/speaches-ai/speaches:latest-cuda
+    image: ${WHISPER_IMAGE:-ghcr.io/speaches-ai/speaches:latest-cpu}
     ports:
       - "9000:9000"
     volumes:
-      - whisper_data:/var/lib/whisper
+      - whisper_data:/home/ubuntu/.cache/huggingface/hub
     environment:
-      WHISPER_MODEL: ${WHISPER_MODEL:-large-v3-turbo}
-      WHISPER_LANGUAGE: ${WHISPER_LANGUAGE:-auto}
-      WHISPER_THREADS: ${WHISPER_THREADS:-4}
-      # Empty disables API-key auth for this internal service.
-      WHISPER_API_KEY: ${WHISPER_API_KEY:-}
+      # Speaches listens on 8000 by default; keep 9000 so WHISPER_API_URL is
+      # unchanged from the previous server.
+      UVICORN_PORT: 9000
+      ENABLE_UI: "false"
+      # Download the model at startup so the first transcription does not time
+      # out. WHISPER_MODEL must be a HuggingFace CTranslate2 model id.
+      PRELOAD_MODELS: '["${WHISPER_MODEL:-Systran/faster-whisper-large-v3}"]'
+      WHISPER__COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
+      WHISPER__INFERENCE_DEVICE: ${WHISPER_INFERENCE_DEVICE:-auto}
+      WHISPER__CPU_THREADS: ${WHISPER_THREADS:-4}
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:9000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 300s
     restart: unless-stopped
 
   backend:
@@ -70,6 +82,7 @@ services:
       OLLAMA_BASE_URL: http://ollama:11434
       WHISPER_BACKEND: faster_whisper
       WHISPER_API_URL: http://whisper:9000/v1/audio/transcriptions
+      WHISPER_MODEL: ${WHISPER_MODEL:-Systran/faster-whisper-large-v3}
     ports:
       - "4000:4000"
     volumes:
@@ -80,7 +93,7 @@ services:
       ollama:
         condition: service_started
       whisper:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
 
   web:

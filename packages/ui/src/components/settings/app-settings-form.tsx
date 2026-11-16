@@ -155,7 +155,7 @@ export function AppSettingsForm({
           <Input
             id="whisper-model"
             value={whisperModel}
-            placeholder="Optional, for example large-v3-turbo"
+            placeholder="Optional, for example Systran/faster-whisper-large-v3"
             onChange={(event) => {
               setWhisperModel(event.target.value);
               onDirty?.();
@@ -163,7 +163,8 @@ export function AppSettingsForm({
             disabled={saving}
           />
           <FieldDescription>
-            Optional model name sent with faster-whisper requests. External
+            Optional HuggingFace CTranslate2 model id sent with faster-whisper
+            requests. Speaches uses this to pick and load the model; other
             services may ignore it.
           </FieldDescription>
         </Field>
