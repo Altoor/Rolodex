@@ -1,10 +1,7 @@
 FROM node:24-bookworm-slim AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 make g++ ca-certificates \
-  && rm -rf /var/lib/apt/lists/* \
-  && corepack enable
+RUN corepack enable
 WORKDIR /app
 
 FROM base AS deps
