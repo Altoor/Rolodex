@@ -10,6 +10,17 @@ export interface ImageVisionResult {
   kind: "description" | "ocr";
 }
 
+export interface ImageVisionText {
+  description?: string;
+  ocr?: string;
+  model?: string;
+}
+
+export interface ImageVisionRequest {
+  kind: ImageVisionResult["kind"];
+  prompt?: string;
+}
+
 interface ImageFile {
   name: string;
   relativePath: string;
@@ -41,7 +52,7 @@ export function defaultVisionPrompt(kind: "description" | "ocr"): string {
     return "Extract all text from this image. Return only the text, preserving line breaks.";
   }
 
-  return "Describe this image in detail, including any visible text.";
+  return "Describe this image in one or two sentences, focusing on the main subject. Do not transcribe visible text.";
 }
 
 /**
@@ -81,4 +92,52 @@ export async function describeImageFile(
   }
 
   return { model, text, kind: options.kind };
+}
+
+/**
+ * Runs the requested vision reads. A failure in one request does not discard
+ * the other, so description and OCR can succeed independently.
+ */
+export async function describeImageTexts(
+  file: ImageFile,
+  options: {
+    userId: number;
+    requests: ImageVisionRequest[];
+    maxBytes?: number;
+  },
+): Promise<{ text: ImageVisionText; warning?: string }> {
+  const results = await Promise.allSettled(
+    options.requests.map((request) =>
+      describeImageFile(file, {
+        userId: options.userId,
+        kind: request.kind,
+        prompt: request.prompt,
+        maxBytes: options.maxBytes,
+      }),
+    ),
+  );
+
+  const text: ImageVisionText = {};
+  const failures: string[] = [];
+
+  for (const [index, result] of results.entries()) {
+    if (result.status === "rejected") {
+      const reason =
+        result.reason instanceof Error
+          ? result.reason.message
+          : String(result.reason);
+      failures.push(`${options.requests[index]!.kind}: ${reason}`);
+      continue;
+    }
+
+    text[result.value.kind] = result.value.text;
+    text.model ??= result.value.model;
+  }
+
+  return {
+    text,
+    ...(failures.length > 0
+      ? { warning: `Vision failed: ${failures.join("; ")}` }
+      : {}),
+  };
 }

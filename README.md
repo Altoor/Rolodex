@@ -90,11 +90,13 @@ and `WHISPER_MODEL`.
 ### Vision and OCR
 
 `read_image_file` supports `describe: true`, `ocr: true`, or a custom `prompt`.
-The model comes from the user's **Vision model** setting on `/user`, then the
-`VISION_MODEL` environment variable. There is no built-in text-only fallback: if
-neither is configured, the tool reports a clear warning and still returns the
-image metadata and preview URL. Vision errors never fail the task, and image
-bytes only enter toolState when `includeBase64: true`.
+`describe` writes a `description` string, `ocr` writes an `ocr` string, and
+setting both makes two vision calls so later tools can reference the fields
+separately. The model comes from the user's **Vision model** setting on `/user`,
+then the `VISION_MODEL` environment variable. There is no built-in text-only
+fallback: if neither is configured, the tool reports a clear warning and still
+returns the image metadata and preview URL. Vision errors never fail the task,
+and image bytes only enter toolState when `includeBase64: true`.
 
 ### Rule-based branching
 

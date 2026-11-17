@@ -306,7 +306,9 @@ export default function LandingPage() {
         },
       });
 
-      const step = data?.createQueuedTask ? toStep(data.createQueuedTask) : null;
+      const step = data?.createQueuedTask
+        ? toStep(data.createQueuedTask)
+        : null;
       if (!step) return;
 
       // Show the new run immediately, before the processor emits its first

@@ -40,9 +40,7 @@ function microphoneErrorMessage(error: unknown): string {
     }
   }
 
-  return error instanceof Error
-    ? error.message
-    : "Could not start recording.";
+  return error instanceof Error ? error.message : "Could not start recording.";
 }
 
 /** Records one microphone clip at a time and hands it back as a File. */

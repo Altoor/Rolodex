@@ -292,6 +292,15 @@ function taskStateEffect(task: FlowTask, incoming: TaskState): TaskState {
           taskName,
         );
         addPath(state, "url", task, taskName);
+        if (
+          config?.describe === true ||
+          (config?.ocr !== true && asString(config?.prompt) !== undefined)
+        ) {
+          addPath(state, "description", task, taskName);
+        }
+        if (config?.ocr === true) {
+          addPath(state, "ocr", task, taskName);
+        }
         break;
 
       case "read_audio_file":

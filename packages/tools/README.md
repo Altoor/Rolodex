@@ -222,10 +222,29 @@ text. Both are opt-in:
 ```
 
 You can also pass a custom `prompt`, which implies vision even when `describe`
-and `ocr` are false. The model resolves from the user's **Vision model** setting
+and `ocr` are false. `describe` writes a `description` string, `ocr` writes an
+`ocr` string, and setting both makes two vision calls so the fields stay
+separate. A custom prompt replaces the description prompt, or the OCR prompt
+when OCR is the only requested output. Vision output also includes
+`visionModel`.
+
+The model resolves from the user's **Vision model** setting
 (the `/user` page), then the `VISION_MODEL` environment variable. There is no
 silent fallback to a text-only generation model; if neither is configured, the
 tool returns a warning that explains what to set.
+
+A typical image flow writes the description and OCR into one metadata field:
+
+```text
+scan_files (foreach)
+  └── if { where: { eq: { path: "fileType", value: "image" } } }
+        └── read_image_file { describe: true, ocr: true }
+              └── prompt {
+                    prompt: "{{description}}\n\n{{ocr}}",
+                    fields: { description: { type: "string" } }
+                  }
+                    └── update_file_metadata
+```
 
 Vision failures (model missing, timeout, no text) are non-fatal: the output still
 contains the file metadata and preview URL, plus a `warning` string. Raw image
