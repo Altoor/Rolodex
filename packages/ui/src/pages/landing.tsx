@@ -9,14 +9,21 @@ import {
 import { QUEUED_TASK_EVENT } from "@repo/queries/tasks/task-subscriptions";
 import { ACTIVE_QUEUED_TASKS, TASKS } from "@repo/queries/tasks/task-queries";
 import { useAuth } from "../components/auth/auth-provider";
+import {
+  FileUploadError,
+  uploadFilesToServer,
+} from "../components/files/file-actions";
+import { StateComposer } from "../components/landing/state-composer";
+import { useAudioRecorder } from "../components/landing/use-audio-recorder";
 import { Block } from "#components/blocks/block";
 import { EmptyState } from "#components/feedback/empty-state";
+import { ErrorState } from "#components/feedback/error-state";
 import { LoadingState } from "#components/feedback/loading-state";
 import { PageContainer } from "#components/layout/page-container";
 import { PageHeader } from "#components/layout/page-header";
 import { Circle, CircleAlert, CircleCheck, LoaderCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { SubmitHandler, useForm } from "react-hook-form";
+import { Controller, SubmitHandler, useForm } from "react-hook-form";
 
 import { Button } from "#components/ui/button";
 import {
@@ -45,7 +52,6 @@ import {
   SelectValue,
 } from "#components/ui/select";
 import { Spinner } from "#components/ui/spinner";
-import { Textarea } from "#components/ui/textarea";
 import { Separator } from "#components/ui/separator";
 import UserChoiceBlock, {
   type PendingChoice,
@@ -133,6 +139,13 @@ function upsertStep(
   return next;
 }
 
+/** Falls back to the attached file names when the user writes no state. */
+function stateFromAttachments(attachments: File[]): string {
+  if (attachments.length === 0) return "";
+  if (attachments.length === 1) return `Process ${attachments[0]!.name}`;
+  return `Process ${attachments.length} files`;
+}
+
 export default function LandingPage() {
   const { user, loading: authLoading } = useAuth();
   const loggedIn = !!user;
@@ -157,6 +170,8 @@ export default function LandingPage() {
     steps: QueuedTaskStep[];
   }>({ userId: null, steps: [] });
   const [openRuns, setOpenRuns] = useState<Record<string, boolean>>({});
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const [attachError, setAttachError] = useState<unknown>(null);
   const userId = user?.id ?? null;
 
   const addLiveStep = (step: QueuedTaskStep) => {
@@ -223,13 +238,20 @@ export default function LandingPage() {
 
   const {
     control,
-    register,
     handleSubmit,
     reset,
     getValues,
     formState: { isSubmitting },
   } = useForm<Inputs>({
     defaultValues: { taskId: "-1", state: "" },
+  });
+
+  const { recording, toggle: toggleRecording } = useAudioRecorder({
+    onRecorded: (file) => {
+      setAttachments((prev) => [...prev, file]);
+      setAttachError(null);
+    },
+    onError: (message) => setAttachError(new Error(message)),
   });
 
   const defaultTaskId = user?.settings?.defaultTaskId ?? null;
@@ -266,23 +288,46 @@ export default function LandingPage() {
   });
 
   const onSubmit: SubmitHandler<Inputs> = async (inputs) => {
-    const { data } = await createQueuedTask({
-      variables: {
-        taskId: parseInt(inputs.taskId, 10),
-        state: inputs.state.trim(),
-      },
-    });
+    setAttachError(null);
 
-    const step = data?.createQueuedTask ? toStep(data.createQueuedTask) : null;
-    if (!step) return;
+    try {
+      const uploaded =
+        attachments.length > 0
+          ? await uploadFilesToServer(attachments, null)
+          : [];
 
-    // Show the new run immediately, before the processor emits its first event.
-    addLiveStep(step);
-    setOpenRuns((prev) => ({ ...prev, [step.runId]: true }));
-    reset({ state: "", taskId: inputs.taskId });
+      const state = inputs.state.trim() || stateFromAttachments(attachments);
+
+      const { data } = await createQueuedTask({
+        variables: {
+          taskId: parseInt(inputs.taskId, 10),
+          state,
+          fileIds: uploaded.map((entry) => entry.id),
+        },
+      });
+
+      const step = data?.createQueuedTask ? toStep(data.createQueuedTask) : null;
+      if (!step) return;
+
+      // Show the new run immediately, before the processor emits its first
+      // event.
+      addLiveStep(step);
+      setOpenRuns((prev) => ({ ...prev, [step.runId]: true }));
+      setAttachments([]);
+      reset({ state: "", taskId: inputs.taskId });
+    } catch (error) {
+      setAttachError(
+        error instanceof FileUploadError && error.uploaded.length > 0
+          ? new Error(
+              `${error.message} The files that finished uploading are in your files page.`,
+            )
+          : error,
+      );
+    }
   };
 
   const submit = (event?: React.FormEvent<HTMLFormElement>) => {
+    if (recording || isSubmitting) return;
     void handleSubmit(onSubmit)(event);
   };
 
@@ -395,17 +440,50 @@ export default function LandingPage() {
                 )}
               </SelectController>
             </Field>
-            <Field>
-              <FieldLabel htmlFor="state">State</FieldLabel>
-              <Textarea
-                id="state"
-                placeholder="Describe the situation…"
-                onKeyDown={onKeyDown}
-                disabled={!loggedIn || isSubmitting}
-                {...register("state", { required: "describe the situation" })}
-              />
-            </Field>
-            <Button type="submit" disabled={!loggedIn || isSubmitting}>
+            <Controller
+              name="state"
+              control={control}
+              rules={{
+                validate: (value) =>
+                  value.trim().length > 0 ||
+                  attachments.length > 0 ||
+                  "Describe the situation or attach a file.",
+              }}
+              render={({ field }) => (
+                <StateComposer
+                  value={field.value}
+                  onChange={field.onChange}
+                  onKeyDown={onKeyDown}
+                  disabled={!loggedIn || isSubmitting}
+                  attachments={attachments}
+                  recording={recording}
+                  onAddFiles={(files) => {
+                    setAttachError(null);
+                    setAttachments((prev) => [...prev, ...files]);
+                  }}
+                  onRemoveAttachment={(index) =>
+                    setAttachments((prev) =>
+                      prev.filter((_, fileIndex) => fileIndex !== index),
+                    )
+                  }
+                  onDirectoryRejected={() =>
+                    setAttachError(
+                      new Error(
+                        "Folder upload is not supported yet. Drop files instead.",
+                      ),
+                    )
+                  }
+                  onToggleRecording={toggleRecording}
+                />
+              )}
+            />
+            {attachError ? (
+              <ErrorState title="Could not add files" error={attachError} />
+            ) : null}
+            <Button
+              type="submit"
+              disabled={!loggedIn || isSubmitting || recording}
+            >
               {isSubmitting ? <Spinner /> : "Submit"}
             </Button>
           </form>
