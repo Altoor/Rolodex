@@ -60,11 +60,11 @@ tasks can use `name`, `description`, and so on directly.
 
 `fields` and the raw `format` escape hatch cannot be combined.
 
-## Prompt templates
+## Tool config templates
 
-`prompt` and `system` support `{{path}}` placeholders that resolve against
-earlier toolState. Use them to embed a file's contents or another tool's
-output:
+Every tool config string supports `{{path}}` placeholders that resolve against
+earlier toolState, including strings nested inside objects and arrays. Use them
+to embed a file's contents or another tool's output:
 
 ```json
 {
@@ -77,7 +77,15 @@ output:
 
 For example, after `read_plaintext_file` the next task sees `{{content}}` and
 `{{file.name}}`. A missing path fails with a clear error instead of sending the
-literal placeholder. To append the whole toolState instead, set
+literal placeholder. Templates are resolved after the normal config, state and
+toolState merge, so a composed config value wins over the fields it reads:
+
+```json
+{ "description": "{{description}}\n\n{{ocr}}" }
+```
+
+That makes deterministic concatenation work without an extra model call. To
+append the whole toolState instead, set
 `"useToolState": true`.
 
 ## Wiring prompt output to todo tools
@@ -233,17 +241,16 @@ The model resolves from the user's **Vision model** setting
 silent fallback to a text-only generation model; if neither is configured, the
 tool returns a warning that explains what to set.
 
-A typical image flow writes the description and OCR into one metadata field:
+A typical image flow writes the description and OCR into one metadata field
+without an extra model call:
 
 ```text
 scan_files (foreach)
   └── if { where: { eq: { path: "fileType", value: "image" } } }
         └── read_image_file { describe: true, ocr: true }
-              └── prompt {
-                    prompt: "{{description}}\n\n{{ocr}}",
-                    fields: { description: { type: "string" } }
+              └── update_file_metadata {
+                    description: "{{description}}\n\n{{ocr}}"
                   }
-                    └── update_file_metadata
 ```
 
 Vision failures (model missing, timeout, no text) are non-fatal: the output still

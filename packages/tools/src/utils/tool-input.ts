@@ -1,28 +1,60 @@
 import { ToolInputError } from "../model/tool-error";
 import type { ToolRunContext } from "../model/tool-context";
 import { isPlainObject, parseJsonObject } from "./json";
+import { containsTemplate, resolveTemplateValues } from "./template";
 import { extractToolOutput } from "./tool-output";
 
 /**
- * Combines tool config, JSON state, legacy structured output and accumulated
- * tool state. Later sources override earlier ones.
+ * Runtime values available to a tool: JSON state, legacy structured output and
+ * accumulated tool state, with later sources overriding earlier ones.
  */
-export function mergeToolInput(
+export function mergeToolRuntime(
   context: ToolRunContext,
 ): Record<string, unknown> {
-  const merged: Record<string, unknown> = {
-    ...(context.config ?? {}),
+  const runtime: Record<string, unknown> = {
     ...(parseJsonObject(context.state) ?? {}),
     ...(extractToolOutput(context.state) ?? {}),
   };
 
   for (const entry of context.toolState) {
     if (isPlainObject(entry)) {
-      Object.assign(merged, entry);
+      Object.assign(runtime, entry);
     }
   }
 
-  return merged;
+  return runtime;
+}
+
+/**
+ * Combines tool config with the runtime values. Later sources override earlier
+ * ones. Config values containing `{{path}}` templates are resolved last, so a
+ * composed value such as `"{{description}}\n\n{{ocr}}"` wins over the
+ * tool-state fields it reads.
+ */
+export function mergeToolInput(
+  context: ToolRunContext,
+): Record<string, unknown> {
+  const config = context.config ?? {};
+  const runtime = mergeToolRuntime(context);
+  const merged: Record<string, unknown> = { ...config, ...runtime };
+
+  // Templates may reference config values, but not themselves. When a config
+  // template is the effective value for its key, drop it from the source so a
+  // missing runtime value fails instead of resolving to the literal template.
+  const source = { ...merged };
+  for (const [key, value] of Object.entries(config)) {
+    if (containsTemplate(value) && source[key] === value) delete source[key];
+  }
+
+  const resolvedConfig = Object.entries(config).flatMap(([key, value]) =>
+    containsTemplate(value)
+      ? [[key, resolveTemplateValues(value, source)] as const]
+      : [],
+  );
+
+  if (resolvedConfig.length === 0) return merged;
+
+  return { ...merged, ...Object.fromEntries(resolvedConfig) };
 }
 
 export function readString(

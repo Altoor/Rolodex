@@ -98,6 +98,21 @@ fallback: if neither is configured, the tool reports a clear warning and still
 returns the image metadata and preview URL. Vision errors never fail the task,
 and image bytes only enter toolState when `includeBase64: true`.
 
+### Tool config templates
+
+Every tool config string can reference earlier toolState with `{{path}}`, for
+example `{{content}}` or `{{file.name}}`. Templates are resolved after the
+normal config/state/toolState merge, including strings nested inside objects and
+arrays, and a missing path fails the task instead of being sent literally. This
+allows deterministic composition without a model call:
+
+```json
+{ "description": "{{description}}\n\n{{ocr}}" }
+```
+
+In the task builder, boolean and enum schema properties also get a checkbox or
+select above the JSON editor, and matching `{{path}}` tokens are highlighted.
+
 ### Rule-based branching
 
 The `switch` tool continues on the first matching ordered condition, or on its

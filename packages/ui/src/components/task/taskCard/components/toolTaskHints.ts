@@ -18,7 +18,7 @@ const FILE_PATH_AWARE_TOOLS = [
 ] as const;
 
 const FILE_TOOL_HINT =
-  "Use these in `id`, `path`, or `parentPath` where that field is available.";
+  "Use these in `id`, `path`, or `parentPath` where that field is available. Any config string can interpolate earlier output with `{{path}}`.";
 
 export const PATH_AWARE_TOOLS = new Set<string>([
   "if",
@@ -44,9 +44,9 @@ export const PATH_TOOL_HINTS: Record<string, string> = {
     "Use these in `path` or in any case condition path. Cases run in order; the first match wins.",
   filter_tool_state: "Use these in `path` or in any `where` path.",
   display_block:
-    'Use these in `path` or `where`. Set `"select": "first"` to display a single value.',
+    "Use these in `path` or `where`. The `select` setting chooses all matches or only the first.",
   prompt:
-    "Reference earlier outputs with `{{path}}` in `prompt` or `system`, for example `{{content}}` or `{{file.name}}`. Set `useToolState: true` to append the whole toolState. Add `fields` to publish named outputs downstream.",
+    "Reference earlier outputs with `{{path}}` in any config string, for example `{{content}}` or `{{file.name}}`. Set `useToolState: true` to append the whole toolState. Add `fields` to publish named outputs downstream.",
   ...Object.fromEntries(
     FILE_PATH_AWARE_TOOLS.map((key) => [key, FILE_TOOL_HINT]),
   ),

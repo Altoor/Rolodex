@@ -4,7 +4,12 @@ import {
   type WhereExpression,
 } from "../../conditions/where";
 import { ToolInputError, type Tool, type ToolDefinition } from "../../model";
-import { isPlainObject, readPath } from "../../utils";
+import {
+  isPlainObject,
+  mergeToolRuntime,
+  readPath,
+  resolveConfigTemplates,
+} from "../../utils";
 
 export interface SwitchCaseConfig {
   id: string;
@@ -25,10 +30,7 @@ export interface SwitchValidationOptions {
   warnings?: string[];
 }
 
-function readPositiveTaskId(
-  value: unknown,
-  field: string,
-): number | null {
+function readPositiveTaskId(value: unknown, field: string): number | null {
   if (value === undefined || value === null) return null;
 
   if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
@@ -80,8 +82,7 @@ export function validateSwitchConfig(
       throw new ToolInputError(`switch case ${index + 1} must be an object`);
     }
 
-    const id =
-      typeof entry.id === "string" ? entry.id.trim() : "";
+    const id = typeof entry.id === "string" ? entry.id.trim() : "";
     if (!id) {
       throw new ToolInputError(`switch case ${index + 1} requires an "id"`);
     }
@@ -90,8 +91,7 @@ export function validateSwitchConfig(
     }
     ids.add(id);
 
-    const label =
-      typeof entry.label === "string" ? entry.label.trim() : "";
+    const label = typeof entry.label === "string" ? entry.label.trim() : "";
     if (!label) {
       throw new ToolInputError(`switch case "${id}" requires a "label"`);
     }
@@ -126,10 +126,7 @@ export function validateSwitchConfig(
     path: typeof itemPath === "string" ? itemPath.trim() : null,
     quantifier: quantifierInput,
     cases,
-    defaultTaskId: readPositiveTaskId(
-      value.defaultTaskId,
-      "defaultTaskId",
-    ),
+    defaultTaskId: readPositiveTaskId(value.defaultTaskId, "defaultTaskId"),
   };
 }
 
@@ -137,7 +134,7 @@ const definition: ToolDefinition = {
   key: "switch",
   name: "Switch",
   description:
-    'Evaluate ordered cases against toolState and continue to the first matching case\'s task, or the default task. Like a switch statement: deterministic conditions instead of the decision model. Config: { path?, quantifier?, cases: [{ id, label, when, nextTaskId }], defaultTaskId? }. Without `path`, `when` is evaluated per tool-state entry; with `path`, it is evaluated against each item in that array.',
+    "Evaluate ordered cases against toolState and continue to the first matching case's task, or the default task. Like a switch statement: deterministic conditions instead of the decision model. Config: { path?, quantifier?, cases: [{ id, label, when, nextTaskId }], defaultTaskId? }. Without `path`, `when` is evaluated per tool-state entry; with `path`, it is evaluated against each item in that array.",
   category: "ai",
   inputMode: "json",
   inputSchema: {
@@ -197,9 +194,12 @@ export const switchTool: Tool = {
 
   async execute(context) {
     // Switch config is authoritative, so ignore toolState keys that happen to
-    // share names with config fields.
+    // share names with config fields. Templates are resolved explicitly.
     const warnings: string[] = [];
-    const config = validateSwitchConfig(context.config ?? {}, { warnings });
+    const config = validateSwitchConfig(
+      resolveConfigTemplates(context.config ?? {}, mergeToolRuntime(context)),
+      { warnings },
+    );
 
     const entries =
       config.path === null

@@ -4,7 +4,6 @@ import {
   mergeToolInput,
   parseJsonObject,
   readBoolean,
-  readPath,
   readString,
   serializeToolState,
 } from "../../utils";
@@ -58,7 +57,9 @@ const FIELD_TYPES: PromptFieldType[] = [
 ];
 
 export async function runPrompt(options: PromptOptions): Promise<PromptResult> {
-  const response = await (await getOllamaClient()).generate({
+  const response = await (
+    await getOllamaClient()
+  ).generate({
     model: options.model,
     prompt: options.prompt,
     system: options.system,
@@ -98,38 +99,6 @@ function readInvalidBehavior(
   }
 
   return value;
-}
-
-/**
- * Replaces `{{path}}` placeholders with values from the merged tool input, so
- * a prompt can embed an earlier tool's output such as `{{content}}` or
- * `{{folder.name}}`. Missing paths are an error rather than silently becoming
- * the literal placeholder.
- */
-export function interpolatePromptTemplate(
-  template: string,
-  source: Record<string, unknown>,
-): string {
-  return template.replace(
-    /\{\{\s*([^{}]+?)\s*\}\}/g,
-    (_placeholder, rawPath: string) => {
-      const path = rawPath.trim();
-      const value = readPath(source, path);
-
-      if (value === undefined) {
-        throw new ToolInputError(
-          `prompt references "{{${path}}}", but that path is not present in toolState`,
-        );
-      }
-
-      if (typeof value === "string") return value;
-      if (typeof value === "number" || typeof value === "boolean") {
-        return String(value);
-      }
-
-      return JSON.stringify(value);
-    },
-  );
 }
 
 function readFieldDefinition(
@@ -491,11 +460,7 @@ export const promptTool: Tool = {
   async execute(context): Promise<ToolExecution> {
     const input = mergeToolInput(context);
     const useToolState = readBoolean(input, "useToolState") ?? false;
-    const promptTemplate = readString(input, "prompt");
-    const basePrompt =
-      promptTemplate === undefined
-        ? context.state
-        : interpolatePromptTemplate(promptTemplate, input);
+    const basePrompt = readString(input, "prompt") ?? context.state;
 
     if (!basePrompt || !basePrompt.trim()) {
       throw new ToolInputError("prompt is required");
@@ -514,11 +479,7 @@ export const promptTool: Tool = {
       throw new ToolInputError("prompt tool requires a model");
     }
 
-    const systemTemplate = readString(input, "system");
-    const system =
-      systemTemplate === undefined
-        ? undefined
-        : interpolatePromptTemplate(systemTemplate, input);
+    const system = readString(input, "system");
     const format = readFormat(input);
     const fields = readFields(input);
     const onInvalid = readInvalidBehavior(input);

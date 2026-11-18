@@ -23,6 +23,8 @@ interface PathFormFieldProps {
   id?: string;
   error?: { message?: string };
   emptyHint?: string;
+  /** Extra content rendered between the label and the input. */
+  beforeControl?: ReactNode;
 }
 
 /**
@@ -40,6 +42,7 @@ const PathFormField = ({
   id,
   error,
   emptyHint,
+  beforeControl,
 }: PathFormFieldProps) => {
   const { control } = useFormContext<TaskFormValues>();
   const generatedId = useId();
@@ -48,6 +51,7 @@ const PathFormField = ({
   return (
     <Field data-invalid={error ? true : undefined}>
       <FieldLabel htmlFor={inputId}>{label}</FieldLabel>
+      {beforeControl}
       <Controller
         control={control}
         name={name}

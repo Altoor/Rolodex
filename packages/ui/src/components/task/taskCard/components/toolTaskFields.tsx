@@ -6,7 +6,6 @@ import {
 } from "#components/tools/toolDetails";
 import type { TaskOption } from "../taskCard.types";
 import BranchTaskFields from "./branchTaskFields";
-import DisplayBlockFields from "./displayBlockFields";
 import { PromptFieldsHint } from "./promptFieldsHint";
 import SwitchTaskFields from "./switchTaskFields";
 import { TodoFieldsHint } from "./todoFieldsHint";
@@ -18,6 +17,11 @@ import {
 import ToolConfigField from "./toolConfigField";
 import ToolOutputTypeField from "./toolOutputTypeField";
 import ToolSelectField from "./toolSelectField";
+
+/** Schema properties that a dedicated editor already edits. */
+const EXCLUDED_CONFIG_PROPERTIES: Record<string, readonly string[]> = {
+  switch: ["quantifier"],
+};
 
 interface ToolTaskFieldsProps {
   tools: ToolDetailsData[];
@@ -42,10 +46,13 @@ const ToolTaskFields = ({
       pathAware={toolKey != null && PATH_AWARE_TOOLS.has(toolKey)}
       suggestions={pathSuggestions}
       description={toolKey ? PATH_TOOL_HINTS[toolKey] : undefined}
+      inputSchema={selectedTool?.inputSchema}
+      excludedProperties={
+        toolKey ? EXCLUDED_CONFIG_PROPERTIES[toolKey] : undefined
+      }
     />
     <ToolOutputTypeField supportedOutputTypes={supportedOutputTypes} />
 
-    {toolKey === "display_block" ? <DisplayBlockFields /> : null}
     {toolKey === "if" ? <BranchTaskFields tasks={tasks} /> : null}
     {toolKey === "switch" ? <SwitchTaskFields tasks={tasks} /> : null}
     {toolKey === "prompt" ? <PromptFieldsHint /> : null}

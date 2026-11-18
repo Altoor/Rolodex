@@ -34,8 +34,11 @@ function highlightText(text: string, knownPaths: readonly string[]): ReactNode {
 
   if (paths.length === 0) return text;
 
+  const alternatives = paths.map(escapeRegExp).join("|");
+  // A `{{path}}` template is matched before the bare path, so the braces are
+  // coloured together with the path instead of only the path inside them.
   const pattern = new RegExp(
-    `(?<![\\w$.])(${paths.map(escapeRegExp).join("|")})(?![\\w$.])`,
+    `\\{\\{\\s*(${alternatives})\\s*\\}\\}|(?<![\\w$.])(${alternatives})(?![\\w$.])`,
     "g",
   );
 
@@ -46,7 +49,10 @@ function highlightText(text: string, knownPaths: readonly string[]): ReactNode {
     const index = match.index ?? 0;
     if (index > lastIndex) nodes.push(text.slice(lastIndex, index));
 
-    const path = match[0];
+    const token = match[0];
+    const path = match[1] ?? match[2];
+    if (!path) continue;
+
     const colors = toolStatePathColors(path);
     nodes.push(
       <span
@@ -54,10 +60,10 @@ function highlightText(text: string, knownPaths: readonly string[]): ReactNode {
         className={HIGHLIGHT_CLASS}
         style={hueStyle(colors.hue)}
       >
-        {path}
+        {token}
       </span>,
     );
-    lastIndex = index + path.length;
+    lastIndex = index + token.length;
   }
 
   if (lastIndex < text.length) nodes.push(text.slice(lastIndex));
