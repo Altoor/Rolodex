@@ -35,6 +35,7 @@ export function ToolConfigPathControl({
         value={value ?? ""}
         suggestions={suggestions}
         placeholder="Optional path, for example todos.0.name"
+        collapseSuggestions
         onChange={(next) => {
           if (next.trim()) {
             onChange(next);

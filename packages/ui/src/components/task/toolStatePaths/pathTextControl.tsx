@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  Accordion,
+  AccordionItem,
+  AccordionPanel,
+  AccordionTrigger,
+} from "#components/ui/accordion";
 import { cn } from "cn";
 import {
   toolStatePathColors,
@@ -200,6 +206,8 @@ export interface PathTextControlProps {
   knownPaths?: string[];
   /** Wrap dropped/clicked paths in `{{...}}` when inserting inside a string. */
   wrapInTemplate?: boolean;
+  /** Hide the badge list behind a collapsed accordion. */
+  collapseSuggestions?: boolean;
 }
 
 /**
@@ -217,6 +225,7 @@ export function PathTextControl({
   invalid = false,
   knownPaths,
   wrapInTemplate = false,
+  collapseSuggestions = false,
 }: PathTextControlProps) {
   const ref = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const selectionRef = useRef<number | null>(null);
@@ -326,7 +335,23 @@ export function PathTextControl({
         )}
       </div>
 
-      <PathSuggestionBadges suggestions={suggestions} onInsert={insert} />
+      {collapseSuggestions && suggestions.length > 0 ? (
+        <Accordion>
+          <AccordionItem value="suggestions" className="border-0">
+            <AccordionTrigger className="py-1 text-xs font-normal text-muted-foreground">
+              Earlier tool-state values ({suggestions.length})
+            </AccordionTrigger>
+            <AccordionPanel className="pb-1">
+              <PathSuggestionBadges
+                suggestions={suggestions}
+                onInsert={insert}
+              />
+            </AccordionPanel>
+          </AccordionItem>
+        </Accordion>
+      ) : (
+        <PathSuggestionBadges suggestions={suggestions} onInsert={insert} />
+      )}
     </div>
   );
 }
