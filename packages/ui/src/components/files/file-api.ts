@@ -1,8 +1,8 @@
 /**
- * The GraphQL API and streaming upload route are served from the backend
- * origin, while the web app runs on a different port in development.
+ * The streaming upload/download routes share the backend origin with GraphQL.
+ * Resolve it once in `#lib/apiOrigin` so every client entry point agrees.
  */
-export const FILE_API_ORIGIN = "http://localhost:4000";
+export { API_ORIGIN as FILE_API_ORIGIN } from "#lib/apiOrigin";
 
 export function getAuthToken(): string | null {
   if (typeof window === "undefined") return null;

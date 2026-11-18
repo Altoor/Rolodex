@@ -15,8 +15,9 @@ import {
   Client,
   RequestParams,
 } from "graphql-sse";
+import { API_ORIGIN } from "@repo/ui/lib/apiOrigin";
 
-const GRAPHQL_URL = "http://localhost:4000/graphql";
+const GRAPHQL_URL = `${API_ORIGIN}/graphql`;
 
 function authHeaders(): Record<string, string> {
   const token =

@@ -130,6 +130,28 @@ Tool results are rendered by the UI block registry. File-shaped outputs
 with preview and download actions. `display_block` can force this with
 `"block": "file"`. Unrecognised outputs still fall back to the raw JSON block.
 
+## API origin
+
+File uploads, downloads, media previews, and GraphQL all use one backend
+origin. Set `NEXT_PUBLIC_API_ORIGIN` when the API is not reachable at
+`http://<web-host>:4000`, for example:
+
+```sh
+# apps/web/.env.local
+NEXT_PUBLIC_API_ORIGIN=http://localhost:5454
+```
+
+Trailing slashes are ignored. `NEXT_PUBLIC_*` values are inlined when the web
+app is built, so rebuild after changing it (`pnpm build`, or
+`docker compose -f compose.app.yml up --build`). With Docker, set
+`NEXT_PUBLIC_API_ORIGIN` in `.env`; the compose files pass it to the web build.
+Turbo lists it in `globalEnv`, so a change also invalidates cached builds.
+
+Without the variable the browser keeps the API on port 4000 on the same host
+as the web app. When the web app is served on port 80 or 443, it instead uses
+its own origin, which suits a reverse proxy in front of both apps. Server
+rendering falls back to `http://localhost:4000`.
+
 ## Docker Compose
 
 Four standalone compose files are available. All of them include PostgreSQL,

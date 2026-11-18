@@ -44,6 +44,8 @@ services:
     build:
       context: .
       target: web
+      args:
+        NEXT_PUBLIC_API_ORIGIN: ${NEXT_PUBLIC_API_ORIGIN:-}
     environment:
       PORT: 3001
     ports:

@@ -9,6 +9,10 @@ COPY . .
 RUN pnpm install --frozen-lockfile
 
 FROM deps AS build
+# Inline the public backend origin into the web bundle. Empty means the browser
+# derives it from its own location at runtime.
+ARG NEXT_PUBLIC_API_ORIGIN=""
+ENV NEXT_PUBLIC_API_ORIGIN=${NEXT_PUBLIC_API_ORIGIN}
 RUN pnpm --filter @repo/queries build
 RUN pnpm --filter @repo/ui build:components
 RUN pnpm --filter @repo/ui build:styles

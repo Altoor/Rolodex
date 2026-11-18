@@ -10,7 +10,8 @@
     "WHISPER_API_URL",
     "WHISPER_BACKEND",
     "WHISPER_MODEL",
-    "VISION_MODEL"
+    "VISION_MODEL",
+    "NEXT_PUBLIC_API_ORIGIN"
   ],
   "tasks": {
     "codegen": {
