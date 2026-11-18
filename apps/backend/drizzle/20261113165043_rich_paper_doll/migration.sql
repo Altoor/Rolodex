@@ -1,0 +1,2 @@
+ALTER TABLE "userSettings" ADD COLUMN "defaultVisionModelName" text;--> statement-breakpoint
+ALTER TABLE "userSettings" ADD CONSTRAINT "userSettings_defaultVisionModelName_models_name_fkey" FOREIGN KEY ("defaultVisionModelName") REFERENCES "models"("name") ON DELETE SET NULL;

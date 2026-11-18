@@ -3,6 +3,18 @@ import { db, queuedTasks } from "@repo/db";
 import { publishQueuedTaskEvent } from "./pubsub";
 import type { QueuedRow } from "./types";
 
+/**
+ * Runs the user has dismissed. A step that was already executing when the run
+ * was dismissed must not enqueue a continuation, otherwise the flow would
+ * resume after the pending choice disappeared.
+ */
+const dismissedRuns = new Set<string>();
+
+/** Marks a run as dismissed so in-flight steps cannot continue it. */
+export function dismissRun(runId: string): void {
+  dismissedRuns.add(runId);
+}
+
 /** Next queued step in FIFO order, or undefined when the queue is empty. */
 export async function findNextQueuedStep(): Promise<QueuedRow | undefined> {
   // Plain select on purpose: in drizzle-orm 1.0.0-rc, relational queries with
@@ -80,16 +92,20 @@ export async function finishStep(
 export async function enqueueStep(
   values: typeof queuedTasks.$inferInsert,
 ): Promise<void> {
+  if (values.runId && dismissedRuns.has(values.runId)) return;
   await db.insert(queuedTasks).values(values);
 }
 
 export async function enqueueSteps(
   values: (typeof queuedTasks.$inferInsert)[],
 ): Promise<number[]> {
-  if (values.length === 0) return [];
+  const active = values.filter(
+    (value) => !value.runId || !dismissedRuns.has(value.runId),
+  );
+  if (active.length === 0) return [];
   const inserted = await db
     .insert(queuedTasks)
-    .values(values)
+    .values(active)
     .returning({ id: queuedTasks.id });
   return inserted.map((child) => child.id);
 }

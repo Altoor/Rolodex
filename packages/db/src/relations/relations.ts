@@ -19,6 +19,19 @@ export const relations = defineRelations(schema, (r) => ({
     }),
   },
 
+  fileEntries: {
+    parent: r.one.fileEntries({
+      from: r.fileEntries.parentId,
+      to: r.fileEntries.id,
+      alias: "parent",
+    }),
+    children: r.many.fileEntries({
+      from: r.fileEntries.id,
+      to: r.fileEntries.parentId,
+      alias: "children",
+    }),
+  },
+
   decisions: {
     author: r.one.users({
       from: r.decisions.authorId,
@@ -100,6 +113,10 @@ export const relations = defineRelations(schema, (r) => ({
     }),
     defaultDecisionModel: r.one.models({
       from: r.userSettings.defaultDecisionModelName,
+      to: r.models.name,
+    }),
+    defaultVisionModel: r.one.models({
+      from: r.userSettings.defaultVisionModelName,
       to: r.models.name,
     }),
   },

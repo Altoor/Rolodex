@@ -1,7 +1,18 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
   "ui": "tui",
-  "globalEnv": ["DATABASE_URL", "TOKEN_SECRET", "EMBEDDING_MODEL"],
+  "globalEnv": [
+    "DATABASE_URL",
+    "TOKEN_SECRET",
+    "EMBEDDING_MODEL",
+    "FILES_ROOT",
+    "OLLAMA_BASE_URL",
+    "WHISPER_API_URL",
+    "WHISPER_BACKEND",
+    "WHISPER_MODEL",
+    "VISION_MODEL",
+    "NEXT_PUBLIC_API_ORIGIN"
+  ],
   "tasks": {
     "codegen": {
       "dependsOn": ["^codegen"],

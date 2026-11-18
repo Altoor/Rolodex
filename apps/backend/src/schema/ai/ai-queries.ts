@@ -1,7 +1,7 @@
 import { GraphQLError } from "graphql";
 import { builder, db } from "../builder";
 import { DecisionType, SystemOnePrompt, SystemOneResponse } from "./ai";
-import { ollama } from "@repo/ai";
+import { getOllamaClient } from "@repo/ai";
 import { setupQuestions } from "./ai-service";
 
 builder.queryType({
@@ -65,7 +65,7 @@ builder.queryType({
           },
         ]);
 
-        const response = await ollama.systemone({
+        const response = await (await getOllamaClient()).systemone({
           model: "tev1:4b",
           state,
           questions,

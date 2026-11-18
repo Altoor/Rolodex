@@ -10,6 +10,7 @@ export const ME = gql(/* GraphQL */ `
         defaultTaskId
         defaultModelName
         defaultDecisionModelName
+        defaultVisionModelName
       }
     }
   }

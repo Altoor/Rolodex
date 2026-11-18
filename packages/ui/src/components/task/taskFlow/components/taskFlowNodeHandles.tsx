@@ -6,6 +6,11 @@ import {
   USER_DECISION_HANDLE_PREFIX,
   type TaskFlowNodeData,
 } from "../taskFlowTypes";
+import {
+  SWITCH_DEFAULT_HANDLE_ID,
+  parseSwitchConfig,
+  switchHandleId,
+} from "../services/switch-config";
 import { resultLabel } from "../services/result-label";
 
 interface TaskFlowNodeHandlesProps {
@@ -14,10 +19,15 @@ interface TaskFlowNodeHandlesProps {
 
 const TaskFlowNodeHandles = ({ data }: TaskFlowNodeHandlesProps) => {
   const isUserDecision = data.type === "userDecision";
+  const isSwitch = data.toolKey === "switch";
+  const switchConfig = isSwitch ? parseSwitchConfig(data.toolConfig) : null;
   const forceUserDecideIfNoMatch =
     data.type === "decision" && data.forceUserDecideIfNoMatch;
   const showFallback =
-    data.toolKey !== "if" && !isUserDecision && !forceUserDecideIfNoMatch;
+    data.toolKey !== "if" &&
+    !isSwitch &&
+    !isUserDecision &&
+    !forceUserDecideIfNoMatch;
 
   return (
     <div className="mt-2 flex flex-col gap-1">
@@ -38,6 +48,36 @@ const TaskFlowNodeHandles = ({ data }: TaskFlowNodeHandlesProps) => {
                 type="source"
                 position={Position.Right}
                 id={FALSE_HANDLE_ID}
+              />
+            </div>
+          </>
+        ) : isSwitch ? (
+          <>
+            {switchConfig && switchConfig.cases.length > 0 ? (
+              switchConfig.cases.map((entry) => (
+                <div
+                  key={entry.id}
+                  className="relative flex items-center justify-between gap-2 rounded border px-2 py-1 text-xs text-muted-foreground"
+                >
+                  <span>{entry.label}</span>
+                  <Handle
+                    type="source"
+                    position={Position.Right}
+                    id={switchHandleId(entry.id)}
+                  />
+                </div>
+              ))
+            ) : (
+              <p className="text-xs text-muted-foreground/60">
+                No cases — add one in the switch config.
+              </p>
+            )}
+            <div className="relative flex items-center justify-between gap-2 rounded border border-dashed px-2 py-1 text-xs text-muted-foreground">
+              <span>Default (optional)</span>
+              <Handle
+                type="source"
+                position={Position.Right}
+                id={SWITCH_DEFAULT_HANDLE_ID}
               />
             </div>
           </>

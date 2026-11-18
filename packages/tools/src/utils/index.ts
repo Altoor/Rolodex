@@ -1,4 +1,5 @@
 export * from "./json";
+export * from "./template";
 export * from "./tool-input";
 export * from "./tool-output";
 export * from "./tool-state";

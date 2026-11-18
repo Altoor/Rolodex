@@ -1,6 +1,10 @@
 import type { SystemOneAnswer, SystemOneResponse } from "ollama";
 import { db, taskResults } from "@repo/db";
-import { DEFAULT_MODEL, getDecisionModelForUser, ollama } from "@repo/ai";
+import {
+  DEFAULT_MODEL,
+  getDecisionModelForUser,
+  getOllamaClient,
+} from "@repo/ai";
 import { setupQuestions } from "../../schema/ai/ai-service";
 import { MAX_CHAIN_DEPTH } from "../constants";
 import { resultMatches, summarizeAnswer } from "../result-matcher";
@@ -48,7 +52,7 @@ export async function processDecisionStep(
       row.decisionModel ??
       task.decisionModel ??
       (await getDecisionModelForUser(row.queued_by));
-    response = await ollama.systemone({
+    response = await (await getOllamaClient()).systemone({
       model,
       state: row.state,
       questions,

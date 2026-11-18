@@ -23,6 +23,10 @@ interface PathFormFieldProps {
   id?: string;
   error?: { message?: string };
   emptyHint?: string;
+  /** Extra content rendered between the label and the input. */
+  beforeControl?: ReactNode;
+  /** Wrap dropped/clicked paths in `{{...}}` when inserting inside a string. */
+  wrapInTemplate?: boolean;
 }
 
 /**
@@ -40,6 +44,8 @@ const PathFormField = ({
   id,
   error,
   emptyHint,
+  beforeControl,
+  wrapInTemplate = false,
 }: PathFormFieldProps) => {
   const { control } = useFormContext<TaskFormValues>();
   const generatedId = useId();
@@ -48,6 +54,7 @@ const PathFormField = ({
   return (
     <Field data-invalid={error ? true : undefined}>
       <FieldLabel htmlFor={inputId}>{label}</FieldLabel>
+      {beforeControl}
       <Controller
         control={control}
         name={name}
@@ -61,6 +68,7 @@ const PathFormField = ({
             placeholder={placeholder}
             className={className}
             invalid={Boolean(error)}
+            wrapInTemplate={wrapInTemplate}
           />
         )}
       />

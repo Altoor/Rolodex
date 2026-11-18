@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useMutation } from "@apollo/client/react";
 import type { Connection, Edge, XYPosition } from "@xyflow/react";
 import {
@@ -11,12 +11,23 @@ import {
 import { TASKS } from "@repo/queries/tasks/task-queries";
 import { TaskType } from "@repo/queries/__generated__/graphql";
 import type { FlowTask, TaskFlowNode } from "../taskFlowTypes";
-import { setResultTaskIdInCache, setTaskFieldInCache } from "../services/cache";
 import {
-  parseEdgeId,
+  setResultTaskIdInCache,
+  setTaskFieldInCache,
+  setTaskToolConfigInCache,
+} from "../services/cache";
+import {
   parseSourceHandle,
   type SourceHandle,
 } from "../services/connection";
+import {
+  applyConnectionTarget,
+  edgeSourceLink,
+  isSameRelationship,
+  setSourceLink,
+  type RelationshipWriter,
+} from "../services/flowRelationships";
+import { setSwitchTarget as updateSwitchConfig } from "../services/switch-config";
 
 interface UseTaskFlowActionsArgs {
   tasks: FlowTask[];
@@ -40,6 +51,47 @@ export function useTaskFlowActions({
     refetchQueries: [TASKS],
   });
 
+  const writer = useMemo<RelationshipWriter>(
+    () => ({
+      setTaskField: (taskId, field, targetTaskId) => {
+        void updateTask({
+          variables: { id: taskId, [field]: targetTaskId },
+          update: (cache) =>
+            setTaskFieldInCache(cache, taskId, field, targetTaskId),
+        });
+      },
+      setTaskResult: (resultId, targetTaskId) => {
+        void updateTaskResult({
+          variables: { id: resultId, resultTaskId: targetTaskId },
+          update: (cache) =>
+            setResultTaskIdInCache(cache, resultId, targetTaskId),
+        });
+      },
+      setUserDecisionOption: (optionId, resultTaskId) => {
+        void updateUserDecisionOption({
+          variables: { id: optionId, resultTaskId },
+          refetchQueries: [TASKS],
+        });
+      },
+      setSwitchTarget: (taskId, caseId, targetTaskId) => {
+        const task = tasks.find((candidate) => candidate.id === taskId);
+        if (!task) return;
+
+        const toolConfig = updateSwitchConfig(
+          task.toolConfig,
+          caseId,
+          targetTaskId,
+        );
+        void updateTask({
+          variables: { id: taskId, toolConfig },
+          update: (cache) =>
+            setTaskToolConfigInCache(cache, taskId, toolConfig),
+        });
+      },
+    }),
+    [tasks, updateTask, updateTaskResult, updateUserDecisionOption],
+  );
+
   // Deleting a node deletes the underlying task (and, on the backend, all of
   // that task's TaskResults).
   const handleDeleteTask = useCallback(
@@ -56,88 +108,18 @@ export function useTaskFlowActions({
     [deleteTask],
   );
 
-  // Reusable because both a fresh connection and a rewired edge need it.
-  const applyConnection = useCallback(
-    (connection: Connection) => {
-      const targetTaskId = Number(connection.target);
-      if (!Number.isFinite(targetTaskId)) return;
-
-      const sourceHandle = parseSourceHandle(connection.sourceHandle);
-      if (!sourceHandle) return;
-
-      if (sourceHandle.kind === "taskField") {
-        const taskId = Number(connection.source);
-        if (!Number.isFinite(taskId)) return;
-
-        void updateTask({
-          variables: { id: taskId, [sourceHandle.field]: targetTaskId },
-          update: (cache) =>
-            setTaskFieldInCache(
-              cache,
-              taskId,
-              sourceHandle.field,
-              targetTaskId,
-            ),
-        });
-        return;
-      }
-
-      if (sourceHandle.kind === "userDecisionOption") {
-        void updateUserDecisionOption({
-          variables: {
-            id: sourceHandle.optionId,
-            resultTaskId: targetTaskId,
-          },
-          refetchQueries: [TASKS],
-        });
-        return;
-      }
-
-      void updateTaskResult({
-        variables: {
-          id: sourceHandle.resultId,
-          resultTaskId: targetTaskId,
-        },
-        update: (cache) =>
-          setResultTaskIdInCache(cache, sourceHandle.resultId, targetTaskId),
-      });
-    },
-    [updateTask, updateTaskResult, updateUserDecisionOption],
+  // Connecting an output to another task's input updates the relationship.
+  const onConnect = useCallback(
+    (connection: Connection) => applyConnectionTarget(connection, writer),
+    [writer],
   );
 
-  // Connecting an output to another task's input updates the relationship.
-  const onConnect = applyConnection;
-
-  // Clears one output relationship, used when a reconnect moves the source end.
   const clearSourceLink = useCallback(
     (sourceTaskId: number, sourceHandle: SourceHandle) => {
       if (!sourceHandle) return;
-
-      if (sourceHandle.kind === "taskField") {
-        if (!Number.isFinite(sourceTaskId)) return;
-        void updateTask({
-          variables: { id: sourceTaskId, [sourceHandle.field]: null },
-          update: (cache) =>
-            setTaskFieldInCache(cache, sourceTaskId, sourceHandle.field, null),
-        });
-        return;
-      }
-
-      if (sourceHandle.kind === "userDecisionOption") {
-        void updateUserDecisionOption({
-          variables: { id: sourceHandle.optionId, resultTaskId: null },
-          refetchQueries: [TASKS],
-        });
-        return;
-      }
-
-      void updateTaskResult({
-        variables: { id: sourceHandle.resultId, resultTaskId: null },
-        update: (cache) =>
-          setResultTaskIdInCache(cache, sourceHandle.resultId, null),
-      });
+      setSourceLink(sourceTaskId, sourceHandle, null, writer);
     },
-    [updateTask, updateTaskResult, updateUserDecisionOption],
+    [writer],
   );
 
   // Dragging an existing edge's endpoint rewires it instead of doing nothing.
@@ -145,66 +127,30 @@ export function useTaskFlowActions({
     (oldEdge: Edge, connection: Connection) => {
       const oldSourceTaskId = Number(oldEdge.source);
       const oldSourceHandle = parseSourceHandle(oldEdge.sourceHandle);
-      const newSourceHandle = parseSourceHandle(connection.sourceHandle);
 
-      applyConnection(connection);
-
-      if (!oldSourceHandle) return;
+      applyConnectionTarget(connection, writer);
 
       // If only the target moved, applying the new connection overwrites the
       // same field. If the source moved, the old relationship must be cleared.
-      const sameRelationship =
-        oldSourceHandle.kind === newSourceHandle?.kind &&
-        ((oldSourceHandle.kind === "taskField" &&
-          newSourceHandle?.kind === "taskField" &&
-          oldSourceHandle.field === newSourceHandle.field &&
-          oldSourceTaskId === Number(connection.source)) ||
-          (oldSourceHandle.kind === "taskResult" &&
-            newSourceHandle?.kind === "taskResult" &&
-            oldSourceHandle.resultId === newSourceHandle.resultId) ||
-          (oldSourceHandle.kind === "userDecisionOption" &&
-            newSourceHandle?.kind === "userDecisionOption" &&
-            oldSourceHandle.optionId === newSourceHandle.optionId));
-
-      if (!sameRelationship) {
+      if (
+        oldSourceHandle &&
+        !isSameRelationship(oldSourceTaskId, oldSourceHandle, connection)
+      ) {
         clearSourceLink(oldSourceTaskId, oldSourceHandle);
       }
     },
-    [applyConnection, clearSourceLink],
+    [clearSourceLink, writer],
   );
 
   // Deleting an edge clears the matching relationship.
   const onEdgesDelete = useCallback(
     (edges: Edge[]) => {
       for (const edge of edges) {
-        const parsed = parseEdgeId(edge.id);
-        if (!parsed) continue;
-
-        if (parsed.kind === "taskField") {
-          void updateTask({
-            variables: { id: parsed.taskId, [parsed.field]: null },
-            update: (cache) =>
-              setTaskFieldInCache(cache, parsed.taskId, parsed.field, null),
-          });
-          continue;
-        }
-
-        if (parsed.kind === "userDecisionOption") {
-          void updateUserDecisionOption({
-            variables: { id: parsed.optionId, resultTaskId: null },
-            refetchQueries: [TASKS],
-          });
-          continue;
-        }
-
-        void updateTaskResult({
-          variables: { id: parsed.resultId, resultTaskId: null },
-          update: (cache) =>
-            setResultTaskIdInCache(cache, parsed.resultId, null),
-        });
+        const link = edgeSourceLink(edge.id);
+        if (link) clearSourceLink(link.sourceTaskId, link.handle);
       }
     },
-    [updateTask, updateTaskResult, updateUserDecisionOption],
+    [clearSourceLink],
   );
 
   // Keyboard delete (Delete/Backspace on a selected node) also removes the
@@ -258,7 +204,18 @@ export function useTaskFlowActions({
           return;
         }
 
-        if (sourceHandle.kind === "taskField") {
+        if (sourceHandle.kind === "switchTarget") {
+          await updateTask({
+            variables: {
+              id: sourceTaskId,
+              toolConfig: updateSwitchConfig(
+                tasks.find((task) => task.id === sourceTaskId)?.toolConfig,
+                sourceHandle.caseId,
+                newTaskId,
+              ),
+            },
+          });
+        } else if (sourceHandle.kind === "taskField") {
           await updateTask({
             variables: { id: sourceTaskId, [sourceHandle.field]: newTaskId },
           });
@@ -283,7 +240,7 @@ export function useTaskFlowActions({
       createTask,
       deleteTask,
       onSelectTaskId,
-      tasks.length,
+      tasks,
       updateTask,
       updateTaskResult,
       updateUserDecisionOption,

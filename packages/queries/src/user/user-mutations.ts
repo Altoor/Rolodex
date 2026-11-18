@@ -17,16 +17,19 @@ export const UPDATE_USER_SETTINGS = gql(/* GraphQL */ `
     $defaultTaskId: Int
     $defaultModelName: String
     $defaultDecisionModelName: String
+    $defaultVisionModelName: String
   ) {
     updateUserSettings(
       defaultTaskId: $defaultTaskId
       defaultModelName: $defaultModelName
       defaultDecisionModelName: $defaultDecisionModelName
+      defaultVisionModelName: $defaultVisionModelName
     ) {
       userId
       defaultTaskId
       defaultModelName
       defaultDecisionModelName
+      defaultVisionModelName
     }
   }
 `);

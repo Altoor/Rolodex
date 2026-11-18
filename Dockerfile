@@ -1,0 +1,31 @@
+FROM node:24-bookworm-slim AS base
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable
+WORKDIR /app
+
+FROM base AS deps
+COPY . .
+RUN pnpm install --frozen-lockfile
+
+FROM deps AS build
+# Inline the public backend origin into the web bundle. Empty means the browser
+# derives it from its own location at runtime.
+ARG NEXT_PUBLIC_API_ORIGIN=""
+ENV NEXT_PUBLIC_API_ORIGIN=${NEXT_PUBLIC_API_ORIGIN}
+RUN pnpm --filter @repo/queries build
+RUN pnpm --filter @repo/ui build:components
+RUN pnpm --filter @repo/ui build:styles
+RUN pnpm --filter web build
+
+FROM base AS backend
+ENV NODE_ENV=production
+COPY --from=build /app /app
+EXPOSE 4000
+CMD ["pnpm", "--filter", "backend", "start:docker"]
+
+FROM base AS web
+ENV NODE_ENV=production
+COPY --from=build /app /app
+EXPOSE 3001
+CMD ["pnpm", "--filter", "web", "start"]

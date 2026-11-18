@@ -1,0 +1,109 @@
+name: rolodex-whisper
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg18
+    env_file:
+      - path: ".env"
+        required: true
+    ports:
+      - ${POSTGRES_PORT:-5432}:5432
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - ./apps/backend/drizzle/init.sql:/docker-entrypoint-initdb.d/00-vector.sql:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-tester} -d ${POSTGRES_DB:-rolo}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  whisper:
+    # CPU by default. For NVIDIA GPUs:
+    # WHISPER_IMAGE=ghcr.io/speaches-ai/speaches:latest-cuda
+    image: ${WHISPER_IMAGE:-ghcr.io/speaches-ai/speaches:latest-cpu}
+    ports:
+      - "9000:9000"
+    volumes:
+      - whisper_data:/home/ubuntu/.cache/huggingface/hub
+    environment:
+      # Speaches listens on 8000 by default; keep 9000 so WHISPER_API_URL is
+      # unchanged from the previous server.
+      UVICORN_PORT: 9000
+      ENABLE_UI: "false"
+      WHISPER__COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
+      WHISPER__INFERENCE_DEVICE: ${WHISPER_INFERENCE_DEVICE:-auto}
+      WHISPER__CPU_THREADS: ${WHISPER_THREADS:-4}
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:9000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 300s
+    restart: unless-stopped
+
+  # Speaches only transcribes with models that are already downloaded. Fetch
+  # WHISPER_MODEL into the shared cache once, then let the backend start.
+  whisper-init:
+    image: ${WHISPER_IMAGE:-ghcr.io/speaches-ai/speaches:latest-cpu}
+    depends_on:
+      whisper:
+        condition: service_healthy
+    volumes:
+      - whisper_data:/home/ubuntu/.cache/huggingface/hub
+    environment:
+      WHISPER_MODEL: ${WHISPER_MODEL:-Systran/faster-whisper-large-v3}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >-
+        curl --fail --silent --show-error --request POST
+        "http://whisper:9000/v1/models/$${WHISPER_MODEL}"
+    restart: "no"
+
+  backend:
+    build:
+      context: .
+      target: backend
+    env_file:
+      - path: ".env"
+        required: true
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-tester}:${POSTGRES_PASSWORD:-pass}@postgres:5432/${POSTGRES_DB:-rolo}
+      FILES_ROOT: /app/files
+      WHISPER_BACKEND: faster_whisper
+      WHISPER_API_URL: http://whisper:9000/v1/audio/transcriptions
+      WHISPER_MODEL: ${WHISPER_MODEL:-Systran/faster-whisper-large-v3}
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./files:/app/files
+    depends_on:
+      postgres:
+        condition: service_healthy
+      whisper:
+        condition: service_healthy
+      whisper-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      target: web
+      args:
+        NEXT_PUBLIC_API_ORIGIN: ${NEXT_PUBLIC_API_ORIGIN:-}
+    environment:
+      PORT: 3001
+    ports:
+      - "3001:3001"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  whisper_data:

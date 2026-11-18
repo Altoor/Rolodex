@@ -18,9 +18,22 @@ export const setTaskFieldInCache = (
   });
 };
 
-/** Reflects a resultTaskId change on a TaskResult entity immediately. */
-export const setResultTaskIdInCache = (
+/** Reflects a switch toolConfig change on a Task entity immediately. */
+export const setTaskToolConfigInCache = (
   cache: ApolloCache,
+  taskId: number,
+  toolConfig: unknown,
+) => {
+  const ref = cache.identify({ __typename: "Task", id: taskId });
+  if (!ref) return;
+  cache.modify({
+    id: ref,
+    fields: { toolConfig: () => toolConfig },
+  });
+};
+
+/** Reflects a resultTaskId change on a TaskResult entity immediately. */
+export const setResultTaskIdInCache = (  cache: ApolloCache,
   resultId: number,
   resultTaskId: number | null,
 ) => {

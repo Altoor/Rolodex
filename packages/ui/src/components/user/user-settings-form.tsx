@@ -33,6 +33,7 @@ interface UserSettingsFormProps {
   initialDefaultTaskId: number | null;
   initialDefaultModelName: string | null;
   initialDefaultDecisionModelName: string | null;
+  initialDefaultVisionModelName: string | null;
   onSaved?: () => void;
   onDirty?: () => void;
 }
@@ -45,6 +46,7 @@ export function UserSettingsForm({
   initialDefaultTaskId,
   initialDefaultModelName,
   initialDefaultDecisionModelName,
+  initialDefaultVisionModelName,
   onSaved,
   onDirty,
 }: UserSettingsFormProps) {
@@ -72,6 +74,9 @@ export function UserSettingsForm({
   const [defaultDecisionModelName, setDefaultDecisionModelName] = useState(
     initialDefaultDecisionModelName ?? NONE,
   );
+  const [defaultVisionModelName, setDefaultVisionModelName] = useState(
+    initialDefaultVisionModelName ?? NONE,
+  );
 
   const tasks = tasksData?.tasks ?? [];
   const models = modelsData?.installedModels ?? [];
@@ -83,6 +88,8 @@ export function UserSettingsForm({
         defaultModelName: defaultModelName === NONE ? null : defaultModelName,
         defaultDecisionModelName:
           defaultDecisionModelName === NONE ? null : defaultDecisionModelName,
+        defaultVisionModelName:
+          defaultVisionModelName === NONE ? null : defaultVisionModelName,
       },
     });
 
@@ -187,6 +194,36 @@ export function UserSettingsForm({
           </Select>
           <FieldDescription>
             Used by decision tasks and todo selection (System One).
+          </FieldDescription>
+        </Field>
+
+        <Field>
+          <FieldLabel htmlFor="default-vision-model">Vision model</FieldLabel>
+          <Select
+            value={defaultVisionModelName}
+            onValueChange={(value) => {
+              setDefaultVisionModelName(value ?? NONE);
+              onDirty?.();
+            }}
+            disabled={modelsLoading || saving}
+          >
+            <SelectTrigger id="default-vision-model" className="w-full">
+              <SelectValue placeholder="Use VISION_MODEL" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value={NONE}>Use VISION_MODEL</SelectItem>
+                {models.map((model) => (
+                  <SelectItem key={model.name} value={model.name}>
+                    {model.name}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          <FieldDescription>
+            Used by image description and OCR. There is no built-in default;
+            configure one here or set <code>VISION_MODEL</code>.
           </FieldDescription>
         </Field>
 

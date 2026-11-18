@@ -4,25 +4,31 @@ import {
   ToolDetails,
   type ToolDetailsData,
 } from "#components/tools/toolDetails";
+import type { TaskOption } from "../taskCard.types";
 import BranchTaskFields from "./branchTaskFields";
-import DisplayBlockFields from "./displayBlockFields";
+import { PromptFieldsHint } from "./promptFieldsHint";
+import SwitchTaskFields from "./switchTaskFields";
+import { TodoFieldsHint } from "./todoFieldsHint";
+import {
+  FILE_CONTEXT_TOOLS,
+  PATH_AWARE_TOOLS,
+  PATH_TOOL_HINTS,
+} from "./toolTaskHints";
 import ToolConfigField from "./toolConfigField";
 import ToolOutputTypeField from "./toolOutputTypeField";
 import ToolSelectField from "./toolSelectField";
-import type { TaskOption } from "../taskCard.types";
 
-const PATH_AWARE_TOOLS = new Set(["if", "filter_tool_state", "display_block"]);
-
-const PATH_TOOL_HINTS: Record<string, string> = {
-  if: "Use these in `path` or in any `where` path.",
-  filter_tool_state: "Use these in `path` or in any `where` path.",
-  display_block:
-    'Use these in `path` or `where`. Set `"select": "first"` to display a single value.',
+/** Schema properties that a dedicated editor or non-Ollama value owns. */
+const EXCLUDED_CONFIG_PROPERTIES: Record<string, readonly string[]> = {
+  switch: ["path", "quantifier"],
+  // The audio model is a Whisper model, not one of the Ollama models.
+  read_audio_file: ["model"],
 };
 
 interface ToolTaskFieldsProps {
   tools: ToolDetailsData[];
   tasks: TaskOption[];
+  models: string[];
   toolKey: string | null;
   selectedTool: ToolDetailsData | undefined;
   supportedOutputTypes: string[];
@@ -32,6 +38,7 @@ interface ToolTaskFieldsProps {
 const ToolTaskFields = ({
   tools,
   tasks,
+  models,
   toolKey,
   selectedTool,
   supportedOutputTypes,
@@ -43,16 +50,32 @@ const ToolTaskFields = ({
       pathAware={toolKey != null && PATH_AWARE_TOOLS.has(toolKey)}
       suggestions={pathSuggestions}
       description={toolKey ? PATH_TOOL_HINTS[toolKey] : undefined}
+      models={models}
+      inputSchema={selectedTool?.inputSchema}
+      excludedProperties={
+        toolKey ? EXCLUDED_CONFIG_PROPERTIES[toolKey] : undefined
+      }
     />
     <ToolOutputTypeField supportedOutputTypes={supportedOutputTypes} />
 
-    {toolKey === "display_block" ? <DisplayBlockFields /> : null}
-
     {toolKey === "if" ? <BranchTaskFields tasks={tasks} /> : null}
+    {toolKey === "switch" ? <SwitchTaskFields tasks={tasks} /> : null}
+    {toolKey === "prompt" ? <PromptFieldsHint /> : null}
+    {toolKey === "create_todo" ? (
+      <TodoFieldsHint suggestions={pathSuggestions} mode="create" />
+    ) : null}
+    {toolKey === "update_todo" ? (
+      <TodoFieldsHint suggestions={pathSuggestions} mode="update" />
+    ) : null}
 
-    {toolKey === "prompt" ? (
+    {toolKey != null && FILE_CONTEXT_TOOLS.has(toolKey) ? (
       <FieldDescription>
-        Prompt uses the generation model. Leave it empty to use your default.
+        Dropping files on the files page seeds{" "}
+        <code className="font-mono">files</code> and{" "}
+        <code className="font-mono">folders</code> in toolState before the first
+        task. Path-aware configs can reference values such as{" "}
+        <code className="font-mono">files.0.name</code>; file tools also read
+        them automatically when no explicit id or path is set.
       </FieldDescription>
     ) : null}
 

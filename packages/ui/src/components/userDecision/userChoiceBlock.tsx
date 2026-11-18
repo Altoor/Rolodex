@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "#components/ui/select";
-import { Check, LoaderCircle } from "lucide-react";
+import { Check, LoaderCircle, X } from "lucide-react";
 import { useState } from "react";
 
 export type PendingChoiceType = "yesNo" | "list" | "dropdown";
@@ -38,7 +38,10 @@ export interface PendingChoice {
 interface UserChoiceBlockProps {
   choice: PendingChoice;
   onAnswer: (optionId: string) => void | Promise<void>;
+  /** Ends the whole run without choosing an option. */
+  onDismiss?: () => void | Promise<void>;
   answering?: boolean;
+  dismissing?: boolean;
   error?: string | null;
 }
 
@@ -79,28 +82,47 @@ const OptionButton = ({
 const UserChoiceBlock = ({
   choice,
   onAnswer,
+  onDismiss,
   answering = false,
+  dismissing = false,
   error,
 }: UserChoiceBlockProps) => {
   const [selectedId, setSelectedId] = useState<string | undefined>(
     choice.recommendedOptionId ?? choice.options[0]?.id,
   );
+  const busy = answering || dismissing;
 
   const answer = (optionId: string | undefined) => {
-    if (!optionId || answering) return;
+    if (!optionId || busy) return;
     void onAnswer(optionId);
   };
 
   return (
     <div className="ml-6 mt-2 flex w-full max-w-md flex-col gap-2 rounded-lg border bg-card p-3">
-      <p className="text-sm font-medium">{choice.prompt}</p>
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm font-medium">{choice.prompt}</p>
+        {onDismiss ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            className="-mt-1 -mr-1 text-muted-foreground hover:text-destructive"
+            title="Dismiss and end this run"
+            aria-label="Dismiss and end this run"
+            disabled={busy}
+            onClick={() => void onDismiss()}
+          >
+            {dismissing ? <LoaderCircle className="animate-spin" /> : <X />}
+          </Button>
+        ) : null}
+      </div>
 
       {choice.choiceType === "dropdown" ? (
         <div className="flex gap-2">
           <Select
             value={selectedId}
             onValueChange={(value) => setSelectedId(value ?? undefined)}
-            disabled={answering}
+            disabled={busy}
           >
             <SelectTrigger className="w-full">
               <SelectValue placeholder="Select an option" />
@@ -120,7 +142,7 @@ const UserChoiceBlock = ({
           </Select>
           <Button
             type="button"
-            disabled={answering || !selectedId}
+            disabled={busy || !selectedId}
             onClick={() => answer(selectedId)}
           >
             {answering ? <LoaderCircle className="animate-spin" /> : <Check />}
@@ -134,7 +156,7 @@ const UserChoiceBlock = ({
               key={option.id}
               option={option}
               recommended={option.id === choice.recommendedOptionId}
-              disabled={answering}
+              disabled={busy}
               onClick={() => answer(option.id)}
             />
           ))}
@@ -145,6 +167,12 @@ const UserChoiceBlock = ({
         <p className="flex items-center gap-1 text-xs text-muted-foreground">
           <LoaderCircle className="size-3 animate-spin" />
           Saving your choice…
+        </p>
+      ) : null}
+      {dismissing ? (
+        <p className="flex items-center gap-1 text-xs text-muted-foreground">
+          <LoaderCircle className="size-3 animate-spin" />
+          Ending this run…
         </p>
       ) : null}
       {error ? <p className="text-xs text-destructive">{error}</p> : null}

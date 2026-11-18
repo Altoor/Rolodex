@@ -8,6 +8,8 @@
     "api": "turbo run api --summarize",
     "lint": "turbo run lint",
     "check-types": "turbo run check-types",
+    "files:index": "pnpm --filter backend files:index",
+    "files:backfill-embeddings": "pnpm --filter backend files:backfill-embeddings",
     "format": "prettier --write \"**/*.{ts,tsx,md}\""
   },
   "devDependencies": {

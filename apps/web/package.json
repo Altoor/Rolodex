@@ -14,6 +14,7 @@
     "@apollo/client": "^4.3.3",
     "@graphql-typed-document-node/core": "^3.2.0",
     "@repo/ui": "workspace:*",
+    "apollo-upload-client": "^20.0.0",
     "geist": "1.7.2",
     "graphql": "^16.14.2",
     "graphql-sse": "^2.6.3",

@@ -4,7 +4,7 @@ import { builder, db } from "../builder";
 import { GraphQLError } from "graphql/error";
 import { DecisionType, SystemOnePrompt, SystemOneResponse } from "./ai";
 import { setupQuestions } from "./ai-service";
-import { ollama } from "@repo/ai";
+import { getOllamaClient } from "@repo/ai";
 import { requireUserId } from "../auth";
 
 builder.mutationType({
@@ -181,7 +181,7 @@ builder.mutationType({
           },
         ]);
 
-        const response = await ollama.systemone({
+        const response = await (await getOllamaClient()).systemone({
           model: "tev1:4b",
           state,
           questions,

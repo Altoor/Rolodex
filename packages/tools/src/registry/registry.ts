@@ -13,7 +13,24 @@ import { filterToolStateTool } from "../tools/toolState/filterToolState";
 import { appendStateTool } from "../tools/toolState/appendState";
 import { setStateTool } from "../tools/toolState/setState";
 import { ifTool } from "../tools/if/ifTool";
+import { switchTool } from "../tools/switch/switchTool";
 import { displayBlockTool } from "../tools/display/displayBlock";
+import { findFileTool } from "../tools/file/findFile";
+import { findFilesTool } from "../tools/file/findFiles";
+import { findFolderTool } from "../tools/file/findFolder";
+import { findFoldersTool } from "../tools/file/findFolders";
+import { scanFilesTool } from "../tools/file/scanFiles";
+import { updateFileMetadataTool } from "../tools/file/updateFileMetadata";
+import { detectFileTypeTool } from "../tools/file/detectFileType";
+import { readPlaintextFileTool } from "../tools/file/readPlaintextFile";
+import { readTextFileTool } from "../tools/file/readTextFile";
+import { readImageFileTool } from "../tools/file/readImageFile";
+import { readAudioFileTool } from "../tools/file/readAudioFile";
+import { readVideoFileTool } from "../tools/file/readVideoFile";
+import { readOtherFileTool } from "../tools/file/readOtherFile";
+import { createFolderTool } from "../tools/file/createFolder";
+import { createFileTool } from "../tools/file/createFile";
+import { deleteFileEntryTool } from "../tools/file/deleteFileEntry";
 
 export const tools: Tool[] = [
   promptTool,
@@ -30,7 +47,24 @@ export const tools: Tool[] = [
   appendStateTool,
   setStateTool,
   ifTool,
+  switchTool,
   displayBlockTool,
+  findFileTool,
+  findFilesTool,
+  findFolderTool,
+  findFoldersTool,
+  scanFilesTool,
+  updateFileMetadataTool,
+  detectFileTypeTool,
+  readPlaintextFileTool,
+  readTextFileTool,
+  readImageFileTool,
+  readAudioFileTool,
+  readVideoFileTool,
+  readOtherFileTool,
+  createFolderTool,
+  createFileTool,
+  deleteFileEntryTool,
 ];
 
 const toolsByKey = new Map<string, Tool>(

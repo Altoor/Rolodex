@@ -12,6 +12,7 @@ export interface CurrentUser {
     defaultTaskId: number | null;
     defaultModelName: string | null;
     defaultDecisionModelName: string | null;
+    defaultVisionModelName: string | null;
   } | null;
 }
 

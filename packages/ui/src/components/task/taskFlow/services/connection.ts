@@ -5,6 +5,10 @@ import {
   TRUE_HANDLE_ID,
   USER_DECISION_HANDLE_PREFIX,
 } from "../taskFlowTypes";
+import {
+  parseSwitchEdgeId,
+  parseSwitchHandle,
+} from "./switch-config";
 
 export type TaskLinkField = "fallbackTaskId" | "onTrueTaskId" | "onFalseTaskId";
 
@@ -12,6 +16,7 @@ export type SourceHandle =
   | { kind: "taskField"; field: TaskLinkField }
   | { kind: "taskResult"; resultId: number }
   | { kind: "userDecisionOption"; optionId: number }
+  | { kind: "switchTarget"; caseId: string | null }
   | null;
 
 /** Maps a source handle id to the relationship it represents. */
@@ -19,6 +24,11 @@ export function parseSourceHandle(
   sourceHandle: string | null | undefined,
 ): SourceHandle {
   if (sourceHandle == null || sourceHandle === "") return null;
+
+  const switchHandle = parseSwitchHandle(sourceHandle);
+  if (switchHandle) {
+    return { kind: "switchTarget", caseId: switchHandle.caseId };
+  }
 
   if (sourceHandle === FALLBACK_HANDLE_ID) {
     return { kind: "taskField", field: "fallbackTaskId" };
@@ -49,10 +59,15 @@ export type ParsedEdge =
   | { kind: "taskField"; taskId: number; field: TaskLinkField }
   | { kind: "taskResult"; resultId: number }
   | { kind: "userDecisionOption"; optionId: number }
+  | { kind: "switchTarget"; taskId: number; caseId: string | null }
   | null;
 
 /** Maps an edge id back to the relationship it represents. */
 export function parseEdgeId(edgeId: string): ParsedEdge {
+  const switchEdge = parseSwitchEdgeId(edgeId);
+  if (switchEdge) {
+    return { kind: "switchTarget", ...switchEdge };
+  }
   if (edgeId.startsWith("e-fallback-")) {
     const taskId = Number(edgeId.slice("e-fallback-".length));
     return Number.isFinite(taskId)
