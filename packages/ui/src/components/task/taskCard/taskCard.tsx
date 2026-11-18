@@ -49,6 +49,7 @@ const TaskCard = ({
           <ToolTaskFields
             tools={tools}
             tasks={tasks}
+            models={models}
             toolKey={toolKey ?? null}
             selectedTool={selectedTool}
             supportedOutputTypes={supportedOutputTypes}

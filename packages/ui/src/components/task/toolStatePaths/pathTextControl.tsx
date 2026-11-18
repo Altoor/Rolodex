@@ -24,6 +24,81 @@ const HIGHLIGHT_CLASS =
 const hueStyle = (hue: number): CSSProperties =>
   ({ "--path-hue": hue }) as CSSProperties;
 
+/** The JSON key immediately before a value string, if any. */
+function jsonStringKey(text: string, openingQuote: number): string | undefined {
+  return text.slice(0, openingQuote).match(/"((?:[^"\\]|\\.)*)"\s*:\s*$/)?.[1];
+}
+
+/** True when `position` sits inside a JSON string value, not a key. */
+function insideJsonStringValue(text: string, position: number): boolean {
+  let inString = false;
+  let openingQuote = -1;
+  let escaped = false;
+
+  for (let index = 0; index < position; index += 1) {
+    const char = text[index];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      if (inString) openingQuote = index;
+    }
+  }
+
+  if (!inString || openingQuote === -1) return false;
+
+  // Path fields take a path, not a resolved value. Wrapping a badge there
+  // would replace the path with the referenced array or object.
+  const key = jsonStringKey(text, openingQuote);
+  if (key === "path" || key === "parentPath") return false;
+
+  // Find the closing quote, then check whether this string is followed by a
+  // colon. A colon means the cursor is editing a key rather than a value.
+  let closing = -1;
+  escaped = false;
+
+  for (let index = position; index < text.length; index += 1) {
+    const char = text[index];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') {
+      closing = index;
+      break;
+    }
+  }
+
+  if (closing === -1) return true;
+
+  const rest = text.slice(closing + 1);
+  return rest.match(/^\s*([:,}\]]|$)/)?.[1] !== ":";
+}
+
+/** Wraps a dropped path as `{{path}}` when the cursor is inside a string value. */
+function snippetForPosition(
+  text: string,
+  position: number,
+  snippet: string,
+  wrapInTemplate: boolean,
+): string {
+  return wrapInTemplate && insideJsonStringValue(text, position)
+    ? `{{${snippet}}}`
+    : snippet;
+}
+
 /** Colour each known tool-state path inside a piece of text. */
 function highlightText(text: string, knownPaths: readonly string[]): ReactNode {
   if (!text) return null;
@@ -123,6 +198,8 @@ export interface PathTextControlProps {
   className?: string;
   invalid?: boolean;
   knownPaths?: string[];
+  /** Wrap dropped/clicked paths in `{{...}}` when inserting inside a string. */
+  wrapInTemplate?: boolean;
 }
 
 /**
@@ -139,6 +216,7 @@ export function PathTextControl({
   className,
   invalid = false,
   knownPaths,
+  wrapInTemplate = false,
 }: PathTextControlProps) {
   const ref = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
   const selectionRef = useRef<number | null>(null);
@@ -153,18 +231,24 @@ export function PathTextControl({
 
   const insert = (snippet: string) => {
     const position = selectionRef.current ?? value.length;
-    const next = `${value.slice(0, position)}${snippet}${value.slice(position)}`;
+    const inserted = snippetForPosition(
+      value,
+      position,
+      snippet,
+      wrapInTemplate,
+    );
+    const next = `${value.slice(0, position)}${inserted}${value.slice(position)}`;
 
     onChange(next);
-    selectionRef.current = position + snippet.length;
+    selectionRef.current = position + inserted.length;
 
     requestAnimationFrame(() => {
       const target = ref.current;
       if (!target) return;
       target.focus();
       target.setSelectionRange(
-        position + snippet.length,
-        position + snippet.length,
+        position + inserted.length,
+        position + inserted.length,
       );
     });
   };

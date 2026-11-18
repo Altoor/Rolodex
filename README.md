@@ -110,8 +110,10 @@ allows deterministic composition without a model call:
 { "description": "{{description}}\n\n{{ocr}}" }
 ```
 
-In the task builder, boolean and enum schema properties also get a checkbox or
-select above the JSON editor, and matching `{{path}}` tokens are highlighted.
+In the task builder, schema-driven controls above the JSON editor cover
+booleans, enums, numeric limits, model choices, and path fields. Matching
+`{{path}}` tokens are highlighted, and dropping a path badge inside a JSON
+string inserts it as a template.
 
 ### Rule-based branching
 

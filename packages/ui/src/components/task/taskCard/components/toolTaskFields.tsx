@@ -18,14 +18,17 @@ import ToolConfigField from "./toolConfigField";
 import ToolOutputTypeField from "./toolOutputTypeField";
 import ToolSelectField from "./toolSelectField";
 
-/** Schema properties that a dedicated editor already edits. */
+/** Schema properties that a dedicated editor or non-Ollama value owns. */
 const EXCLUDED_CONFIG_PROPERTIES: Record<string, readonly string[]> = {
-  switch: ["quantifier"],
+  switch: ["path", "quantifier"],
+  // The audio model is a Whisper model, not one of the Ollama models.
+  read_audio_file: ["model"],
 };
 
 interface ToolTaskFieldsProps {
   tools: ToolDetailsData[];
   tasks: TaskOption[];
+  models: string[];
   toolKey: string | null;
   selectedTool: ToolDetailsData | undefined;
   supportedOutputTypes: string[];
@@ -35,6 +38,7 @@ interface ToolTaskFieldsProps {
 const ToolTaskFields = ({
   tools,
   tasks,
+  models,
   toolKey,
   selectedTool,
   supportedOutputTypes,
@@ -46,6 +50,7 @@ const ToolTaskFields = ({
       pathAware={toolKey != null && PATH_AWARE_TOOLS.has(toolKey)}
       suggestions={pathSuggestions}
       description={toolKey ? PATH_TOOL_HINTS[toolKey] : undefined}
+      models={models}
       inputSchema={selectedTool?.inputSchema}
       excludedProperties={
         toolKey ? EXCLUDED_CONFIG_PROPERTIES[toolKey] : undefined
