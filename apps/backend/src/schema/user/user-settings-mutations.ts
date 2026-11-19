@@ -9,6 +9,7 @@ builder.mutationType({
       type: UserSettings,
       args: {
         defaultTaskId: t.arg.int(),
+        flowAutoImprovement: t.arg.boolean(),
         defaultModelName: t.arg.string(),
         defaultDecisionModelName: t.arg.string(),
         defaultVisionModelName: t.arg.string(),
@@ -24,6 +25,7 @@ builder.mutationType({
 
         return updateSettings(user.id, {
           defaultTaskId: args.defaultTaskId,
+          flowAutoImprovement: args.flowAutoImprovement ?? undefined,
           defaultModelName: args.defaultModelName,
           defaultDecisionModelName: args.defaultDecisionModelName,
           defaultVisionModelName: args.defaultVisionModelName,

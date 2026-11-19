@@ -26,7 +26,7 @@ export interface PendingChoiceOption {
 }
 
 export interface PendingChoice {
-  kind: "userDecision" | "decisionOutput";
+  kind: "userDecision" | "decisionOutput" | "decisionTarget";
   taskId: number;
   prompt: string;
   choiceType: PendingChoiceType;

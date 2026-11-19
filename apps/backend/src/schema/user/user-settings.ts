@@ -5,6 +5,7 @@ export const UserSettings = builder.drizzleObject("userSettings", {
   fields: (t) => ({
     userId: t.exposeInt("userId"),
     defaultTaskId: t.exposeInt("defaultTaskId", { nullable: true }),
+    flowAutoImprovement: t.exposeBoolean("flowAutoImprovement"),
     defaultModelName: t.exposeString("defaultModelName", { nullable: true }),
     defaultDecisionModelName: t.exposeString("defaultDecisionModelName", {
       nullable: true,

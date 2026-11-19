@@ -42,10 +42,10 @@ function AuthenticatedUserPage({ user }: { user: CurrentUser }) {
   const { logout } = useAuth();
   const [saved, setSaved] = useState(false);
   const settingsKey = `${user.settings?.defaultTaskId ?? "none"}-${
-    user.settings?.defaultModelName ?? "none"
-  }-${user.settings?.defaultDecisionModelName ?? "none"}-${
-    user.settings?.defaultVisionModelName ?? "none"
-  }`;
+    user.settings?.flowAutoImprovement ? "flow-auto" : "flow-manual"
+  }-${user.settings?.defaultModelName ?? "none"}-${
+    user.settings?.defaultDecisionModelName ?? "none"
+  }-${user.settings?.defaultVisionModelName ?? "none"}`;
 
   return (
     <PageContainer>
@@ -65,6 +65,9 @@ function AuthenticatedUserPage({ user }: { user: CurrentUser }) {
       <UserSettingsForm
         key={settingsKey}
         initialDefaultTaskId={user.settings?.defaultTaskId ?? null}
+        initialFlowAutoImprovement={
+          user.settings?.flowAutoImprovement ?? false
+        }
         initialDefaultModelName={user.settings?.defaultModelName ?? null}
         initialDefaultDecisionModelName={
           user.settings?.defaultDecisionModelName ?? null

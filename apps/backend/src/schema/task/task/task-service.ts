@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db, taskResults, tasks, userDecisionOptions } from "@repo/db";
 import { assertPulledModel } from "@repo/ai";
 import { getToolDefinition, validateSwitchConfig } from "@repo/tools";
+import { parseDecisionStateConfig } from "./decision-state-config";
 
 export type TaskOutputType = "normal" | "foreach";
 export type TaskType = "decision" | "textPrompt" | "tool" | "userDecision";
@@ -18,6 +19,7 @@ export interface TaskConfigInput {
   onFalseTaskId?: number | null;
   model: string | null;
   decisionModel: string | null;
+  decisionStateConfig?: unknown;
   forceUserDecideIfNoMatch?: boolean | null;
   userDecisionType?: string | null;
   userDecisionConfig?: unknown;
@@ -35,6 +37,7 @@ export interface CreateTaskInput {
   onFalseTaskId?: number | null;
   model?: string | null;
   decisionModel?: string | null;
+  decisionStateConfig?: unknown;
   forceUserDecideIfNoMatch?: boolean | null;
   userDecisionType?: string | null;
   userDecisionConfig?: unknown;
@@ -53,6 +56,7 @@ export interface UpdateTaskInput {
   onFalseTaskId?: number | null;
   model?: string | null;
   decisionModel?: string | null;
+  decisionStateConfig?: unknown;
   forceUserDecideIfNoMatch?: boolean | null;
   userDecisionType?: string | null;
   userDecisionConfig?: unknown;
@@ -163,6 +167,16 @@ export async function assertValidTaskConfig(
     );
   }
 
+  if (
+    input.decisionStateConfig !== undefined &&
+    parseDecisionStateConfig(input.decisionStateConfig) === null
+  ) {
+    throw new GraphQLError(
+      "decisionStateConfig must be an object with mode none, all, or paths and a string paths array",
+      { extensions: { code: "BAD_USER_INPUT" } },
+    );
+  }
+
   for (const model of [input.model, input.decisionModel]) {
     if (!model) continue;
 
@@ -189,6 +203,7 @@ export async function createTask(input: CreateTaskInput) {
     onFalseTaskId: input.onFalseTaskId ?? null,
     model: input.model ?? null,
     decisionModel: input.decisionModel ?? null,
+    decisionStateConfig: input.decisionStateConfig ?? null,
     forceUserDecideIfNoMatch: input.forceUserDecideIfNoMatch ?? true,
     userDecisionType: (input.userDecisionType ?? "list") as UserDecisionType,
     userDecisionConfig: input.userDecisionConfig ?? null,
@@ -203,6 +218,7 @@ export async function createTask(input: CreateTaskInput) {
     onFalseTaskId: task.onFalseTaskId,
     model: task.model,
     decisionModel: task.decisionModel,
+    decisionStateConfig: task.decisionStateConfig,
     forceUserDecideIfNoMatch: task.forceUserDecideIfNoMatch,
     userDecisionType: task.userDecisionType,
     userDecisionConfig: task.userDecisionConfig,
@@ -232,6 +248,10 @@ export async function updateTask(input: UpdateTaskInput) {
   const nextOnFalseTaskId = keepOrSet(input.onFalseTaskId, task.onFalseTaskId);
   const nextModel = keepOrSet(input.model, task.model);
   const nextDecisionModel = keepOrSet(input.decisionModel, task.decisionModel);
+  const nextDecisionStateConfig = keepOrSet(
+    input.decisionStateConfig,
+    task.decisionStateConfig,
+  );
   const nextForceUserDecideIfNoMatch =
     input.forceUserDecideIfNoMatch ?? task.forceUserDecideIfNoMatch;
   const nextUserDecisionType = keepOrSet(
@@ -252,6 +272,7 @@ export async function updateTask(input: UpdateTaskInput) {
     onFalseTaskId: nextOnFalseTaskId,
     model: nextModel,
     decisionModel: nextDecisionModel,
+    decisionStateConfig: nextDecisionStateConfig,
     forceUserDecideIfNoMatch: nextForceUserDecideIfNoMatch,
     userDecisionType: nextUserDecisionType,
     userDecisionConfig: nextUserDecisionConfig,
@@ -271,6 +292,7 @@ export async function updateTask(input: UpdateTaskInput) {
     onFalseTaskId: nextOnFalseTaskId,
     model: nextModel,
     decisionModel: nextDecisionModel,
+    decisionStateConfig: nextDecisionStateConfig,
     forceUserDecideIfNoMatch: nextForceUserDecideIfNoMatch,
     userDecisionType: nextUserDecisionType,
     userDecisionConfig: nextUserDecisionConfig,

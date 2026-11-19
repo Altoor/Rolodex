@@ -30,7 +30,8 @@ pnpm files:index --include-unchanged --hash always
 The same engine powers the **Refresh** button and the `scan_files` tool. Scans
 skip `.tmp/`, `.gitkeep`, common system files, and symlinks. They abort above
 5,000 disk entries (`--max-entries`), and `hash: "auto"` skips hashing files
-larger than 100 MB.
+larger than 100 MB. Set the tool's `scope` to `uploaded` to return only the
+files uploaded or attached to the current run.
 
 Embeddings are best-effort metadata. If Ollama is unavailable the file
 operation still succeeds; repair missing vectors later with:
@@ -66,6 +67,64 @@ subscription drops.
   returned without absolute paths.
 - Browser auth tokens expire after 7 days by default
   (`AUTH_TOKEN_TTL_SECONDS`).
+
+## Flow auto improvement
+
+Enable **Flow auto improvement** on `/user` to let local models assist with
+starting and improving flows. The toggle is stored per user in
+`userSettings.flowAutoImprovement`. It is off by default, and the landing page
+behaves exactly as before while it is off.
+
+When enabled:
+
+- The landing page's starting-task picker always offers **No task**. With the
+  setting on it reads **No task — let the model decide** and is preselected when
+  no default task is configured. With the setting off, choosing it and
+  submitting asks you to pick a task or enable the feature instead of creating a
+  run. A concrete task still starts immediately through the existing path.
+- With auto selected, submit asks the System One decision model to propose an
+  existing task or a new tool, decision, or user-decision task. The prompt
+  includes the current task candidates and the available tool catalog. You can
+  accept the proposal, choose another candidate, or refine it with a short
+  prompt.
+- Choosing a new task kind asks the generation model to draft its config,
+  decision options, or user-decision options. The prompt includes the existing
+  task list and the available tool catalog, and asks for only the fewest
+  meaningful options, each tied to a task, tool, or new choice instead of
+  filler. Every field is editable, the draft can be refined with a prompt, and
+  confirmation can create the task, optionally starting a run. A new decision
+  task needs at least one wired result target before it can be started;
+  otherwise use **Create only**.
+- Every decision/user-decision option without a next task prompts you to use an
+  existing task or define a new one. A new next task is drafted with the same
+  editor, created without starting a run, and wired into the option. If an
+  auto-improvement run reaches a decision whose chosen option has no next task,
+  the run pauses on the same chooser and resumes from the newly wired task.
+- A new tool task whose tool produces output also asks what runs after it:
+  another existing task, a new task or tool (which asks again), or the end of
+  the flow. The choice is saved as the tool task's fallback task.
+- Completed decision steps get a **Review decision** action. Marking the model
+  answer wrong stores a small additive bias for the decision options (or the
+  `__score__` / `__noul__` key) and uses it before result matching on later
+  runs. Re-reviewing reverses the previous correction first. Biases are global
+  per decision because tasks and decisions are shared workspace objects.
+- User-decision steps get a **Revise options** action. The generation model can
+  suggest missing static options; adding them to a waiting run refreshes its
+  pending choice immediately. The full task builder is linked for deeper
+  edits.
+
+Model output is never trusted directly: drafts are validated and editable, and
+model failures return an error without creating rows. The local models are
+resolved from the current user's settings, and review/revision mutations check
+ownership of the queued step.
+
+If you need to remove the feature, the migration can be rolled back with:
+
+```sql
+DROP TABLE "decisionFeedback";
+DROP TABLE "decisionBiases";
+ALTER TABLE "userSettings" DROP COLUMN "flowAutoImprovement";
+```
 
 ## Service settings
 
@@ -122,6 +181,12 @@ default target. Each case is a separate output handle on the task flow, and
 targets can be wired by dragging from that handle. `switch` is deterministic;
 the `decision` task asks the configured decision model instead. See
 `packages/tools/README.md` for an example config.
+
+Decision tasks can optionally add accumulated tool state to the state sent to
+the decision model. In the task builder, **Decision model context** offers
+**None**, **All tool state**, or **Selected paths** (for example `file.path` or
+`files.0.name`). This only changes the decision model prompt; the run's state
+and tool state passed to later tasks are unchanged.
 
 ### Task output blocks
 

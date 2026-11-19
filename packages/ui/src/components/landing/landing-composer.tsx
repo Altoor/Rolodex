@@ -22,6 +22,8 @@ import type { LandingComposerProps } from "./landing-model";
  */
 export function LandingComposer({
   tasks,
+  autoEnabled,
+  assistant,
   control,
   submit,
   onKeyDown,
@@ -29,6 +31,7 @@ export function LandingComposer({
   recording,
   isSubmitting,
   attachError,
+  submitError,
   addFiles,
   removeAttachment,
   rejectDirectory,
@@ -40,7 +43,9 @@ export function LandingComposer({
       <CardHeader>
         <CardTitle>What do you want to do today?</CardTitle>
         <CardDescription>
-          Pick a starting task, describe the situation, and hit enter.
+          {autoEnabled
+            ? "Pick a starting task, or let the local model suggest one, then describe the situation."
+            : "Pick a starting task, describe the situation, and hit enter."}
         </CardDescription>
       </CardHeader>
       <CardContent className="min-h-32">
@@ -48,6 +53,7 @@ export function LandingComposer({
           <LandingTaskSelect
             control={control}
             tasks={tasks}
+            autoEnabled={autoEnabled}
             disabled={isSubmitting}
           />
           <Controller
@@ -77,10 +83,14 @@ export function LandingComposer({
           {attachError ? (
             <ErrorState title="Could not add files" error={attachError} />
           ) : null}
+          {submitError ? (
+            <ErrorState title="Could not start a run" error={submitError} />
+          ) : null}
           <Button type="submit" disabled={isSubmitting || recording}>
             {isSubmitting ? <Spinner /> : "Submit"}
           </Button>
         </form>
+        {assistant}
       </CardContent>
       <CardFooter className="flex-col items-stretch gap-3">
         {children}

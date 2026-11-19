@@ -10,6 +10,7 @@ import TaskCardHeader from "./components/taskCardHeader";
 import TaskModelFields from "./components/taskModelFields";
 import TaskResultsSection from "./components/taskResultsSection";
 import ToolTaskFields from "./components/toolTaskFields";
+import DecisionStateFields from "./components/decisionStateFields";
 
 const TaskCard = ({
   resultFields,
@@ -76,6 +77,7 @@ const TaskCard = ({
                 </p>
               </div>
             </Field>
+            <DecisionStateFields suggestions={pathSuggestions} />
             <TaskResultsSection
               resultFields={resultFields}
               options={decision?.options ?? []}

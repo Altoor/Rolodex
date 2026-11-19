@@ -37,6 +37,21 @@ export const relations = defineRelations(schema, (r) => ({
       from: r.decisions.authorId,
       to: r.users.id,
     }),
+    biases: r.many.decisionBiases(),
+  },
+
+  decisionBiases: {
+    decision: r.one.decisions({
+      from: r.decisionBiases.decisionId,
+      to: r.decisions.id,
+    }),
+  },
+
+  decisionFeedback: {
+    decision: r.one.decisions({
+      from: r.decisionFeedback.decisionId,
+      to: r.decisions.id,
+    }),
   },
 
   queuedTasks: {

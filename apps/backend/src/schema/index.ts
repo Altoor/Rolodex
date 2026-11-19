@@ -8,5 +8,6 @@ import "./tool/index";
 import "./llmModel/index";
 import "./file/index";
 import "./appSettings/index";
+import "./flow/index";
 
 export const schema = builder.toSchema();

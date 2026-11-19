@@ -198,11 +198,15 @@ function buildDynamicOptions(
   return result;
 }
 
-/** Creates a persisted user choice and parks the step until it is answered. */
-export async function processUserDecisionStep(
-  row: QueuedRow,
+/** Builds the current option list for a user-decision task and tool state. */
+export async function buildUserDecisionPendingOptions(
   task: TaskRow,
-): Promise<void> {
+  toolState: ToolStateEntry[],
+): Promise<{
+  choiceType: PendingChoiceType;
+  config: Record<string, unknown>;
+  options: PendingChoiceOption[];
+}> {
   const options = await db.query.userDecisionOptions.findMany({
     where: { taskId: task.id },
   });
@@ -216,17 +220,25 @@ export async function processUserDecisionStep(
       ? buildYesNoOptions(options, config)
       : [
           ...buildStaticOptions(options),
-          ...buildDynamicOptions(options, row.toolState),
+          ...buildDynamicOptions(options, toolState),
         ];
 
-  if (pendingOptions.length === 0) {
-    await finishStep(row.id, "failed", {
-      note: "user decision has no options for this run",
-    });
-    return;
-  }
+  return { choiceType, config, options: pendingOptions };
+}
 
-  const pendingChoice: PendingChoice = {
+export async function buildUserDecisionPendingChoice(
+  task: TaskRow,
+  toolState: ToolStateEntry[],
+): Promise<PendingChoice | null> {
+  const {
+    choiceType,
+    config,
+    options: pendingOptions,
+  } = await buildUserDecisionPendingOptions(task, toolState);
+
+  if (pendingOptions.length === 0) return null;
+
+  return {
     kind: "userDecision",
     taskId: task.id,
     prompt: asString(config.prompt) ?? `Choose an option for ${task.name}`,
@@ -235,6 +247,26 @@ export async function processUserDecisionStep(
     options: pendingOptions,
     createdAt: new Date().toISOString(),
   };
+}
+
+/** Creates a persisted user choice and parks the step until it is answered. */
+export async function processUserDecisionStep(
+  row: QueuedRow,
+  task: TaskRow,
+): Promise<void> {
+  const pendingChoice = await buildUserDecisionPendingChoice(
+    task,
+    row.toolState,
+  );
+
+  if (!pendingChoice) {
+    await finishStep(row.id, "failed", {
+      note: "user decision has no options for this run",
+    });
+    return;
+  }
+
+  const pendingOptions = pendingChoice.options;
 
   const result = {
     branch: "awaiting_user",

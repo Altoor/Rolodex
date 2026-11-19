@@ -24,6 +24,11 @@ export type TaskDecisionFormValue = {
 
 export type UserDecisionType = "yesNo" | "list" | "dropdown";
 export type UserDecisionOptionKind = "static" | "dynamic";
+export type DecisionStateMode = "none" | "all" | "paths";
+
+export type DecisionStatePathFormValue = {
+  path: string;
+};
 
 export type UserDecisionOptionFormValues = {
   id: number | null;
@@ -59,6 +64,8 @@ export type TaskFormValues = {
   onFalseTaskId: string;
   model: string | null;
   decisionModel: string | null;
+  decisionStateMode: DecisionStateMode;
+  decisionStatePaths: DecisionStatePathFormValue[];
   forceUserDecideIfNoMatch: boolean;
   userDecisionType: UserDecisionType;
   userDecisionConfig: UserDecisionConfigFormValues;
@@ -80,6 +87,8 @@ export const emptyTaskFormValues: TaskFormValues = {
   onFalseTaskId: NO_BRANCH_TASK,
   model: null,
   decisionModel: null,
+  decisionStateMode: "none",
+  decisionStatePaths: [],
   forceUserDecideIfNoMatch: true,
   userDecisionType: "list",
   userDecisionConfig: {
@@ -101,8 +110,24 @@ const asRecord = (value: unknown): Record<string, unknown> =>
 const asString = (value: unknown, fallback = ""): string =>
   typeof value === "string" ? value : fallback;
 
+const isDecisionStateMode = (value: unknown): value is DecisionStateMode =>
+  value === "none" || value === "all" || value === "paths";
+
+const parseDecisionStateConfig = (
+  value: unknown,
+): { mode: DecisionStateMode; paths: string[] } => {
+  const config = asRecord(value);
+  const mode = isDecisionStateMode(config.mode) ? config.mode : "none";
+  const paths = Array.isArray(config.paths)
+    ? config.paths.filter((path): path is string => typeof path === "string")
+    : [];
+
+  return { mode, paths };
+};
+
 export const taskToFormValues = (task: TaskRecord): TaskFormValues => {
   const userDecisionConfig = asRecord(task.userDecisionConfig);
+  const decisionState = parseDecisionStateConfig(task.decisionStateConfig);
 
   return {
     name: task.name ?? "",
@@ -137,6 +162,8 @@ export const taskToFormValues = (task: TaskRecord): TaskFormValues => {
       task.onFalseTaskId != null ? String(task.onFalseTaskId) : NO_BRANCH_TASK,
     model: task.model ?? null,
     decisionModel: task.decisionModel ?? null,
+    decisionStateMode: decisionState.mode,
+    decisionStatePaths: decisionState.paths.map((path) => ({ path })),
     forceUserDecideIfNoMatch: task.forceUserDecideIfNoMatch ?? true,
     userDecisionType:
       (task.userDecisionType as UserDecisionType | null) ?? "list",

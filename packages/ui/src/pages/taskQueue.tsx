@@ -18,10 +18,18 @@ export default function TaskQueuePage() {
   );
 }
 
+function initialTaskId(): number | undefined {
+  if (typeof window === "undefined") return undefined;
+  const value = new URLSearchParams(window.location.search).get("taskId");
+  if (!value || !/^\d+$/.test(value)) return undefined;
+  const parsed = Number(value);
+  return parsed > 0 ? parsed : undefined;
+}
+
 function TaskQueuePageContent() {
   const { user } = useAuth();
   const [selectedTaskId, setSelectedTaskId] = useState<number | undefined>(
-    undefined,
+    initialTaskId,
   );
   const [updateSettings] = useMutation(UPDATE_USER_SETTINGS, {
     refetchQueries: [ME],

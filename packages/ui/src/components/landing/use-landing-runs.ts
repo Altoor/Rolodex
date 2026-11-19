@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useSubscription } from "@apollo/client/react";
+import { WIRE_DECISION_RESULT_TARGET } from "@repo/queries/flow/flow-mutations";
 import {
   ANSWER_USER_DECISION,
   DISMISS_QUEUED_TASK,
@@ -36,8 +37,10 @@ export function useLandingRuns({ userId, loggedIn }: UseLandingRunsArgs) {
     useMutation(ANSWER_USER_DECISION);
   const [dismissQueuedTask, { error: dismissError }] =
     useMutation(DISMISS_QUEUED_TASK);
+  const [wireDecisionResultTarget] = useMutation(WIRE_DECISION_RESULT_TARGET);
   const [answeringStepId, setAnsweringStepId] = useState<number | null>(null);
   const [dismissingStepId, setDismissingStepId] = useState<number | null>(null);
+  const [wiringStepId, setWiringStepId] = useState<number | null>(null);
 
   // Completed steps of an active run stay here so each chain-of-thought keeps
   // its history.
@@ -130,6 +133,29 @@ export function useLandingRuns({ userId, loggedIn }: UseLandingRunsArgs) {
     }
   };
 
+  // Wires the chosen decision option to a task and resumes the chain. Throws on
+  // failure so the wiring panel can show the error inline.
+  const wireDecisionTarget = async (
+    stepId: number,
+    resultId: number,
+    targetTaskId: number,
+  ) => {
+    setWiringStepId(stepId);
+    try {
+      const { data } = await wireDecisionResultTarget({
+        variables: { queuedTaskId: stepId, resultId, targetTaskId },
+      });
+      const step = data?.wireDecisionResultTarget
+        ? toStep(data.wireDecisionResultTarget)
+        : null;
+      if (step) {
+        trackStep(step);
+      }
+    } finally {
+      setWiringStepId(null);
+    }
+  };
+
   const setRunOpen = useCallback((runId: string, open: boolean) => {
     setOpenRuns((previous) => ({ ...previous, [runId]: open }));
   }, []);
@@ -144,11 +170,13 @@ export function useLandingRuns({ userId, loggedIn }: UseLandingRunsArgs) {
     openRuns,
     answeringStepId,
     dismissingStepId,
+    wiringStepId,
     answerError: answerError?.message ?? null,
     dismissError: dismissError?.message ?? null,
     setRunOpen,
     answerChoice,
     dismissRun,
+    wireDecisionTarget,
   };
 
   return { state, trackStep, openRun };

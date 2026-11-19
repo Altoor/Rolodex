@@ -7,10 +7,12 @@ import {
   useState,
   type FormEvent,
   type KeyboardEventHandler,
+  type MutableRefObject,
 } from "react";
 import { useForm, type SubmitHandler } from "react-hook-form";
 import { FileUploadError, uploadFilesToServer } from "../files/file-actions";
 import {
+  AUTO_TASK_ID,
   stateFromAttachments,
   toStep,
   type LandingComposerState,
@@ -24,6 +26,9 @@ interface UseLandingComposerArgs {
   tasks: LandingTask[];
   tasksLoading: boolean;
   defaultTaskId: number | null;
+  flowAutoImprovement: boolean;
+  onAutoStart: (state: string, fileIds: number[]) => Promise<void>;
+  resetRef: MutableRefObject<() => void>;
   onTrackedStep: (step: QueuedTaskStep) => void;
   onOpenRun: (runId: string) => void;
 }
@@ -37,12 +42,16 @@ export function useLandingComposer({
   tasks,
   tasksLoading,
   defaultTaskId,
+  flowAutoImprovement,
+  onAutoStart,
+  resetRef,
   onTrackedStep,
   onOpenRun,
 }: UseLandingComposerArgs) {
   const [createQueuedTask] = useMutation(CREATE_QUEUED_TASK);
   const [attachments, setAttachments] = useState<File[]>([]);
   const [attachError, setAttachError] = useState<unknown>(null);
+  const [submitError, setSubmitError] = useState<unknown>(null);
 
   const {
     control,
@@ -79,25 +88,61 @@ export function useLandingComposer({
   });
 
   // Select the user's default task once the task list arrives, unless the
-  // current selection is still valid.
+  // current selection is still valid. With auto improvement on, auto is the
+  // fallback when there is no usable default.
   useEffect(() => {
-    if (tasksLoading || tasks.length === 0) return;
+    if (tasksLoading) return;
 
     const currentTaskId = getValues("taskId");
-    if (tasks.some((task) => String(task.id) === currentTaskId)) return;
+    const currentIsValid =
+      currentTaskId === AUTO_TASK_ID ||
+      tasks.some((task) => String(task.id) === currentTaskId);
+    if (currentIsValid) return;
+
+    if (tasks.length === 0) {
+      reset({ ...getValues(), taskId: AUTO_TASK_ID });
+      return;
+    }
 
     const preferredTaskId =
       defaultTaskId != null && tasks.some((task) => task.id === defaultTaskId)
         ? defaultTaskId
-        : tasks[0]?.id;
+        : null;
 
     if (preferredTaskId != null) {
       reset({ ...getValues(), taskId: String(preferredTaskId) });
+      return;
     }
-  }, [tasksLoading, tasks, defaultTaskId, getValues, reset]);
+
+    reset({
+      ...getValues(),
+      taskId: flowAutoImprovement ? AUTO_TASK_ID : String(tasks[0]?.id),
+    });
+  }, [tasksLoading, tasks, defaultTaskId, flowAutoImprovement, getValues, reset]);
+
+  // The auto-start assistant resets the composer after a run starts, without
+  // owning the form itself.
+  useEffect(() => {
+    resetRef.current = () => {
+      setAttachments([]);
+      setAttachError(null);
+      setSubmitError(null);
+      reset({ state: "", taskId: getValues("taskId") });
+    };
+  }, [resetRef, reset, getValues]);
 
   const onSubmit: SubmitHandler<LandingFormInputs> = async (inputs) => {
     setAttachError(null);
+    setSubmitError(null);
+
+    if (!flowAutoImprovement && inputs.taskId === AUTO_TASK_ID) {
+      setSubmitError(
+        new Error(
+          "Choose a starting task, or turn on Flow auto improvement in settings to let the model decide.",
+        ),
+      );
+      return;
+    }
 
     try {
       const uploaded =
@@ -106,6 +151,15 @@ export function useLandingComposer({
           : [];
 
       const state = inputs.state.trim() || stateFromAttachments(attachments);
+
+      if (flowAutoImprovement && inputs.taskId === AUTO_TASK_ID) {
+        await onAutoStart(
+          state,
+          uploaded.map((entry) => entry.id),
+        );
+        setAttachments([]);
+        return;
+      }
 
       const { data } = await createQueuedTask({
         variables: {
@@ -127,7 +181,7 @@ export function useLandingComposer({
       setAttachments([]);
       reset({ state: "", taskId: inputs.taskId });
     } catch (error) {
-      setAttachError(
+      setSubmitError(
         error instanceof FileUploadError && error.uploaded.length > 0
           ? new Error(
               `${error.message} The files that finished uploading are in your files page.`,
@@ -158,6 +212,7 @@ export function useLandingComposer({
     recording,
     isSubmitting,
     attachError,
+    submitError,
     addFiles,
     removeAttachment,
     rejectDirectory,

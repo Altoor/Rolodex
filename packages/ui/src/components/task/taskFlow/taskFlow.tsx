@@ -107,6 +107,14 @@ const TaskFlow = ({
     [closeContextMenu, insertTaskOnEdge],
   );
 
+  const handleDeleteEdge = useCallback(
+    (edge: Edge) => {
+      closeContextMenu();
+      onEdgesDelete([edge]);
+    },
+    [closeContextMenu, onEdgesDelete],
+  );
+
   const handleAddAtPosition = useCallback(
     (position: XYPosition) => {
       closeContextMenu();
@@ -152,6 +160,7 @@ const TaskFlow = ({
         contextMenu={contextMenu}
         onCloseContextMenu={closeContextMenu}
         onInsertOnEdge={handleInsertOnEdge}
+        onDeleteEdge={handleDeleteEdge}
         onAddAtPosition={handleAddAtPosition}
       />
       <TaskFlowHelpText />

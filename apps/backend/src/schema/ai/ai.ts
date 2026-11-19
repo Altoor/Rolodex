@@ -39,6 +39,23 @@ export const SystemOnePrompt = builder.drizzleObject("decisions", {
     instruction: t.exposeString("instruction"),
     options: t.exposeStringList("options"),
     optionDescriptions: t.exposeStringList("optionDescriptions"),
+    biases: t.relation("biases"),
+  }),
+});
+
+export const DecisionBias = builder.drizzleObject("decisionBiases", {
+  name: "DecisionBias",
+  description:
+    "A learned bias applied to a decision option before result matching.",
+  fields: (t) => ({
+    id: t.exposeInt("id"),
+    decisionId: t.exposeInt("decisionId"),
+    option: t.exposeString("option"),
+    bias: t.exposeFloat("bias"),
+    updatedAt: t.field({
+      type: "DateTime",
+      resolve: (parent) => parent.updatedAt,
+    }),
   }),
 });
 

@@ -14,6 +14,7 @@ export const TASKS = gql(/* GraphQL */ `
       onFalseTaskId
       model
       decisionModel
+      decisionStateConfig
       forceUserDecideIfNoMatch
       userDecisionType
       userDecisionConfig
@@ -73,6 +74,7 @@ export const GET_TASK = gql(/* GraphQL */ `
       onFalseTaskId
       model
       decisionModel
+      decisionStateConfig
       forceUserDecideIfNoMatch
       userDecisionType
       userDecisionConfig

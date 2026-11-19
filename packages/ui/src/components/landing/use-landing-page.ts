@@ -2,8 +2,9 @@
 
 import { useQuery } from "@apollo/client/react";
 import { TASKS } from "@repo/queries/tasks/task-queries";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { useAuth } from "../auth/auth-provider";
+import { useFlowStartAssistant } from "../flow/use-flow-start-assistant";
 import { useLandingComposer } from "./use-landing-composer";
 import { useLandingRuns } from "./use-landing-runs";
 
@@ -22,10 +23,22 @@ export function useLandingPage() {
   const tasks = useMemo(() => tasksData?.tasks ?? [], [tasksData]);
 
   const runStream = useLandingRuns({ userId, loggedIn });
+  const flowAutoImprovement = user?.settings?.flowAutoImprovement ?? false;
+  const resetComposerRef = useRef<() => void>(() => {});
+
+  const flowAssistant = useFlowStartAssistant({
+    onTrackedStep: runStream.trackStep,
+    onOpenRun: runStream.openRun,
+    onStarted: () => resetComposerRef.current(),
+  });
+
   const composer = useLandingComposer({
     tasks,
     tasksLoading,
     defaultTaskId: user?.settings?.defaultTaskId ?? null,
+    flowAutoImprovement,
+    onAutoStart: flowAssistant.propose,
+    resetRef: resetComposerRef,
     onTrackedStep: runStream.trackStep,
     onOpenRun: runStream.openRun,
   });
@@ -36,5 +49,7 @@ export function useLandingPage() {
     tasks,
     composer,
     runs: runStream.state,
+    flowAutoImprovement,
+    flowAssistant,
   };
 }

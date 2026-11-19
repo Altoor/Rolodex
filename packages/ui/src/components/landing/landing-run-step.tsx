@@ -6,6 +6,9 @@ import {
   type StepStatus,
 } from "#components/ui/chain-of-thought";
 import { Block } from "#components/blocks/block";
+import { DecisionReviewPanel } from "#components/flow/decision-review/decision-review-panel";
+import { NextTaskWiring } from "#components/flow/next-task/next-task-wiring";
+import { UserDecisionRevisionPanel } from "#components/flow/user-decision-revision/user-decision-revision-panel";
 import UserChoiceBlock from "#components/userDecision/userChoiceBlock";
 import { Circle, CircleAlert, CircleCheck, LoaderCircle } from "lucide-react";
 import {
@@ -20,11 +23,18 @@ import {
 interface LandingRunStepProps {
   step: QueuedTaskStep;
   tasks: LandingTask[];
+  flowAutoImprovement: boolean;
   answering: boolean;
   dismissing: boolean;
+  wiring: boolean;
   choiceError: string | null;
   onAnswer: (optionId: string) => void;
   onDismiss: () => void;
+  onWireDecisionTarget: (
+    stepId: number,
+    resultId: number,
+    targetTaskId: number,
+  ) => Promise<void>;
 }
 
 function statusIcon(status: StepStatus) {
@@ -38,15 +48,29 @@ function statusIcon(status: StepStatus) {
 export function LandingRunStep({
   step,
   tasks,
+  flowAutoImprovement,
   answering,
   dismissing,
+  wiring,
   choiceError,
   onAnswer,
   onDismiss,
+  onWireDecisionTarget,
 }: LandingRunStepProps) {
   const status = stepStatus(step);
   const branch = stepBranchLabel(step, (id) => taskNameById(tasks, id));
   const detail = stepDetail(step);
+
+  const wiringContext = [
+    step.task?.name ? `Decision: ${step.task.name}` : "",
+    step.result?.unwiredOption
+      ? `Option: ${step.result.unwiredOption}`
+      : "",
+    step.result?.unwiredOptionDescription ?? "",
+    step.state ? `Run state:\n${step.state}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 
   return (
     <div className="flex flex-col items-start gap-0.5">
@@ -66,7 +90,27 @@ export function LandingRunStep({
           output={step.result.output}
         />
       ) : null}
-      {step.pendingChoice ? (
+      {step.pendingChoice?.kind === "decisionTarget" ? (
+        <NextTaskWiring
+          title={
+            step.result?.unwiredOption
+              ? `Option "${step.result.unwiredOption}" has no next task`
+              : "This decision needs a next task"
+          }
+          description={step.result?.unwiredOptionDescription ?? null}
+          contextState={wiringContext}
+          tasks={tasks}
+          disabled={wiring || dismissing}
+          onWired={async (targetTaskId) => {
+            const resultId = step.result?.unwiredResultId;
+            if (resultId == null) {
+              throw new Error("This decision result is missing");
+            }
+            await onWireDecisionTarget(step.id, resultId, targetTaskId);
+          }}
+          onDismiss={onDismiss}
+        />
+      ) : step.pendingChoice ? (
         <UserChoiceBlock
           choice={step.pendingChoice}
           answering={answering}
@@ -74,6 +118,24 @@ export function LandingRunStep({
           error={choiceError}
           onAnswer={onAnswer}
           onDismiss={onDismiss}
+        />
+      ) : null}
+      {flowAutoImprovement &&
+      step.taskId != null &&
+      step.task?.type === "decision" &&
+      step.status === "completed" ? (
+        <DecisionReviewPanel queuedTaskId={step.id} />
+      ) : null}
+      {flowAutoImprovement &&
+      step.taskId != null &&
+      step.task?.type === "userDecision" ? (
+        <UserDecisionRevisionPanel
+          taskId={step.taskId}
+          queuedTaskId={step.id}
+          awaitingInput={step.status === "awaiting_input"}
+          state={step.state}
+          currentOptions={step.pendingChoice?.options ?? []}
+          tasks={tasks}
         />
       ) : null}
     </div>

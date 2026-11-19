@@ -3,6 +3,9 @@ import type { PendingChoice } from "#components/userDecision/userChoiceBlock";
 import type { FormEvent, KeyboardEventHandler, ReactNode } from "react";
 import type { Control } from "react-hook-form";
 
+/** The landing picker's "let the model decide" sentinel. */
+export const AUTO_TASK_ID = "__auto__";
+
 /** The executor stores this on each step's `result` column. */
 export interface StepResult {
   branch?:
@@ -12,7 +15,8 @@ export interface StepResult {
     | "none"
     | "true"
     | "false"
-    | "awaiting_user";
+    | "awaiting_user"
+    | "unwired";
   nextTaskId?: number | null;
   branchLabel?: string;
   summary?: string;
@@ -22,6 +26,10 @@ export interface StepResult {
   outputType?: "normal" | "foreach";
   itemCount?: number;
   childQueuedTaskIds?: number[];
+  /** Set when the chosen option has no target task yet. */
+  unwiredResultId?: number;
+  unwiredOption?: string;
+  unwiredOptionDescription?: string | null;
 }
 
 export interface QueuedTaskStep {
@@ -79,6 +87,7 @@ export interface LandingComposerState {
   recording: boolean;
   isSubmitting: boolean;
   attachError: unknown;
+  submitError: unknown;
   addFiles: (files: File[]) => void;
   removeAttachment: (index: number) => void;
   rejectDirectory: () => void;
@@ -90,20 +99,29 @@ export interface LandingRunsState {
   openRuns: Record<string, boolean>;
   answeringStepId: number | null;
   dismissingStepId: number | null;
+  wiringStepId: number | null;
   answerError: string | null;
   dismissError: string | null;
   setRunOpen: (runId: string, open: boolean) => void;
   answerChoice: (stepId: number, optionId: string) => Promise<void>;
   dismissRun: (stepId: number) => Promise<void>;
+  wireDecisionTarget: (
+    stepId: number,
+    resultId: number,
+    targetTaskId: number,
+  ) => Promise<void>;
 }
 
 export interface LandingComposerProps extends LandingComposerState {
   tasks: LandingTask[];
+  autoEnabled: boolean;
+  assistant?: ReactNode;
   children: ReactNode;
 }
 
 export interface LandingRunsProps extends LandingRunsState {
   tasks: LandingTask[];
+  flowAutoImprovement: boolean;
 }
 
 export function toStep(row: QueuedTaskRow): QueuedTaskStep | null {
@@ -248,6 +266,8 @@ export function stepBranchLabel(
       return result.branchLabel ?? "tool result";
     case "awaiting_user":
       return "waiting for your choice";
+    case "unwired":
+      return "needs a next task";
     default:
       return undefined;
   }

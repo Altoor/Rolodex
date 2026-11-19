@@ -30,6 +30,7 @@ interface TaskFlowCanvasProps {
   contextMenu: FlowContextMenu | null;
   onCloseContextMenu: () => void;
   onInsertOnEdge: (edge: Edge) => void;
+  onDeleteEdge: (edge: Edge) => void;
   onAddAtPosition: (position: XYPosition) => void;
 }
 
@@ -49,6 +50,7 @@ const TaskFlowCanvas = ({
   contextMenu,
   onCloseContextMenu,
   onInsertOnEdge,
+  onDeleteEdge,
   onAddAtPosition,
 }: TaskFlowCanvasProps) => (
   <div className="relative min-h-0 flex-1 overflow-hidden rounded-lg border bg-background">
@@ -80,6 +82,7 @@ const TaskFlowCanvas = ({
         menu={contextMenu}
         onClose={onCloseContextMenu}
         onInsertOnEdge={onInsertOnEdge}
+        onDeleteEdge={onDeleteEdge}
         onAddAtPosition={onAddAtPosition}
       />
     ) : null}

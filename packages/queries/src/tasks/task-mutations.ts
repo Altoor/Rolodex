@@ -13,6 +13,7 @@ export const CREATE_TASK = gql(/* GraphQL */ `
     $onFalseTaskId: Int
     $model: String
     $decisionModel: String
+    $decisionStateConfig: JSON
     $forceUserDecideIfNoMatch: Boolean
     $userDecisionType: UserDecisionType
     $userDecisionConfig: JSON
@@ -29,6 +30,7 @@ export const CREATE_TASK = gql(/* GraphQL */ `
       onFalseTaskId: $onFalseTaskId
       model: $model
       decisionModel: $decisionModel
+      decisionStateConfig: $decisionStateConfig
       forceUserDecideIfNoMatch: $forceUserDecideIfNoMatch
       userDecisionType: $userDecisionType
       userDecisionConfig: $userDecisionConfig
@@ -43,6 +45,7 @@ export const CREATE_TASK = gql(/* GraphQL */ `
       onFalseTaskId
       model
       decisionModel
+      decisionStateConfig
       forceUserDecideIfNoMatch
       userDecisionType
       userDecisionConfig
@@ -91,6 +94,7 @@ export const UPDATE_TASK = gql(/* GraphQL */ `
     $onFalseTaskId: Int
     $model: String
     $decisionModel: String
+    $decisionStateConfig: JSON
     $forceUserDecideIfNoMatch: Boolean
     $userDecisionType: UserDecisionType
     $userDecisionConfig: JSON
@@ -108,6 +112,7 @@ export const UPDATE_TASK = gql(/* GraphQL */ `
       onFalseTaskId: $onFalseTaskId
       model: $model
       decisionModel: $decisionModel
+      decisionStateConfig: $decisionStateConfig
       forceUserDecideIfNoMatch: $forceUserDecideIfNoMatch
       userDecisionType: $userDecisionType
       userDecisionConfig: $userDecisionConfig
@@ -122,6 +127,7 @@ export const UPDATE_TASK = gql(/* GraphQL */ `
       onFalseTaskId
       model
       decisionModel
+      decisionStateConfig
       forceUserDecideIfNoMatch
       userDecisionType
       userDecisionConfig

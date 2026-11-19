@@ -203,6 +203,21 @@ Available tools: `find_file`, `find_files`, `find_folder`, `find_folders`,
 }
 ```
 
+Set `scope: "uploaded"` to return only the files uploaded with or attached to
+the current run (files inside attached folders are included). This is useful
+when files are uploaded on the landing page and the flow should process just
+those files:
+
+```json
+{
+  "scope": "uploaded",
+  "kind": "file"
+}
+```
+
+Uploaded files are already indexed, so this scope includes unchanged entries by
+default. If the run has no uploads, the scan returns no entries and a warning.
+
 A typical summarise flow:
 
 ```text
@@ -212,8 +227,9 @@ scan_files (foreach, fileType: plaintext)
               └── update_file_metadata
 ```
 
-The files page runner seeds `files` and `folders` into the first step's
-toolState, so a task started by dropping files can process them without a scan.
+The files page runner seeds `files`, `folders`, and an `uploaded: true` marker
+into the first step's toolState, so a task started by dropping files can process
+them without a scan, and `scan_files` can target just those uploads.
 The UI Refresh button calls the same indexer as `pnpm files:index`.
 
 ### Vision and OCR

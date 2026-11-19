@@ -142,6 +142,67 @@ export const decisions = pgTable("decisions", {
   authorId: integer("authorId").notNull(),
 });
 
+/**
+ * Learned per-option bias applied to a System One answer before result
+ * matching. Tasks and decisions are workspace-global, so these biases are
+ * global per decision rather than per user.
+ */
+export const decisionBiases = pgTable(
+  "decisionBiases",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    decisionId: integer("decisionId")
+      .notNull()
+      .references(() => decisions.id, { onDelete: "cascade" }),
+    option: text("option").notNull(),
+    bias: real("bias").notNull().default(0),
+    updatedAt: timestamp("updatedAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("decision_biases_decision_option_idx").on(
+      table.decisionId,
+      table.option,
+    ),
+  ],
+);
+
+/**
+ * One review per queued decision step. The stored deltas let a changed review
+ * be reversed before applying the new correction.
+ */
+export const decisionFeedback = pgTable(
+  "decisionFeedback",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    queuedTaskId: integer("queuedTaskId").notNull().unique(),
+    taskId: integer("taskId").notNull(),
+    decisionId: integer("decisionId")
+      .notNull()
+      .references(() => decisions.id, { onDelete: "cascade" }),
+    runId: uuid("runId").notNull(),
+    predictedResultId: integer("predictedResultId"),
+    actualResultId: integer("actualResultId"),
+    correct: boolean("correct").notNull(),
+    appliedDeltas: json("appliedDeltas")
+      .$type<{ key: string; delta: number }[]>()
+      .notNull()
+      .default(sql`'[]'::json`),
+    reviewedBy: integer("reviewedBy").notNull(),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updatedAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("decision_feedback_decision_idx").on(table.decisionId),
+    index("decision_feedback_run_idx").on(table.runId),
+  ],
+);
+
 export const userDecisionOptions = pgTable("userDecisionOptions", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   taskId: integer("taskId").notNull(),
@@ -201,6 +262,10 @@ export const tasks = pgTable("tasks", {
   model: text("model"),
   // System One decision model used by decision tasks and todo selection.
   decisionModel: text("decisionModel"),
+  // Which tool-state values decision tasks add to the model's prompt state.
+  // Shape: { mode: "none" | "all" | "paths", paths: string[] }. This never
+  // changes the run's task state or tool state.
+  decisionStateConfig: json("decisionStateConfig"),
   // Decision tasks ask the user to choose when the model finds no match.
   forceUserDecideIfNoMatch: boolean("forceUserDecideIfNoMatch")
     .default(true)
@@ -296,6 +361,8 @@ export const userSettings = pgTable("userSettings", {
   defaultTaskId: integer("defaultTaskId").references(() => tasks.id, {
     onDelete: "set null",
   }),
+  /** Opt in to model-assisted flow creation and run review. */
+  flowAutoImprovement: boolean("flowAutoImprovement").default(false).notNull(),
   defaultModelName: text("defaultModelName").references(() => models.name, {
     onDelete: "set null",
   }),

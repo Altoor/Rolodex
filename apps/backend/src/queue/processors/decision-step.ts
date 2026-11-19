@@ -6,7 +6,9 @@ import {
   getOllamaClient,
 } from "@repo/ai";
 import { setupQuestions } from "../../schema/ai/ai-service";
+import { getUserSettings } from "../../schema/user/user-settings-service";
 import { MAX_CHAIN_DEPTH } from "../constants";
+import { applyDecisionBiases, loadDecisionBiases } from "../decision-bias";
 import { resultMatches, summarizeAnswer } from "../result-matcher";
 import { awaitStep, enqueueStep, finishStep } from "../step-store";
 import type { QueuedRow, TaskRow } from "../types";
@@ -16,6 +18,7 @@ import {
   type PendingChoice,
   type PendingChoiceOption,
 } from "../user-choice";
+import { buildDecisionModelState } from "./decision-state";
 
 /** Executes a decision task and enqueues the matching/fallback next step. */
 export async function processDecisionStep(
@@ -32,6 +35,13 @@ export async function processDecisionStep(
     });
     return;
   }
+
+  const biases = await loadDecisionBiases(decisionId);
+  const modelState = buildDecisionModelState(
+    row.state,
+    row.toolState,
+    task.decisionStateConfig,
+  );
 
   let response: SystemOneResponse | null = null;
   let answer: SystemOneAnswer | undefined;
@@ -52,9 +62,10 @@ export async function processDecisionStep(
       row.decisionModel ??
       task.decisionModel ??
       (await getDecisionModelForUser(row.queued_by));
-    response = await (await getOllamaClient()).systemone({
+    const ollama = await getOllamaClient();
+    response = await ollama.systemone({
       model,
-      state: row.state,
+      state: modelState,
       questions,
     });
     answer = response.answers[decision.decisionPremise];
@@ -68,6 +79,12 @@ export async function processDecisionStep(
     }`;
   }
 
+  const biased = answer
+    ? applyDecisionBiases(answer, biases, decision.options ?? undefined)
+    : null;
+  const effectiveAnswer = biased?.answer ?? answer;
+  const appliedBiases = biased?.applied ?? [];
+
   const results = (
     await db.query.taskResults.findMany({ where: { taskId: task.id } })
   ).sort((a, b) => a.id - b.id);
@@ -76,18 +93,18 @@ export async function processDecisionStep(
 
   // First taskResult whose type matches and whose thresholds all pass wins.
   // Results without a wired-up resultTaskId cannot continue the chain.
-  const match = answer
+  const match = effectiveAnswer
     ? results.find(
         (result) =>
-          result.type === answer.type &&
+          result.type === effectiveAnswer.type &&
           result.resultTaskId != null &&
-          resultMatches(result, answer),
+          resultMatches(result, effectiveAnswer),
       )
     : undefined;
 
   // A model decision with a matching result always continues automatically.
-  if (match && answer) {
-    const summary = summarizeAnswer(task.name, answer);
+  if (match && effectiveAnswer) {
+    const summary = summarizeAnswer(task.name, effectiveAnswer);
     const nextTaskId = match.resultTaskId!;
     let note: string | undefined;
 
@@ -98,11 +115,14 @@ export async function processDecisionStep(
     }
 
     const nextToolState = match.appendState
-      ? [...row.toolState, { decision: answer }]
+      ? [...row.toolState, { decision: effectiveAnswer }]
       : row.toolState;
 
     const result = {
       answer,
+      effectiveAnswer,
+      appliedBiases,
+      matchedResultId: match.id,
       usage: response?.usage ?? null,
       model,
       branch: "result",
@@ -126,6 +146,70 @@ export async function processDecisionStep(
     return;
   }
 
+  // With auto improvement on, a chosen option whose result has no target task
+  // pauses so the user can wire the next task instead of silently dropping the
+  // branch. The UI asks whether to use an existing task or define a new one.
+  let unwiredMatch: (typeof results)[number] | undefined;
+  if (!match && effectiveAnswer) {
+    const settings = await getUserSettings(row.queued_by);
+    if (settings.flowAutoImprovement) {
+      unwiredMatch = results.find(
+        (result) =>
+          result.resultTaskId == null &&
+          result.type === effectiveAnswer.type &&
+          resultMatches(result, effectiveAnswer),
+      );
+    }
+  }
+
+  if (unwiredMatch && effectiveAnswer) {
+    const optionIndex =
+      unwiredMatch.option != null && decision.options
+        ? decision.options.indexOf(unwiredMatch.option)
+        : -1;
+    const optionDescription =
+      optionIndex >= 0
+        ? (decision.optionDescriptions?.[optionIndex] ?? null)
+        : null;
+    const label = decisionResultLabel(
+      unwiredMatch,
+      results.indexOf(unwiredMatch),
+      decision.type,
+    );
+    const summary = `Decision "${task.name}": "${label}" needs a next task`;
+
+    await awaitStep(
+      row.id,
+      {
+        kind: "decisionTarget",
+        taskId: task.id,
+        prompt: `Where should "${label}" go?`,
+        choiceType: "list",
+        acceptLabel: "Continue",
+        recommendedOptionId: null,
+        options: [],
+        createdAt: new Date().toISOString(),
+      } satisfies PendingChoice,
+      {
+        answer,
+        effectiveAnswer,
+        appliedBiases,
+        matchedResultId: null,
+        usage: response?.usage ?? null,
+        model,
+        branch: "unwired",
+        nextTaskId: null,
+        unwiredResultId: unwiredMatch.id,
+        unwiredOption: label,
+        unwiredOptionDescription: optionDescription,
+        summary,
+        note: "This option has no next task yet. Choose an existing task or define a new one.",
+      },
+      summary,
+    );
+    return;
+  }
+
   // With no match, optionally let the user choose among the result outputs.
   if (task.forceUserDecideIfNoMatch) {
     if (candidates.length === 0) {
@@ -144,7 +228,7 @@ export async function processDecisionStep(
     const options: PendingChoiceOption[] = candidates.map((result, index) => ({
       id: `decision:${result.id}`,
       label: decisionResultLabel(result, index, decision.type),
-      value: decisionResultValue(result, answer ?? null),
+      value: decisionResultValue(result, effectiveAnswer ?? null),
       resultTaskId: result.resultTaskId,
       appendState: result.appendState,
       source: "decisionResult",
@@ -168,6 +252,9 @@ export async function processDecisionStep(
 
     const result = {
       answer: answer ?? null,
+      effectiveAnswer: effectiveAnswer ?? null,
+      appliedBiases,
+      matchedResultId: null,
       usage: response?.usage ?? null,
       model,
       branch: "awaiting_user",
@@ -180,7 +267,7 @@ export async function processDecisionStep(
     return;
   }
 
-  if (!answer) {
+  if (!answer || !effectiveAnswer) {
     await finishStep(row.id, "failed", {
       note:
         modelError ??
@@ -189,7 +276,7 @@ export async function processDecisionStep(
     return;
   }
 
-  const summary = summarizeAnswer(task.name, answer);
+  const summary = summarizeAnswer(task.name, effectiveAnswer);
 
   const nextTaskId = task.fallbackTaskId ?? null;
   const branch: "fallback" | "none" = nextTaskId != null ? "fallback" : "none";
@@ -207,6 +294,9 @@ export async function processDecisionStep(
 
   const result = {
     answer,
+    effectiveAnswer,
+    appliedBiases,
+    matchedResultId: null,
     usage: response?.usage ?? null,
     model,
     branch,

@@ -89,6 +89,15 @@ export function buildTaskVariables(
       values.decisionModel === USE_USER_DEFAULT_MODEL
         ? null
         : values.decisionModel,
+    decisionStateConfig:
+      values.type === "decision"
+        ? {
+            mode: values.decisionStateMode,
+            paths: values.decisionStatePaths
+              .map((entry) => entry.path.trim())
+              .filter(Boolean),
+          }
+        : undefined,
     forceUserDecideIfNoMatch:
       values.type === "decision" ? values.forceUserDecideIfNoMatch : undefined,
     userDecisionType:

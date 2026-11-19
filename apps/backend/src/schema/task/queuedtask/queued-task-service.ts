@@ -78,6 +78,9 @@ export async function createQueuedTask(
   const toolState: Record<string, unknown>[] = [];
   if (files.length > 0 || folders.length > 0) {
     toolState.push({
+      // Marks the run's initial attachments so tools such as scan_files can
+      // distinguish them from files produced by earlier steps.
+      uploaded: true,
       ...(files.length > 0 ? { files } : {}),
       ...(folders.length > 0 ? { folders } : {}),
     });

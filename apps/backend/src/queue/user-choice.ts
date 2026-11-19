@@ -1,7 +1,10 @@
 import type { SystemOneAnswer } from "ollama";
 import type { TaskResultRow } from "./types";
 
-export type PendingChoiceKind = "userDecision" | "decisionOutput";
+export type PendingChoiceKind =
+  | "userDecision"
+  | "decisionOutput"
+  | "decisionTarget";
 export type PendingChoiceType = "yesNo" | "list" | "dropdown";
 export type PendingChoiceOptionSource = "static" | "dynamic" | "decisionResult";
 

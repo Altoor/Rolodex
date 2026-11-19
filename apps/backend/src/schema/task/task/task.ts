@@ -69,6 +69,11 @@ export const Task = builder.drizzleObject("tasks", {
     onFalseTaskId: t.exposeInt("onFalseTaskId", { nullable: true }),
     model: t.exposeString("model", { nullable: true }),
     decisionModel: t.exposeString("decisionModel", { nullable: true }),
+    decisionStateConfig: t.field({
+      type: "JSON",
+      nullable: true,
+      resolve: (parent) => parent.decisionStateConfig ?? null,
+    }),
     forceUserDecideIfNoMatch: t.exposeBoolean("forceUserDecideIfNoMatch"),
     userDecisionType: t.field({
       type: UserDecisionType,
