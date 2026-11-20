@@ -70,6 +70,8 @@ export type TaskFormValues = {
   userDecisionType: UserDecisionType;
   userDecisionConfig: UserDecisionConfigFormValues;
   userDecisionOptions: UserDecisionOptionFormValues[];
+  canRunInParallel: boolean;
+  prioritize: boolean;
 };
 
 export const USE_USER_DEFAULT_MODEL = "__user_default_model__";
@@ -98,6 +100,8 @@ export const emptyTaskFormValues: TaskFormValues = {
     noLabel: "No",
   },
   userDecisionOptions: [],
+  canRunInParallel: false,
+  prioritize: false,
 };
 
 type TaskRecord = NonNullable<GetTaskQuery["getTask"]>;
@@ -191,5 +195,7 @@ export const taskToFormValues = (task: TaskRecord): TaskFormValues => {
         appendState: option.appendState ?? false,
         sortOrder: option.sortOrder ?? 0,
       })),
+    canRunInParallel: task.canRunInParallel ?? true,
+    prioritize: task.prioritize ?? false,
   };
 };

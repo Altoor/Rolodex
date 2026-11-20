@@ -37,13 +37,15 @@ import {
   toModelNames,
 } from "./task-builder-service";
 import TaskDecisionSection from "./components/taskDecisionSection";
+import TaskBuilderAssistant from "./components/taskBuilderAssistant";
 import UserDecisionSection from "./components/userDecisionSection";
 
 interface TaskBuilderProps {
   selectedTaskId: number | undefined;
+  onSelectTaskId: (taskId: number) => void;
 }
 
-const TaskBuilder = ({ selectedTaskId }: TaskBuilderProps) => {
+const TaskBuilder = ({ selectedTaskId, onSelectTaskId }: TaskBuilderProps) => {
   const methods = useForm<TaskFormValues>({
     defaultValues: emptyTaskFormValues,
   });
@@ -60,6 +62,7 @@ const TaskBuilder = ({ selectedTaskId }: TaskBuilderProps) => {
   const [createdTaskId, setCreatedTaskId] = useState<number | undefined>(
     undefined,
   );
+  const [assistantOpen, setAssistantOpen] = useState(false);
   const taskId = selectedTaskId ?? createdTaskId;
 
   const { data: toolsData } = useQuery(TOOLS);
@@ -211,11 +214,24 @@ const TaskBuilder = ({ selectedTaskId }: TaskBuilderProps) => {
     updateResultError ??
     deleteResultError;
 
+  const useAssistantTask = (id: number) => {
+    setAssistantOpen(false);
+    onSelectTaskId(id);
+  };
+
   return (
     <FormProvider {...methods}>
       <div className="flex flex-col gap-2">
         {error ? (
           <ErrorState title="Task operation failed" error={error} />
+        ) : null}
+        {assistantOpen ? (
+          <TaskBuilderAssistant
+            tasks={tasksData?.tasks ?? []}
+            onCreated={useAssistantTask}
+            onEditTask={useAssistantTask}
+            onClose={() => setAssistantOpen(false)}
+          />
         ) : null}
         <TaskCard
           resultFields={fields}
@@ -229,6 +245,8 @@ const TaskBuilder = ({ selectedTaskId }: TaskBuilderProps) => {
           onSaveResult={saveTaskResult}
           onDeleteResult={deleteTaskResultAt}
           pathSuggestions={pathSuggestions}
+          onAssist={() => setAssistantOpen((open) => !open)}
+          assistOpen={assistantOpen}
         />
         <TaskDecisionSection
           type={type}

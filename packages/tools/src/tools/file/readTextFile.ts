@@ -14,6 +14,7 @@ const definition: ToolDefinition = {
   description:
     "Read a structured/document text file. Markdown, HTML, and plaintext are returned verbatim; PDF/DOCX extraction is not implemented yet.",
   category: "file",
+  usesModel: true,
   inputMode: "json",
   inputSchema: {
     type: "object",

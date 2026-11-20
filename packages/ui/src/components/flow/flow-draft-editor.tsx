@@ -4,11 +4,7 @@ import { useQuery } from "@apollo/client/react";
 import { TOOLS } from "@repo/queries/tools/tool-queries";
 import { Badge } from "#components/ui/badge";
 import { Button } from "#components/ui/button";
-import {
-  Field,
-  FieldDescription,
-  FieldLabel,
-} from "#components/ui/field";
+import { Field, FieldDescription, FieldLabel } from "#components/ui/field";
 import { Input } from "#components/ui/input";
 import {
   Select,
@@ -201,9 +197,8 @@ export function FlowTaskDraftEditor({
 
   const unwiredDecisionResults =
     renderDecisionResultWiring && draft.type === "decision"
-      ? (draft.decision?.results.filter(
-          (result) => result.targetTaskId == null,
-        ).length ?? 0)
+      ? (draft.decision?.results.filter((result) => result.targetTaskId == null)
+          .length ?? 0)
       : 0;
   const unwiredUserDecisionOptions =
     renderUserDecisionOptionWiring && draft.type === "userDecision"
@@ -343,9 +338,7 @@ export function FlowTaskDraftEditor({
                   decision: {
                     ...draft.decision!,
                     type:
-                      value === "noul" || value === "score"
-                        ? value
-                        : "choice",
+                      value === "noul" || value === "score" ? value : "choice",
                   },
                 })
               }
@@ -504,7 +497,7 @@ export function FlowTaskDraftEditor({
                           scoreThreshold:
                             draft.decision!.type === "score" ? 0.5 : null,
                           probabilityThreshold:
-                            draft.decision!.type === "choice" ? 0.5 : null,
+                            draft.decision!.type === "choice" ? 0.8 : null,
                           confidenceThreshold: null,
                         },
                       ],
@@ -537,10 +530,7 @@ export function FlowTaskDraftEditor({
                         <SelectContent>
                           <SelectGroup>
                             {draft.decision!.options.map((option) => (
-                              <SelectItem
-                                key={option.name}
-                                value={option.name}
-                              >
+                              <SelectItem key={option.name} value={option.name}>
                                 {option.name}
                               </SelectItem>
                             ))}

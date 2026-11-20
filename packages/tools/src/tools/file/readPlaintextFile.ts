@@ -14,6 +14,7 @@ const definition: ToolDefinition = {
   description:
     "Read a plaintext file as UTF-8 text. Used by the editor and by text-processing flows.",
   category: "file",
+  usesModel: true,
   inputMode: "json",
   inputSchema: {
     type: "object",

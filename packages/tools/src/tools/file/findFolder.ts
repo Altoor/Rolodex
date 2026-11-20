@@ -1,4 +1,6 @@
 import type { Tool, ToolDefinition } from "../../model";
+import { ToolNoMatchError } from "../../model";
+import { mergeToolInput, readBoolean } from "../../utils";
 import { withoutScore } from "./services/dto";
 import { findFileMatches } from "./services/search";
 
@@ -8,6 +10,8 @@ const definition: ToolDefinition = {
   description:
     "Find one folder by name/path/description using vector similarity, with lexical and decision-model fallbacks.",
   category: "file",
+  usesModel: true,
+  modelRoles: ["decision", "embedding"],
   inputMode: "json",
   inputSchema: {
     type: "object",
@@ -34,6 +38,12 @@ const definition: ToolDefinition = {
         description:
           "Optional decision model used by the fallback selector. Defaults to the task/inherited decision model, then the user's default decision model.",
       },
+      allowEmpty: {
+        type: "boolean",
+        description:
+          "Return an empty result with `matched: false` instead of failing when nothing matches. Defaults to false.",
+        default: false,
+      },
     },
   },
   outputDescription:
@@ -47,20 +57,40 @@ export const findFolderTool: Tool = {
   definition,
 
   async execute(context) {
-    const { entry, candidates } = await findFileMatches(context, {
-      kind: "folder",
-      limit: 5,
-    });
-    const folder = withoutScore(entry);
+    const allowEmpty =
+      readBoolean(mergeToolInput(context), "allowEmpty") ?? false;
 
-    return {
-      output: {
-        folder,
-        score: entry.score,
-        candidates,
-      },
-      summary: `Found folder "${entry.name}"`,
-      toolStateAppend: { folder },
-    };
+    try {
+      const { entry, candidates } = await findFileMatches(context, {
+        kind: "folder",
+        limit: 5,
+      });
+      const folder = withoutScore(entry);
+
+      return {
+        output: {
+          folder,
+          score: entry.score,
+          candidates,
+          matched: true,
+        },
+        summary: `Found folder "${entry.name}"`,
+        toolStateAppend: { folder, matched: true },
+      };
+    } catch (err) {
+      if (!allowEmpty || !(err instanceof ToolNoMatchError)) throw err;
+
+      return {
+        output: {
+          folder: null,
+          score: null,
+          candidates: [],
+          matched: false,
+          warning: err.message,
+        },
+        summary: err.message,
+        toolStateAppend: { folder: null, matched: false },
+      };
+    }
   },
 };

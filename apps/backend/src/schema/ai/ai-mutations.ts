@@ -4,7 +4,7 @@ import { builder, db } from "../builder";
 import { GraphQLError } from "graphql/error";
 import { DecisionType, SystemOnePrompt, SystemOneResponse } from "./ai";
 import { setupQuestions } from "./ai-service";
-import { getOllamaClient } from "@repo/ai";
+import { getOllamaClient, getOllamaKeepAlive } from "@repo/ai";
 import { requireUserId } from "../auth";
 
 builder.mutationType({
@@ -181,10 +181,14 @@ builder.mutationType({
           },
         ]);
 
-        const response = await (await getOllamaClient()).systemone({
+        const keepAlive = await getOllamaKeepAlive();
+        const response = await (
+          await getOllamaClient()
+        ).systemone({
           model: "tev1:4b",
           state,
           questions,
+          ...(keepAlive !== undefined ? { keep_alive: keepAlive } : {}),
         });
         return response;
       },

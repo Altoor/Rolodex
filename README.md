@@ -100,6 +100,11 @@ When enabled:
   editor, created without starting a run, and wired into the option. If an
   auto-improvement run reaches a decision whose chosen option has no next task,
   the run pauses on the same chooser and resumes from the newly wired task.
+- Every step after the first pauses before it runs. The prompt shows the
+  proposed task and lets you run it, choose another existing task, or draft a
+  new one. The override applies to that run only; it does not rewire the saved
+  flow. The first step of a run and targets you just wired explicitly are not
+  asked about again.
 - A new tool task whose tool produces output also asks what runs after it:
   another existing task, a new task or tool (which asks again), or the end of
   the flow. The choice is saved as the tool task's fallback task.
@@ -124,7 +129,23 @@ If you need to remove the feature, the migration can be rolled back with:
 DROP TABLE "decisionFeedback";
 DROP TABLE "decisionBiases";
 ALTER TABLE "userSettings" DROP COLUMN "flowAutoImprovement";
+ALTER TABLE "queuedTasks" DROP COLUMN "nextStepApproved";
 ```
+
+## Parallel task execution
+
+Every task has a **Can run in parallel** setting in the task builder. It
+defaults to off for `decision`/`textPrompt` tasks and for tools that can call
+Ollama, Whisper, vision/OCR, or embeddings. Deterministic tools and user
+decisions default to on. The queue runs parallel-capable steps first, executes
+them up to the configured limit, and runs a non-parallel step only when nothing
+else is in flight.
+
+Every task also has a **Prioritize** setting. A prioritized step jumps to the
+top of the queue ahead of older non-prioritized steps, whether or not it can run
+in parallel. If a prioritized task is non-parallel, the queue stops starting new
+parallel work, lets the in-flight steps drain, then runs the prioritized task
+alone. Ordering is prioritize, then parallel-capable, then oldest first.
 
 ## Service settings
 
@@ -140,6 +161,18 @@ The `/settings` page stores installation-wide endpoints in the singleton
   faster-whisper requests, for example
   `Systran/faster-whisper-large-v3` or
   `deepdml/faster-whisper-large-v3-turbo-ct2`.
+- **Maximum parallel tasks** — how many parallel-capable queue steps may run
+  at once. Allowed range 1–50, default 5.
+- **Ollama keep-alive** — optional `keep_alive` sent with Ollama requests, for
+  example `30m` or `1h`. Leave it empty to use the Ollama server's own
+  `OLLAMA_KEEP_ALIVE`; the bundled compose files set 30m, and the app does not
+  override that unless this field is filled in. `-1` keeps models loaded until
+  Ollama needs the memory.
+- **Preload models before they run** — on by default. When a queued step needs
+  a model, the backend asks Ollama to load it while earlier work finishes.
+- **Preload configured models on startup** — off by default. Warms the users'
+  configured generation, decision, and vision models plus the embedding model
+  once after startup. Keep it off on shared hosts or when VRAM is limited.
 
 `read_audio_file` accepts `transcribe: true` to send the file to that endpoint.
 The Settings page requires an authenticated user. If the table is empty, the
@@ -157,12 +190,22 @@ fallback: if neither is configured, the tool reports a clear warning and still
 returns the image metadata and preview URL. Vision errors never fail the task,
 and image bytes only enter toolState when `includeBase64: true`.
 
+Ollama loads models lazily, and a cold large vision model can take longer than
+the inference timeout. The backend therefore preloads the vision model as soon
+as an image task is queued (and while the queue is waiting), then waits for the
+load separately before starting the 120s inference timer. The load budget is
+controlled by `MODEL_LOAD_TIMEOUT_MS` (default 300000) and the inference budget
+by `VISION_TIMEOUT_MS` (default 120000). Warmup is deduplicated per model, so
+description and OCR share one load, and a failed warmup is only logged.
+
 ### Tool config templates
 
 Every tool config string can reference earlier toolState with `{{path}}`, for
 example `{{content}}` or `{{file.name}}`. Templates are resolved after the
 normal config/state/toolState merge, including strings nested inside objects and
-arrays, and a missing path fails the task instead of being sent literally. This
+arrays, and a missing path fails the task instead of being sent literally. A
+value that is exactly one placeholder keeps the native type from toolState, so
+`"{{folder.id}}"` resolves to a number and `"{{matched}}"` to a boolean. This
 allows deterministic composition without a model call:
 
 ```json
@@ -187,6 +230,57 @@ the decision model. In the task builder, **Decision model context** offers
 **None**, **All tool state**, or **Selected paths** (for example `file.path` or
 `files.0.name`). This only changes the decision model prompt; the run's state
 and tool state passed to later tasks are unchanged.
+
+Generated choice results start with a probability threshold of `0.8`. New result
+rows added in the draft editor use the same default; the threshold remains
+editable per result.
+
+### Task flow layout
+
+The task-flow chart places each task in a left-to-right column. A single chain
+runs straight to the right, and branches fan out vertically from their parent.
+The canvas can zoom out to 10% and uses the full window width on large displays.
+
+### Importing and exporting tasks
+
+The task-flow toolbar has **Export** and **Import** buttons. Export downloads
+every task with its results, user-decision options, tool/model settings, and the
+decisions those tasks reference. The file is versioned JSON:
+
+```json
+{
+  "format": "rolodex-tasks",
+  "version": 1,
+  "exportedAt": "2026-11-19T00:00:00.000Z",
+  "decisions": [],
+  "tasks": []
+}
+```
+
+Import recreates everything from the file and remaps all task references
+(`fallbackTaskId`, `onTrueTaskId`, `onFalseTaskId`, switch targets, result
+targets, and user-decision option targets) to the new IDs. Import is additive:
+existing tasks are never changed or deleted, so importing the same file twice
+creates another set of copies. References to tasks missing from the file are
+cleared with a warning in the import result.
+
+### Selecting, copying and pasting tasks
+
+Drag on empty canvas space to draw a selection box around tasks (partially
+covered tasks are included). Hold Shift, Cmd, or Ctrl while clicking to add or
+remove tasks from the selection.
+
+- Press Delete or Backspace to delete the selected tasks after one confirmation.
+- Right-click a selected task to **Copy**, **Export**, or **Delete** the
+  selection. The same menu works for a single task.
+- Use Ctrl/Cmd+C and Ctrl/Cmd+V to copy and paste the selection. Right-clicking
+  empty canvas space offers **Paste tasks** as well.
+
+Copy and paste uses the task export format. Pasted tasks get new IDs, internal
+links between copied tasks are remapped, and links to tasks outside the
+selection keep pointing at the existing tasks. Decisions referenced by copied
+tasks are reused instead of duplicated. Pasted tasks appear near the paste
+location or in the center of the canvas for keyboard paste.
 
 ### Task output blocks
 

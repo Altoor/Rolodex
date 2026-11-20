@@ -2,20 +2,8 @@ import type { Tool, ToolDefinition } from "../../model";
 import { mergeToolInput, readString, requireNonEmptyString } from "../../utils";
 import { asToolInputError } from "./services/errors";
 import { toFileEntryRef } from "./services/dto";
-import {
-  getFileEntryByPath,
-  insertFileEntry,
-  saveFileEntryWithEmbedding,
-} from "./services/entry";
-import { folderContentHash } from "./services/hash";
-import { joinRelativePath, validateEntryName } from "./services/paths";
+import { createFolderEntry } from "./services/folders";
 import { resolveParentFolderFromInput } from "./services/resolve";
-import {
-  deleteEntry,
-  ensureDirectory,
-  pathExists,
-  statEntry,
-} from "./services/storage";
 
 const definition: ToolDefinition = {
   key: "create_folder",
@@ -23,6 +11,7 @@ const definition: ToolDefinition = {
   description:
     "Create a folder inside the files tree, optionally with a description.",
   category: "file",
+  usesModel: true,
   inputMode: "json",
   inputSchema: {
     type: "object",
@@ -62,53 +51,17 @@ export const createFolderTool: Tool = {
     try {
       const input = mergeToolInput(context);
 
-      const name = validateEntryName(
-        requireNonEmptyString(readString(input, "name"), "name"),
-      );
+      const name = requireNonEmptyString(readString(input, "name"), "name");
       const description = readString(input, "description") ?? "";
       const parent = await resolveParentFolderFromInput(context, input);
-      const parentPath = parent?.relativePath ?? "";
-      const relativePath = joinRelativePath(parentPath, name);
+      const folder = await createFolderEntry({ parent, name, description });
+      const ref = toFileEntryRef(folder);
 
-      if (await pathExists(relativePath)) {
-        throw new Error(`"${relativePath}" already exists`);
-      }
-      if (await getFileEntryByPath(relativePath)) {
-        throw new Error(`"${relativePath}" is already indexed`);
-      }
-
-      await ensureDirectory(relativePath);
-      const stat = await statEntry(relativePath);
-      const now = stat?.mtime ?? new Date();
-
-      try {
-        const folder = await insertFileEntry({
-          kind: "folder",
-          name,
-          relativePath,
-          parentId: parent?.id ?? null,
-          description,
-          contentHash: folderContentHash([]),
-          filesystemModifiedAt: now,
-          lastEditedAt: now,
-        });
-
-        await saveFileEntryWithEmbedding(folder);
-
-        const ref = toFileEntryRef(folder);
-
-        return {
-          output: { folder: ref },
-          summary: `Created folder "${relativePath}"`,
-          toolStateAppend: { folder: ref },
-        };
-      } catch (err) {
-        // Keep the filesystem and DB consistent if the insert failed.
-        await deleteEntry(relativePath, { recursive: false }).catch(
-          () => undefined,
-        );
-        throw err;
-      }
+      return {
+        output: { folder: ref },
+        summary: `Created folder "${folder.relativePath}"`,
+        toolStateAppend: { folder: ref },
+      };
     } catch (err) {
       throw asToolInputError(err);
     }

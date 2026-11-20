@@ -24,6 +24,7 @@ export const QUEUED_TASK_EVENT = gql(/* GraphQL */ `
           name
           type
           toolKey
+          toolConfig
         }
       }
     }

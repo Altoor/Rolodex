@@ -6,6 +6,8 @@ export const promptDefinition: ToolDefinition = {
   description:
     "Send a prompt to an installed Ollama model, wait for the answer, and return it. Optionally request structured fields.",
   category: "ai",
+  usesModel: true,
+  modelRoles: ["generation"],
   inputMode: "text",
   inputSchema: {
     type: "object",

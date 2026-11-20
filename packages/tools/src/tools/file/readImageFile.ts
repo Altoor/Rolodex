@@ -61,6 +61,8 @@ const definition: ToolDefinition = {
   description:
     "Read image metadata and a preview URL. Set describe or ocr to send the image to the configured vision model. Vision failures are reported as a warning and do not block the metadata read.",
   category: "file",
+  usesModel: true,
+  modelRoles: ["vision"],
   inputMode: "json",
   inputSchema: {
     type: "object",

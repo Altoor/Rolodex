@@ -1,5 +1,11 @@
 import type { Tool, ToolDefinition } from "../../model";
-import { withoutScore } from "./services/dto";
+import { ToolNoMatchError } from "../../model";
+import { mergeToolInput, readBoolean } from "../../utils";
+import {
+  withoutScore,
+  type FileEntryCandidate,
+  type FileEntryRef,
+} from "./services/dto";
 import { findFileMatches } from "./services/search";
 
 const definition: ToolDefinition = {
@@ -8,6 +14,8 @@ const definition: ToolDefinition = {
   description:
     "Find a list of files by name/path/description using vector similarity, with lexical and decision-model fallbacks.",
   category: "file",
+  usesModel: true,
+  modelRoles: ["decision", "embedding"],
   inputMode: "json",
   inputSchema: {
     type: "object",
@@ -26,6 +34,12 @@ const definition: ToolDefinition = {
         description:
           "Optional decision model used by the fallback selector. Defaults to the task/inherited decision model, then the user's default decision model.",
       },
+      allowEmpty: {
+        type: "boolean",
+        description:
+          "Return an empty list with `matched: false` instead of failing when nothing matches. Defaults to false.",
+        default: false,
+      },
     },
   },
   outputDescription:
@@ -43,15 +57,42 @@ export const findFilesTool: Tool = {
   definition,
 
   async execute(context) {
-    const { candidates } = await findFileMatches(context, {
-      kind: "file",
-      limit: 15,
-    });
-    const files = candidates.map(withoutScore);
+    const allowEmpty =
+      readBoolean(mergeToolInput(context), "allowEmpty") ?? false;
+
+    let files: FileEntryRef[];
+    let candidates: FileEntryCandidate[];
+
+    try {
+      ({ candidates } = await findFileMatches(context, {
+        kind: "file",
+        limit: 15,
+      }));
+      files = candidates.map(withoutScore);
+    } catch (err) {
+      if (!allowEmpty || !(err instanceof ToolNoMatchError)) throw err;
+
+      const empty = {
+        output: {
+          files: [],
+          candidates: [],
+          matched: false,
+          warning: err.message,
+        },
+        summary: err.message,
+        toolStateAppend: { files: [], matched: false },
+      };
+
+      if (context.outputType === "foreach") {
+        return { ...empty, foreach: { items: [] } };
+      }
+
+      return empty;
+    }
 
     if (context.outputType === "foreach") {
       return {
-        output: { files, candidates },
+        output: { files, candidates, matched: true },
         summary: `Found ${files.length} files`,
         foreach: {
           items: files.map((file) => ({ file })),
@@ -60,9 +101,9 @@ export const findFilesTool: Tool = {
     }
 
     return {
-      output: { files, candidates },
+      output: { files, candidates, matched: true },
       summary: `Found ${files.length} files`,
-      toolStateAppend: { files },
+      toolStateAppend: { files, matched: true },
     };
   },
 };

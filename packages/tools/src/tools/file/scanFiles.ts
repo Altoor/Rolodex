@@ -20,6 +20,7 @@ const definition: ToolDefinition = {
   description:
     "Reconcile the physical files/ tree with the file index, reporting added, changed, moved, deleted, and unchanged entries. Can also report only the files uploaded or attached to the current run.",
   category: "file",
+  usesModel: true,
   inputMode: "json",
   inputSchema: {
     type: "object",
@@ -56,7 +57,7 @@ const definition: ToolDefinition = {
       includeUnchanged: {
         type: "boolean",
         description:
-          'Include unchanged entries in the report and toolState. Defaults to false; foreach output and uploaded scope default to true so every scanned entry can be processed.',
+          "Include unchanged entries in the report and toolState. Defaults to false; foreach output and uploaded scope default to true so every scanned entry can be processed.",
         default: false,
       },
       hash: {
@@ -140,7 +141,10 @@ export const scanFilesTool: Tool = {
     const counts = uploaded ? countChanges(scopedEntries) : report.counts;
     const warnings =
       uploaded && uploaded.files.length === 0 && uploaded.folders.length === 0
-        ? [...report.warnings, "No files were uploaded or attached to this run."]
+        ? [
+            ...report.warnings,
+            "No files were uploaded or attached to this run.",
+          ]
         : report.warnings;
     const scopeLabel = scope === "uploaded" ? "uploaded files" : "files";
 
@@ -214,10 +218,7 @@ function readEntryPaths(value: unknown): string[] {
   });
 }
 
-function matchesUploaded(
-  entry: ScanEntry,
-  uploaded: UploadedPaths,
-): boolean {
+function matchesUploaded(entry: ScanEntry, uploaded: UploadedPaths): boolean {
   const paths = [entry.path, entry.fromPath].filter(
     (path): path is string => typeof path === "string" && path.length > 0,
   );

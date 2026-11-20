@@ -1,5 +1,11 @@
 import type { Tool, ToolDefinition } from "../../model";
-import { withoutScore } from "./services/dto";
+import { ToolNoMatchError } from "../../model";
+import { mergeToolInput, readBoolean } from "../../utils";
+import {
+  withoutScore,
+  type FileEntryCandidate,
+  type FileEntryRef,
+} from "./services/dto";
 import { findFileMatches } from "./services/search";
 
 const definition: ToolDefinition = {
@@ -8,6 +14,8 @@ const definition: ToolDefinition = {
   description:
     "Find a list of folders by name/path/description using vector similarity, with lexical and decision-model fallbacks.",
   category: "file",
+  usesModel: true,
+  modelRoles: ["decision", "embedding"],
   inputMode: "json",
   inputSchema: {
     type: "object",
@@ -26,6 +34,12 @@ const definition: ToolDefinition = {
         description:
           "Optional decision model used by the fallback selector. Defaults to the task/inherited decision model, then the user's default decision model.",
       },
+      allowEmpty: {
+        type: "boolean",
+        description:
+          "Return an empty list with `matched: false` instead of failing when nothing matches. Defaults to false.",
+        default: false,
+      },
     },
   },
   outputDescription:
@@ -43,15 +57,42 @@ export const findFoldersTool: Tool = {
   definition,
 
   async execute(context) {
-    const { candidates } = await findFileMatches(context, {
-      kind: "folder",
-      limit: 15,
-    });
-    const folders = candidates.map(withoutScore);
+    const allowEmpty =
+      readBoolean(mergeToolInput(context), "allowEmpty") ?? false;
+
+    let folders: FileEntryRef[];
+    let candidates: FileEntryCandidate[];
+
+    try {
+      ({ candidates } = await findFileMatches(context, {
+        kind: "folder",
+        limit: 15,
+      }));
+      folders = candidates.map(withoutScore);
+    } catch (err) {
+      if (!allowEmpty || !(err instanceof ToolNoMatchError)) throw err;
+
+      const empty = {
+        output: {
+          folders: [],
+          candidates: [],
+          matched: false,
+          warning: err.message,
+        },
+        summary: err.message,
+        toolStateAppend: { folders: [], matched: false },
+      };
+
+      if (context.outputType === "foreach") {
+        return { ...empty, foreach: { items: [] } };
+      }
+
+      return empty;
+    }
 
     if (context.outputType === "foreach") {
       return {
-        output: { folders, candidates },
+        output: { folders, candidates, matched: true },
         summary: `Found ${folders.length} folders`,
         foreach: {
           items: folders.map((folder) => ({ folder })),
@@ -60,9 +101,9 @@ export const findFoldersTool: Tool = {
     }
 
     return {
-      output: { folders, candidates },
+      output: { folders, candidates, matched: true },
       summary: `Found ${folders.length} folders`,
-      toolStateAppend: { folders },
+      toolStateAppend: { folders, matched: true },
     };
   },
 };

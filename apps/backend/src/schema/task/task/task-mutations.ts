@@ -23,6 +23,8 @@ builder.mutationType({
         forceUserDecideIfNoMatch: t.arg.boolean(),
         userDecisionType: t.arg({ type: UserDecisionType }),
         userDecisionConfig: t.arg({ type: "JSON" }),
+        canRunInParallel: t.arg.boolean(),
+        prioritize: t.arg.boolean(),
       },
       resolve: async (
         _query,
@@ -43,6 +45,8 @@ builder.mutationType({
           forceUserDecideIfNoMatch,
           userDecisionType,
           userDecisionConfig,
+          canRunInParallel,
+          prioritize,
         },
         ctx,
       ) => {
@@ -64,6 +68,8 @@ builder.mutationType({
           forceUserDecideIfNoMatch,
           userDecisionType,
           userDecisionConfig,
+          canRunInParallel,
+          prioritize,
         });
       },
     }),
@@ -87,6 +93,8 @@ builder.mutationType({
         forceUserDecideIfNoMatch: t.arg.boolean(),
         userDecisionType: t.arg({ type: UserDecisionType }),
         userDecisionConfig: t.arg({ type: "JSON" }),
+        canRunInParallel: t.arg.boolean(),
+        prioritize: t.arg.boolean(),
       },
       resolve: async (
         _query,
@@ -108,6 +116,8 @@ builder.mutationType({
           forceUserDecideIfNoMatch,
           userDecisionType,
           userDecisionConfig,
+          canRunInParallel,
+          prioritize,
         },
         ctx,
       ) => {
@@ -130,6 +140,8 @@ builder.mutationType({
           forceUserDecideIfNoMatch,
           userDecisionType,
           userDecisionConfig,
+          canRunInParallel,
+          prioritize,
         });
       },
     }),

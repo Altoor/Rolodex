@@ -12,12 +12,17 @@ export function LandingRuns({
   openRuns,
   answeringStepId,
   dismissingStepId,
+  retryingStepId,
+  retryErrorStepId,
   wiringStepId,
   answerError,
   dismissError,
+  retryError,
   setRunOpen,
   answerChoice,
+  confirmNextStep,
   dismissRun,
+  retryStep,
   wireDecisionTarget,
 }: LandingRunsProps) {
   if (runs.length === 0) {
@@ -40,14 +45,21 @@ export function LandingRuns({
           onOpenChange={(open) => setRunOpen(run.runId, open)}
           answeringStepId={answeringStepId}
           dismissingStepId={dismissingStepId}
+          retryingStepId={retryingStepId}
+          retryErrorStepId={retryErrorStepId}
           wiringStepId={wiringStepId}
           answerError={answerError}
           dismissError={dismissError}
+          retryError={retryError}
           onAnswer={(stepId, optionId) => {
             void answerChoice(stepId, optionId);
           }}
+          onConfirmNextStep={confirmNextStep}
           onDismiss={(stepId) => {
             void dismissRun(stepId);
+          }}
+          onRetry={(stepId) => {
+            void retryStep(stepId);
           }}
           onWireDecisionTarget={wireDecisionTarget}
         />

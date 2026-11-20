@@ -188,6 +188,7 @@ function taskStateEffect(task: FlowTask, incoming: TaskState): TaskState {
   if (task.type === "tool") {
     switch (task.toolKey) {
       case "find_todos":
+        addPath(state, "matched", task, taskName);
         if (task.toolOutputType === "foreach") {
           addTodoPaths(state, "todo", task, taskName);
         } else {
@@ -196,6 +197,7 @@ function taskStateEffect(task: FlowTask, incoming: TaskState): TaskState {
         break;
 
       case "find_todo":
+        addPath(state, "matched", task, taskName);
         addTodoPaths(state, "todo", task, taskName);
         break;
 
@@ -235,10 +237,12 @@ function taskStateEffect(task: FlowTask, incoming: TaskState): TaskState {
         break;
 
       case "find_file":
+        addPath(state, "matched", task, taskName);
         addObjectPaths(state, "file", FILE_FIELDS, task, taskName);
         break;
 
       case "find_files":
+        addPath(state, "matched", task, taskName);
         if (task.toolOutputType === "foreach") {
           addObjectPaths(state, "file", FILE_FIELDS, task, taskName);
         } else {
@@ -247,10 +251,12 @@ function taskStateEffect(task: FlowTask, incoming: TaskState): TaskState {
         break;
 
       case "find_folder":
+        addPath(state, "matched", task, taskName);
         addObjectPaths(state, "folder", FILE_FIELDS, task, taskName);
         break;
 
       case "find_folders":
+        addPath(state, "matched", task, taskName);
         if (task.toolOutputType === "foreach") {
           addObjectPaths(state, "folder", FILE_FIELDS, task, taskName);
         } else {
@@ -270,6 +276,13 @@ function taskStateEffect(task: FlowTask, incoming: TaskState): TaskState {
       case "update_file_metadata":
         addObjectPaths(state, "file", FILE_FIELDS, task, taskName);
         addObjectPaths(state, "folder", FILE_FIELDS, task, taskName);
+        break;
+
+      case "move_files":
+        addObjectPaths(state, "file", FILE_FIELDS, task, taskName);
+        addObjectPaths(state, "folder", FILE_FIELDS, task, taskName);
+        addArrayPaths(state, "files", FILE_FIELDS, task, taskName);
+        addArrayPaths(state, "folders", FILE_FIELDS, task, taskName);
         break;
 
       case "detect_file_type":

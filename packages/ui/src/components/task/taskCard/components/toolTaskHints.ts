@@ -5,6 +5,7 @@ const FILE_PATH_AWARE_TOOLS = [
   "find_folders",
   "scan_files",
   "update_file_metadata",
+  "move_files",
   "detect_file_type",
   "read_plaintext_file",
   "read_text_file",
@@ -52,4 +53,14 @@ export const PATH_TOOL_HINTS: Record<string, string> = {
   ),
   scan_files:
     "Use `path` to limit the scan. Foreach processes files only by default; add `includeUnchanged: false` for changes only, or filter with `kind`/`fileType` (for example `plaintext`).",
+  find_file: `${FILE_TOOL_HINT} Set \`allowEmpty: true\` to return \`matched: false\` instead of failing when nothing matches.`,
+  find_files: `${FILE_TOOL_HINT} Set \`allowEmpty: true\` to return \`matched: false\` instead of failing when nothing matches.`,
+  find_folder: `${FILE_TOOL_HINT} Set \`allowEmpty: true\` to return \`matched: false\` instead of failing when nothing matches.`,
+  find_folders: `${FILE_TOOL_HINT} Set \`allowEmpty: true\` to return \`matched: false\` instead of failing when nothing matches.`,
+  find_todo:
+    "Set `allowEmpty: true` to return `matched: false` instead of failing when nothing matches.",
+  find_todos:
+    "Set `allowEmpty: true` to return `matched: false` instead of failing when nothing matches.",
+  move_files:
+    "Pass sources in `files`, `ids`, or `paths`. Use `parentId`/`parentPath` for an existing destination, or `folderName` to create/reuse a folder; `folderDescription` is used when it is created.",
 };

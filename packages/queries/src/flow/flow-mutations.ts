@@ -157,6 +157,33 @@ export const CONFIRM_FLOW_START_DRAFT = gql(/* GraphQL */ `
   }
 `);
 
+export const CONFIRM_NEXT_STEP = gql(/* GraphQL */ `
+  mutation ConfirmNextStep($queuedTaskId: Int!, $taskId: Int) {
+    confirmNextStep(queuedTaskId: $queuedTaskId, taskId: $taskId) {
+      id
+      taskId
+      state
+      toolState
+      parentQueuedTaskId
+      depth
+      status
+      runId
+      queued_by
+      queued_at
+      result
+      pendingChoice
+      model
+      decisionModel
+      task {
+        id
+        name
+        type
+        toolKey
+      }
+    }
+  }
+`);
+
 export const WIRE_DECISION_RESULT_TARGET = gql(/* GraphQL */ `
   mutation WireDecisionResultTarget(
     $queuedTaskId: Int!

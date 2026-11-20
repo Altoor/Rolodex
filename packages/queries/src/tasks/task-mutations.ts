@@ -17,6 +17,8 @@ export const CREATE_TASK = gql(/* GraphQL */ `
     $forceUserDecideIfNoMatch: Boolean
     $userDecisionType: UserDecisionType
     $userDecisionConfig: JSON
+    $canRunInParallel: Boolean
+    $prioritize: Boolean
   ) {
     createTask(
       name: $name
@@ -34,6 +36,8 @@ export const CREATE_TASK = gql(/* GraphQL */ `
       forceUserDecideIfNoMatch: $forceUserDecideIfNoMatch
       userDecisionType: $userDecisionType
       userDecisionConfig: $userDecisionConfig
+      canRunInParallel: $canRunInParallel
+      prioritize: $prioritize
     ) {
       id
       name
@@ -49,6 +53,8 @@ export const CREATE_TASK = gql(/* GraphQL */ `
       forceUserDecideIfNoMatch
       userDecisionType
       userDecisionConfig
+      canRunInParallel
+      prioritize
       userDecisionOptions {
         id
         taskId
@@ -68,6 +74,7 @@ export const CREATE_TASK = gql(/* GraphQL */ `
         key
         name
         description
+        usesModel
         outputTypes
         foreachOutputDescription
       }
@@ -98,6 +105,8 @@ export const UPDATE_TASK = gql(/* GraphQL */ `
     $forceUserDecideIfNoMatch: Boolean
     $userDecisionType: UserDecisionType
     $userDecisionConfig: JSON
+    $canRunInParallel: Boolean
+    $prioritize: Boolean
   ) {
     updateTask(
       id: $id
@@ -116,6 +125,8 @@ export const UPDATE_TASK = gql(/* GraphQL */ `
       forceUserDecideIfNoMatch: $forceUserDecideIfNoMatch
       userDecisionType: $userDecisionType
       userDecisionConfig: $userDecisionConfig
+      canRunInParallel: $canRunInParallel
+      prioritize: $prioritize
     ) {
       id
       name
@@ -131,6 +142,8 @@ export const UPDATE_TASK = gql(/* GraphQL */ `
       forceUserDecideIfNoMatch
       userDecisionType
       userDecisionConfig
+      canRunInParallel
+      prioritize
       userDecisionOptions {
         id
         taskId
@@ -150,6 +163,7 @@ export const UPDATE_TASK = gql(/* GraphQL */ `
         key
         name
         description
+        usesModel
         outputTypes
         foreachOutputDescription
       }
@@ -360,6 +374,7 @@ export const ANSWER_USER_DECISION = gql(/* GraphQL */ `
         name
         type
         toolKey
+        toolConfig
       }
     }
   }
@@ -387,6 +402,35 @@ export const DISMISS_QUEUED_TASK = gql(/* GraphQL */ `
         name
         type
         toolKey
+        toolConfig
+      }
+    }
+  }
+`);
+
+export const RETRY_QUEUED_TASK = gql(/* GraphQL */ `
+  mutation RetryQueuedTask($id: Int!) {
+    retryQueuedTask(id: $id) {
+      id
+      taskId
+      state
+      toolState
+      parentQueuedTaskId
+      depth
+      status
+      runId
+      queued_by
+      queued_at
+      result
+      pendingChoice
+      model
+      decisionModel
+      task {
+        id
+        name
+        type
+        toolKey
+        toolConfig
       }
     }
   }
@@ -424,6 +468,7 @@ export const CREATE_QUEUED_TASK = gql(/* GraphQL */ `
         name
         type
         toolKey
+        toolConfig
       }
     }
   }

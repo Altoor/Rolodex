@@ -32,6 +32,8 @@ const definition: ToolDefinition = {
   description:
     "Create a plaintext (UTF-8) file inside the files tree. Non-plaintext extensions are rejected.",
   category: "file",
+  usesModel: true,
+  modelRoles: ["embedding"],
   inputMode: "json",
   inputSchema: {
     type: "object",

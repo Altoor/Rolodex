@@ -145,6 +145,9 @@ export async function wireDecisionResultTarget(
       queued_by: queued.queued_by,
       model: queued.model,
       decisionModel: queued.decisionModel,
+      // The user just picked this target, so the runtime gate should not ask
+      // about the same step again.
+      nextStepApproved: true,
     });
   }
 

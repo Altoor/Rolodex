@@ -23,6 +23,8 @@ const definition: ToolDefinition = {
   description:
     "Update a todo from explicit name, description, do-by date, and done values. Only provided fields change.",
   category: "todo",
+  usesModel: true,
+  modelRoles: ["embedding"],
   inputMode: "json",
   inputSchema: {
     type: "object",

@@ -77,8 +77,11 @@ to embed a file's contents or another tool's output:
 
 For example, after `read_plaintext_file` the next task sees `{{content}}` and
 `{{file.name}}`. A missing path fails with a clear error instead of sending the
-literal placeholder. Templates are resolved after the normal config, state and
-toolState merge, so a composed config value wins over the fields it reads:
+literal placeholder. A value that is exactly one placeholder keeps the native
+type from toolState, so `"{{folder.id}}"` resolves to a number and
+`"{{matched}}"` to a boolean; placeholders mixed with other text still resolve
+to strings. Templates are resolved after the normal config, state and toolState
+merge, so a composed config value wins over the fields it reads:
 
 ```json
 { "description": "{{description}}\n\n{{ocr}}" }
@@ -183,8 +186,53 @@ File and folder tools share one lookup layer. They accept an explicit `id` or
 Available tools: `find_file`, `find_files`, `find_folder`, `find_folders`,
 `scan_files`, `create_file`, `create_folder`, `read_plaintext_file`,
 `read_text_file`, `read_image_file`, `read_audio_file`, `read_video_file`,
-`read_other_file`, `update_file_metadata`, `delete_file_entry`, and
-`detect_file_type`.
+`read_other_file`, `update_file_metadata`, `move_files`, `delete_file_entry`,
+and `detect_file_type`.
+
+### Moving files and folders
+
+`update_file_metadata` renames or moves one entry into an existing folder.
+`move_files` moves several entries at once and can create the destination folder
+in the same call. Sources can be ids, paths, or objects with `id`/`path`; they
+are read from `files`, `file`, `entries`, `entry`, `ids`, or `paths`. When the
+config defines any of those keys, only the configured keys are used, so
+unrelated toolState values are not moved by accident.
+
+```json
+{
+  "files": ["inbox/invoice-001.pdf", { "path": "inbox/invoice-002.pdf" }],
+  "folderName": "invoices",
+  "folderDescription": "Processed invoices"
+}
+```
+
+Use `parentId`/`parentPath` for an existing destination, or `folderName` to
+create or reuse a folder under that parent (or the root). `folderDescription` is
+only used when the folder is created. Moves are validated before anything is
+changed: a destination collision, a folder moved inside itself, duplicate
+targets, or moving both a folder and one of its children all fail with a clear
+error. The output contains `files`, `folders`, `destination`, `moved`, and
+`unchanged`; matching entries are appended to toolState as `{ file }`/`{ files }`
+and `{ folder }`/`{ folders }`.
+
+### Empty find results
+
+The find tools (`find_file`, `find_files`, `find_folder`, `find_folders`,
+`find_todo`, and `find_todos`) fail with `no matching ... found` by default. Set
+`allowEmpty: true` to return an empty result instead, so the flow can continue:
+
+```json
+{
+  "query": "missing folder",
+  "allowEmpty": true
+}
+```
+
+The output then contains `matched: false`, a `warning`, and an empty
+`file`/`folder`/`todo` or `files`/`folders`/`todos` value. The same keys are
+appended to toolState so a stale match from an earlier step is cleared. Successful
+lookups report `matched: true`. Foreach lookups still enqueue no children when
+nothing matches.
 
 `scan_files` has two output modes:
 

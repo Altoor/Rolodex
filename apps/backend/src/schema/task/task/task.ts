@@ -84,6 +84,8 @@ export const Task = builder.drizzleObject("tasks", {
       nullable: true,
       resolve: (parent) => parent.userDecisionConfig ?? null,
     }),
+    canRunInParallel: t.exposeBoolean("canRunInParallel"),
+    prioritize: t.exposeBoolean("prioritize"),
     tool: t.field({
       type: Tool,
       nullable: true,

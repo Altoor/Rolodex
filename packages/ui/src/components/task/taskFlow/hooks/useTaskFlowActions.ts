@@ -92,20 +92,41 @@ export function useTaskFlowActions({
     [tasks, updateTask, updateTaskResult, updateUserDecisionOption],
   );
 
-  // Deleting a node deletes the underlying task (and, on the backend, all of
-  // that task's TaskResults).
-  const handleDeleteTask = useCallback(
-    (taskId: number) => {
-      if (
-        typeof window !== "undefined" &&
-        !window.confirm("Delete this task? This cannot be undone.")
-      ) {
+  // Deleting nodes deletes the underlying tasks (and, on the backend, all of
+  // their TaskResults). A multi-selection only asks for confirmation once.
+  const handleDeleteTasks = useCallback(
+    (taskIds: number[]) => {
+      const uniqueIds = [
+        ...new Set(taskIds.filter((taskId) => Number.isFinite(taskId))),
+      ];
+      if (uniqueIds.length === 0) return;
+
+      const message =
+        uniqueIds.length === 1
+          ? "Delete this task? This cannot be undone."
+          : `Delete ${uniqueIds.length} tasks? This cannot be undone.`;
+
+      if (typeof window !== "undefined" && !window.confirm(message)) {
         return;
       }
 
-      void deleteTask({ variables: { id: taskId } });
+      // Delete one at a time so cross-references are cleared in a stable
+      // order, then refresh the list once at the end.
+      void (async () => {
+        for (const [index, id] of uniqueIds.entries()) {
+          await deleteTask({
+            variables: { id },
+            refetchQueries: index === uniqueIds.length - 1 ? [TASKS] : [],
+          });
+        }
+      })();
     },
     [deleteTask],
+  );
+
+  const handleDeleteTask = useCallback(
+    (taskId: number) => handleDeleteTasks([taskId]),
+    [handleDeleteTasks],
   );
 
   // Connecting an output to another task's input updates the relationship.
@@ -153,15 +174,13 @@ export function useTaskFlowActions({
     [clearSourceLink],
   );
 
-  // Keyboard delete (Delete/Backspace on a selected node) also removes the
-  // underlying task.
+  // Keyboard delete (Delete/Backspace on selected nodes) also removes the
+  // underlying tasks.
   const onDelete = useCallback(
     ({ nodes }: { nodes: TaskFlowNode[]; edges: Edge[] }) => {
-      for (const node of nodes) {
-        handleDeleteTask(Number(node.id));
-      }
+      handleDeleteTasks(nodes.map((node) => Number(node.id)));
     },
-    [handleDeleteTask],
+    [handleDeleteTasks],
   );
 
   // Creating a new task directly from the flow; it shows up as a new node.
@@ -267,6 +286,7 @@ export function useTaskFlowActions({
 
   return {
     handleDeleteTask,
+    handleDeleteTasks,
     handleCreateTask,
     insertTaskOnEdge,
     addTaskAtPosition,

@@ -1,8 +1,24 @@
-import { getOllamaClient, getVisionModelForUser } from "@repo/ai";
+import {
+  ensureModelLoaded,
+  getOllamaClient,
+  getOllamaKeepAlive,
+  getVisionModelForUser,
+} from "@repo/ai";
 import { ToolInputError } from "../../../model";
 import { readFileBuffer } from "./storage";
 
-const DEFAULT_TIMEOUT_MS = 120_000;
+function envInt(name: string, fallback: number): number {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const value = Number(raw);
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
+}
+
+/** Inference budget. Model loading is awaited separately below. */
+const VISION_TIMEOUT_MS = envInt("VISION_TIMEOUT_MS", 120_000);
+
+/** Loading a large vision model can take much longer than one inference. */
+const MODEL_LOAD_TIMEOUT_MS = envInt("MODEL_LOAD_TIMEOUT_MS", 300_000);
 
 export interface ImageVisionResult {
   model: string;
@@ -27,12 +43,17 @@ interface ImageFile {
   mimeType: string | null;
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  message: string,
+): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error(`vision request timed out after ${ms / 1000}s`)),
-      ms,
-    );
+    const timer = setTimeout(() => reject(new Error(message)), ms);
 
     promise.then(
       (value) => {
@@ -55,43 +76,29 @@ export function defaultVisionPrompt(kind: "description" | "ocr"): string {
   return "Describe this image in one or two sentences, focusing on the main subject. Do not transcribe visible text.";
 }
 
+interface VisionPreparation {
+  model: string;
+  buffer: Buffer;
+  client: Awaited<ReturnType<typeof getOllamaClient>>;
+  keepAlive: Awaited<ReturnType<typeof getOllamaKeepAlive>>;
+}
+
 /**
- * Sends an image to the configured Ollama vision model.
- *
- * Callers should treat failures as non-fatal: image metadata and preview URLs
- * are still useful when the vision model is unavailable.
+ * Resolves the model, image bytes, client, and keep-alive once for all
+ * requested outputs. Previously each request repeated this work.
  */
-export async function describeImageFile(
+async function prepareVision(
   file: ImageFile,
-  options: {
-    userId: number;
-    kind: "description" | "ocr";
-    prompt?: string;
-    maxBytes?: number;
-  },
-): Promise<ImageVisionResult> {
+  options: { userId: number; maxBytes?: number },
+): Promise<VisionPreparation> {
   const model = await getVisionModelForUser(options.userId);
   const buffer = await readFileBuffer(file.relativePath, {
     maxBytes: options.maxBytes,
   });
-
   const client = await getOllamaClient();
-  const response = await withTimeout(
-    client.generate({
-      model,
-      prompt: options.prompt?.trim() || defaultVisionPrompt(options.kind),
-      images: [buffer.toString("base64")],
-      stream: false,
-    }),
-    DEFAULT_TIMEOUT_MS,
-  );
+  const keepAlive = await getOllamaKeepAlive();
 
-  const text = response.response?.trim();
-  if (!text) {
-    throw new ToolInputError(`Vision model "${model}" returned no text`);
-  }
-
-  return { model, text, kind: options.kind };
+  return { model, buffer, client, keepAlive };
 }
 
 /**
@@ -106,27 +113,64 @@ export async function describeImageTexts(
     maxBytes?: number;
   },
 ): Promise<{ text: ImageVisionText; warning?: string }> {
-  const results = await Promise.allSettled(
-    options.requests.map((request) =>
-      describeImageFile(file, {
-        userId: options.userId,
-        kind: request.kind,
-        prompt: request.prompt,
-        maxBytes: options.maxBytes,
-      }),
-    ),
-  );
-
-  const text: ImageVisionText = {};
   const failures: string[] = [];
+  const text: ImageVisionText = {};
+
+  let prepared: VisionPreparation;
+  try {
+    prepared = await prepareVision(file, options);
+  } catch (err) {
+    const reason = errorMessage(err);
+    return {
+      text,
+      warning: `Vision failed: ${options.requests
+        .map((request) => `${request.kind}: ${reason}`)
+        .join("; ")}`,
+    };
+  }
+
+  const { model, buffer, client, keepAlive } = prepared;
+  const keepAliveOption =
+    keepAlive !== undefined ? { keep_alive: keepAlive } : {};
+
+  // Load before starting the inference timer, so a slow first load no longer
+  // looks like an inference timeout. If warmup fails we still try the request.
+  try {
+    await ensureModelLoaded(model, { timeoutMs: MODEL_LOAD_TIMEOUT_MS });
+  } catch (err) {
+    console.warn(
+      `[vision] could not load model "${model}": ${errorMessage(err)}`,
+    );
+  }
+
+  const results = await Promise.allSettled(
+    options.requests.map(async (request) => {
+      const response = await withTimeout(
+        client.generate({
+          model,
+          prompt: request.prompt?.trim() || defaultVisionPrompt(request.kind),
+          images: [buffer.toString("base64")],
+          stream: false,
+          ...keepAliveOption,
+        }),
+        VISION_TIMEOUT_MS,
+        `vision request timed out after ${VISION_TIMEOUT_MS / 1000}s`,
+      );
+
+      const responseText = response.response?.trim();
+      if (!responseText) {
+        throw new ToolInputError(`Vision model "${model}" returned no text`);
+      }
+
+      return { model, text: responseText, kind: request.kind };
+    }),
+  );
 
   for (const [index, result] of results.entries()) {
     if (result.status === "rejected") {
-      const reason =
-        result.reason instanceof Error
-          ? result.reason.message
-          : String(result.reason);
-      failures.push(`${options.requests[index]!.kind}: ${reason}`);
+      failures.push(
+        `${options.requests[index]!.kind}: ${errorMessage(result.reason)}`,
+      );
       continue;
     }
 

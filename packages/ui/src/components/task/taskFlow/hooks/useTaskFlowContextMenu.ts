@@ -22,6 +22,19 @@ export function useTaskFlowContextMenu(
 
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
+  const onNodeContextMenu = useCallback(
+    (event: React.MouseEvent, taskIds: number[]) => {
+      event.preventDefault();
+      setContextMenu({
+        kind: "nodes",
+        x: event.clientX,
+        y: event.clientY,
+        taskIds,
+      });
+    },
+    [],
+  );
+
   const onEdgeContextMenu = useCallback(
     (event: React.MouseEvent, edge: Edge) => {
       event.preventDefault();
@@ -37,6 +50,14 @@ export function useTaskFlowContextMenu(
 
   const onPaneContextMenu = useCallback(
     (event: MouseEvent | React.MouseEvent) => {
+      // Right-clicking a node opens the node menu instead.
+      if (
+        event.target instanceof Element &&
+        event.target.closest(".react-flow__node")
+      ) {
+        return;
+      }
+
       event.preventDefault();
       const position = flowInstance.current
         ? flowInstance.current.screenToFlowPosition({
@@ -58,6 +79,7 @@ export function useTaskFlowContextMenu(
   return {
     contextMenu,
     closeContextMenu,
+    onNodeContextMenu,
     onEdgeContextMenu,
     onPaneContextMenu,
   };

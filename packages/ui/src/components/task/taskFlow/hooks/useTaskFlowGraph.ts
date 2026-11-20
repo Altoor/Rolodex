@@ -25,8 +25,14 @@ export function useTaskFlowGraph({
 }: UseTaskFlowGraphArgs) {
   const [nodes, setNodes, onNodesChange] = useNodesState<TaskFlowNode>([]);
   const laidOutRoot = useRef<number | "auto" | undefined>(undefined);
+  const lastSelectedTaskId = useRef<number | undefined>(undefined);
 
   useEffect(() => {
+    // An explicit builder selection replaces the canvas selection. Otherwise
+    // (task refetch, modifier-click, box selection) keep the current one.
+    const selectionFromBuilder = selectedTaskId !== lastSelectedTaskId.current;
+    lastSelectedTaskId.current = selectedTaskId;
+
     if (tasks.length === 0) {
       setNodes([]);
       return;
@@ -43,6 +49,13 @@ export function useTaskFlowGraph({
       const previousPositions = new Map(
         prev.map((node) => [Number(node.id), node.position]),
       );
+      const previousSelectedIds = selectionFromBuilder
+        ? undefined
+        : new Set(
+            prev
+              .filter((node) => node.selected)
+              .map((node) => Number(node.id)),
+          );
 
       return buildNodes({
         tasks,
@@ -50,6 +63,7 @@ export function useTaskFlowGraph({
         previousPositions,
         pendingPositions: pendingPositions.current,
         selectedTaskId,
+        selectedTaskIds: previousSelectedIds,
         keepPreviousPositions,
         onTaskDelete,
       });

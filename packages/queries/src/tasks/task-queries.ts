@@ -18,10 +18,13 @@ export const TASKS = gql(/* GraphQL */ `
       forceUserDecideIfNoMatch
       userDecisionType
       userDecisionConfig
+      canRunInParallel
+      prioritize
       tool {
         key
         name
         description
+        usesModel
         outputTypes
         foreachOutputDescription
       }
@@ -78,10 +81,13 @@ export const GET_TASK = gql(/* GraphQL */ `
       forceUserDecideIfNoMatch
       userDecisionType
       userDecisionConfig
+      canRunInParallel
+      prioritize
       tool {
         key
         name
         description
+        usesModel
         outputTypes
         foreachOutputDescription
       }
@@ -142,6 +148,7 @@ export const QUEUED_TASK = gql(/* GraphQL */ `
         name
         type
         toolKey
+        toolConfig
       }
     }
   }
@@ -169,6 +176,7 @@ export const ACTIVE_QUEUED_TASKS = gql(/* GraphQL */ `
         name
         type
         toolKey
+        toolConfig
       }
     }
   }

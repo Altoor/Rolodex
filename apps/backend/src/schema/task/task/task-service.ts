@@ -23,6 +23,24 @@ export interface TaskConfigInput {
   forceUserDecideIfNoMatch?: boolean | null;
   userDecisionType?: string | null;
   userDecisionConfig?: unknown;
+  canRunInParallel?: boolean | null;
+  prioritize?: boolean | null;
+}
+
+/**
+ * Model-backed work competes for the same local services, so it defaults to
+ * exclusive execution. Deterministic tools and user decisions may run
+ * alongside other queued steps.
+ */
+export function defaultCanRunInParallel(
+  type: string,
+  toolKey: string | null | undefined,
+): boolean {
+  if (type === "tool") {
+    return !(toolKey ? getToolDefinition(toolKey)?.usesModel : false);
+  }
+
+  return type === "userDecision";
 }
 
 export interface CreateTaskInput {
@@ -41,6 +59,8 @@ export interface CreateTaskInput {
   forceUserDecideIfNoMatch?: boolean | null;
   userDecisionType?: string | null;
   userDecisionConfig?: unknown;
+  canRunInParallel?: boolean | null;
+  prioritize?: boolean | null;
 }
 
 export interface UpdateTaskInput {
@@ -60,6 +80,8 @@ export interface UpdateTaskInput {
   forceUserDecideIfNoMatch?: boolean | null;
   userDecisionType?: string | null;
   userDecisionConfig?: unknown;
+  canRunInParallel?: boolean | null;
+  prioritize?: boolean | null;
 }
 
 function keepOrSet<T>(provided: T | undefined, fallback: T): T {
@@ -207,6 +229,10 @@ export async function createTask(input: CreateTaskInput) {
     forceUserDecideIfNoMatch: input.forceUserDecideIfNoMatch ?? true,
     userDecisionType: (input.userDecisionType ?? "list") as UserDecisionType,
     userDecisionConfig: input.userDecisionConfig ?? null,
+    canRunInParallel:
+      input.canRunInParallel ??
+      defaultCanRunInParallel(input.type, input.toolKey),
+    prioritize: input.prioritize ?? false,
   };
 
   await assertValidTaskConfig({
@@ -262,6 +288,8 @@ export async function updateTask(input: UpdateTaskInput) {
     input.userDecisionConfig,
     task.userDecisionConfig,
   );
+  const nextCanRunInParallel = input.canRunInParallel ?? task.canRunInParallel;
+  const nextPrioritize = input.prioritize ?? task.prioritize;
 
   await assertValidTaskConfig({
     type: nextType,
@@ -296,6 +324,8 @@ export async function updateTask(input: UpdateTaskInput) {
     forceUserDecideIfNoMatch: nextForceUserDecideIfNoMatch,
     userDecisionType: nextUserDecisionType,
     userDecisionConfig: nextUserDecisionConfig,
+    canRunInParallel: nextCanRunInParallel,
+    prioritize: nextPrioritize,
   };
 
   const [updated] = await db

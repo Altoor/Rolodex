@@ -53,6 +53,14 @@ export async function answerUserDecision(
   }
 
   const pending = readPendingChoice(queued.pendingChoice);
+
+  if (pending.kind === "nextStep") {
+    throw new GraphQLError(
+      "This step needs next-step confirmation, not a choice answer",
+      { extensions: { code: "BAD_USER_INPUT" } },
+    );
+  }
+
   const option: PendingChoiceOption | undefined = pending.options.find(
     (candidate) => candidate.id === optionId,
   );

@@ -7,6 +7,7 @@ export interface BuildNodesArgs {
   previousPositions: Map<number, XYPosition>;
   pendingPositions: Map<number, XYPosition>;
   selectedTaskId?: number;
+  selectedTaskIds?: Set<number>;
   keepPreviousPositions: boolean;
   onTaskDelete: (taskId: number) => void;
 }
@@ -18,13 +19,16 @@ export function buildNodes({
   previousPositions,
   pendingPositions,
   selectedTaskId,
+  selectedTaskIds,
   keepPreviousPositions,
   onTaskDelete,
 }: BuildNodesArgs): TaskFlowNode[] {
   return tasks.map((task) => ({
     id: String(task.id),
     type: "taskFlow" as const,
-    selected: task.id === selectedTaskId,
+    selected: selectedTaskIds
+      ? selectedTaskIds.has(task.id)
+      : task.id === selectedTaskId,
     position:
       pendingPositions.get(task.id) ??
       (keepPreviousPositions && previousPositions.has(task.id)

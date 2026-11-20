@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import { schema } from "./src/schema/index.ts";
 import { extractUser } from "./src/auth-token.ts";
 import { resetStaleRunningTasks, triggerQueue } from "./src/queue/index.ts";
+import { warmConfiguredModels } from "./src/queue/model-warmup.ts";
 import { handleFileUploadRequest } from "./src/schema/file/file-upload.ts";
 import { handleFileViewRequest } from "./src/schema/file/file-view-service.ts";
 
@@ -49,4 +50,5 @@ server.listen(4000, () => {
   // then pick up whatever is left in the queue.
   void resetStaleRunningTasks();
   triggerQueue();
+  void warmConfiguredModels();
 });

@@ -275,6 +275,12 @@ export const tasks = pgTable("tasks", {
     .default("list")
     .notNull(),
   userDecisionConfig: json("userDecisionConfig"),
+  // Model-backed tasks default to exclusive execution; deterministic tools and
+  // user decisions may run alongside other queued steps.
+  canRunInParallel: boolean("canRunInParallel").default(true).notNull(),
+  // Prioritized steps jump to the top of the queue, even when they must run
+  // exclusively.
+  prioritize: boolean("prioritize").default(false).notNull(),
 });
 
 export const queuedTaskStatus = pgEnum("queuedTaskStatus", [
@@ -307,6 +313,9 @@ export const queuedTasks = pgTable("queuedTasks", {
   result: json("result"),
   // Immutable snapshot of a choice that is waiting for the user.
   pendingChoice: json("pendingChoice"),
+  // Set when the user approved a runtime next-step gate (or explicitly wired
+  // this step), so the queue does not ask again when it re-claims the row.
+  nextStepApproved: boolean("nextStepApproved").default(false).notNull(),
   queued_at: timestamp("queued_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
@@ -349,6 +358,15 @@ export const appSettings = pgTable("appSettings", {
     .notNull(),
   whisperApiUrl: text("whisperApiUrl").notNull().default(""),
   whisperModel: text("whisperModel"),
+  // Upper bound for steps the queue may execute at the same time.
+  maxParallelTasks: integer("maxParallelTasks").default(5).notNull(),
+  // Optional per-request Ollama keep_alive. Null means "do not send one", so
+  // the Ollama server's own OLLAMA_KEEP_ALIVE setting applies (the compose
+  // files set 30m). This avoids the app overriding deployment configuration.
+  ollamaKeepAlive: text("ollamaKeepAlive"),
+  // Warm model-backed steps before they run, and optionally at startup.
+  preloadModels: boolean("preloadModels").default(true).notNull(),
+  warmModelsOnStartup: boolean("warmModelsOnStartup").default(false).notNull(),
   updatedAt: timestamp("updatedAt", { withTimezone: true })
     .defaultNow()
     .notNull(),

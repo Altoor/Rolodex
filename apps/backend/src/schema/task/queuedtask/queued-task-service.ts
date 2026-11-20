@@ -5,7 +5,8 @@ import { db, fileEntries, queuedTasks } from "@repo/db";
 import { toFileEntryRef } from "@repo/tools/tools/file/services/dto";
 import { getUserSettings } from "../../user/user-settings-service";
 import { triggerQueue } from "../../../queue";
-import { dismissRun, publish } from "../../../queue/step-store";
+import { warmQueuedRows } from "../../../queue/model-warmup";
+import { dismissRun, isRunDismissed, publish } from "../../../queue/step-store";
 
 export interface CreateQueuedTaskInput {
   taskId?: number | null;
@@ -98,6 +99,9 @@ export async function createQueuedTask(
 
   const [created] = await db.insert(queuedTasks).values(queuedTask).returning();
 
+  // Warm the model while the queue starts up. Errors are logged inside.
+  if (created) void warmQueuedRows([created]);
+
   // Start the queue if it is idle (the loop is a no-op otherwise).
   triggerQueue();
 
@@ -122,11 +126,12 @@ export async function completeQueuedTask(id: number) {
 }
 
 /**
- * Dismisses a waiting choice and ends its whole run. Returns every step of the
- * run that was completed, so the caller can update them without racing the
- * subscription. The waiting step is completed with a "dismissed" result and
- * the remaining unfinished steps are completed too, so no further prompts or
- * steps appear.
+ * Stops a queued, running, or waiting step and ends its whole run. Returns
+ * every step of the run that was completed, so the caller can update them
+ * without racing the subscription. The requested step is completed with a
+ * "dismissed" result and the remaining unfinished steps are completed too, so
+ * no further prompts or steps appear. A running tool call is allowed to finish,
+ * but its result is discarded and it cannot continue the run.
  */
 export async function dismissQueuedTask(userId: number, queuedTaskId: number) {
   const queuedTask = await db.query.queuedTasks.findFirst({
@@ -139,8 +144,12 @@ export async function dismissQueuedTask(userId: number, queuedTaskId: number) {
     });
   }
 
-  if (queuedTask.status !== "awaiting_input") {
-    throw new GraphQLError("This choice is not waiting for an answer", {
+  if (
+    queuedTask.status !== "queued" &&
+    queuedTask.status !== "running" &&
+    queuedTask.status !== "awaiting_input"
+  ) {
+    throw new GraphQLError("This run is no longer active", {
       extensions: { code: "BAD_USER_INPUT" },
     });
   }
@@ -174,10 +183,10 @@ export async function dismissQueuedTask(userId: number, queuedTaskId: number) {
       nextTaskId: null,
       dismissed: true,
       dismissedAt,
-      summary: "Run dismissed by user",
+      summary: "Run stopped by user",
       ...(step.id === queuedTask.id
         ? {}
-        : { note: "cancelled because the run was dismissed" }),
+        : { note: "cancelled because the run was stopped" }),
     };
 
     const [updated] = await db
@@ -188,18 +197,73 @@ export async function dismissQueuedTask(userId: number, queuedTaskId: number) {
 
     if (updated) {
       updatedSteps.push(updated);
-      publish(updated, "run dismissed by user");
+      publish(updated, "run stopped by user");
     }
   }
 
   const current = updatedSteps.find((step) => step.id === queuedTask.id);
   if (!current) {
-    throw new GraphQLError("This choice has already been answered", {
+    throw new GraphQLError("This run is no longer active", {
       extensions: { code: "BAD_USER_INPUT" },
     });
   }
 
   return updatedSteps;
+}
+
+/**
+ * Re-queues a failed step with the same task, state, and toolState. A retry of
+ * a run that was stopped starts a fresh run so the old dismissal cannot block
+ * it. The failed row stays in history; the retry is a new step.
+ */
+export async function retryQueuedTask(userId: number, queuedTaskId: number) {
+  const queuedTask = await db.query.queuedTasks.findFirst({
+    where: { id: queuedTaskId },
+  });
+
+  if (!queuedTask || queuedTask.queued_by !== userId) {
+    throw new GraphQLError("QueuedTask not found", {
+      extensions: { code: "BAD_USER_INPUT" },
+    });
+  }
+
+  if (queuedTask.status !== "failed") {
+    throw new GraphQLError("Only failed steps can be retried", {
+      extensions: { code: "BAD_USER_INPUT" },
+    });
+  }
+
+  const task = await db.query.tasks.findFirst({
+    where: { id: queuedTask.taskId },
+  });
+
+  if (!task) {
+    throw new GraphQLError("This step's task no longer exists", {
+      extensions: { code: "BAD_USER_INPUT" },
+    });
+  }
+
+  const [retry] = await db
+    .insert(queuedTasks)
+    .values({
+      taskId: queuedTask.taskId,
+      state: queuedTask.state,
+      toolState: queuedTask.toolState,
+      parentQueuedTaskId: queuedTask.parentQueuedTaskId,
+      depth: queuedTask.depth,
+      status: "queued",
+      runId: isRunDismissed(queuedTask.runId) ? randomUUID() : queuedTask.runId,
+      queued_by: queuedTask.queued_by,
+      model: queuedTask.model,
+      decisionModel: queuedTask.decisionModel,
+      nextStepApproved: queuedTask.nextStepApproved,
+    })
+    .returning();
+
+  if (retry) void warmQueuedRows([retry]);
+  triggerQueue();
+
+  return retry;
 }
 
 export async function deleteQueuedTask(id: number): Promise<string> {

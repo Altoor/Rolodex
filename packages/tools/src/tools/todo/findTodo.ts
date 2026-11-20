@@ -1,4 +1,6 @@
 import type { Tool, ToolDefinition } from "../../model";
+import { ToolNoMatchError } from "../../model";
+import { mergeToolInput, readBoolean } from "../../utils";
 import { findTodoMatches } from "./services/search";
 
 const definition: ToolDefinition = {
@@ -7,6 +9,8 @@ const definition: ToolDefinition = {
   description:
     "Find one of the user's todos by name/description using vector similarity, with lexical and decision-model fallbacks.",
   category: "todo",
+  usesModel: true,
+  modelRoles: ["decision", "embedding"],
   inputMode: "json",
   inputSchema: {
     type: "object",
@@ -34,6 +38,12 @@ const definition: ToolDefinition = {
         description: "Include archived todos. Defaults to false.",
         default: false,
       },
+      allowEmpty: {
+        type: "boolean",
+        description:
+          "Return an empty result with `matched: false` instead of failing when nothing matches. Defaults to false.",
+        default: false,
+      },
     },
   },
   outputDescription:
@@ -47,24 +57,44 @@ export const findTodoTool: Tool = {
   definition,
 
   async execute(context) {
-    const { todo, candidates } = await findTodoMatches(context);
+    const allowEmpty =
+      readBoolean(mergeToolInput(context), "allowEmpty") ?? false;
 
-    return {
-      output: {
-        todo: {
-          id: todo.id,
-          name: todo.name,
-          description: todo.description,
-          done: todo.done,
-          doByDate: todo.doByDate,
-          createdAt: todo.createdAt,
-          archivedAt: todo.archivedAt,
+    try {
+      const { todo, candidates } = await findTodoMatches(context);
+
+      return {
+        output: {
+          todo: {
+            id: todo.id,
+            name: todo.name,
+            description: todo.description,
+            done: todo.done,
+            doByDate: todo.doByDate,
+            createdAt: todo.createdAt,
+            archivedAt: todo.archivedAt,
+          },
+          score: todo.score,
+          candidates,
+          matched: true,
         },
-        score: todo.score,
-        candidates,
-      },
-      summary: `Found todo "${todo.name}"`,
-      toolStateAppend: { todo },
-    };
+        summary: `Found todo "${todo.name}"`,
+        toolStateAppend: { todo, matched: true },
+      };
+    } catch (err) {
+      if (!allowEmpty || !(err instanceof ToolNoMatchError)) throw err;
+
+      return {
+        output: {
+          todo: null,
+          score: null,
+          candidates: [],
+          matched: false,
+          warning: err.message,
+        },
+        summary: err.message,
+        toolStateAppend: { todo: null, matched: false },
+      };
+    }
   },
 };

@@ -44,7 +44,7 @@ function TaskQueuePageContent() {
   };
 
   return (
-    <PageContainer>
+    <PageContainer className="max-w-none">
       <PageHeader
         title="Task queue"
         description="Design tasks, wire their results, and inspect the flow."
@@ -62,6 +62,7 @@ function TaskQueuePageContent() {
           <TaskBuilder
             key={selectedTaskId ?? "new-task"}
             selectedTaskId={selectedTaskId}
+            onSelectTaskId={setSelectedTaskId}
           />
         </div>
       </div>

@@ -43,8 +43,9 @@ export type TaskFlowNodeData = {
 
 export type TaskFlowNode = Node<TaskFlowNodeData, "taskFlow">;
 
-/** Menu opened by right-clicking an edge or empty canvas space. */
+/** Menu opened by right-clicking a task, an edge, or empty canvas space. */
 export type FlowContextMenu =
+  | { kind: "nodes"; x: number; y: number; taskIds: number[] }
   | { kind: "edge"; x: number; y: number; edge: Edge }
   | { kind: "pane"; x: number; y: number; position: XYPosition };
 

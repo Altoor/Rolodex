@@ -4,6 +4,23 @@ import { readPath } from "./paths";
 
 const TEMPLATE_PATTERN = /\{\{\s*([^{}]+?)\s*\}\}/g;
 const TEMPLATE_TEST_PATTERN = /\{\{\s*[^{}]+?\s*\}\}/;
+/** A string that is exactly one placeholder, with no surrounding text. */
+const WHOLE_TEMPLATE_PATTERN = /^\{\{\s*([^{}]+?)\s*\}\}$/;
+
+function resolveTemplatePath(
+  path: string,
+  source: Record<string, unknown>,
+): unknown {
+  const value = readPath(source, path);
+
+  if (value === undefined) {
+    throw new ToolInputError(
+      `config references "{{${path}}}", but that path is not present in toolState`,
+    );
+  }
+
+  return value;
+}
 
 /**
  * Replaces `{{path}}` placeholders with values from `source`, so tool config
@@ -16,14 +33,7 @@ export function interpolateTemplate(
   source: Record<string, unknown>,
 ): string {
   return template.replace(TEMPLATE_PATTERN, (_placeholder, rawPath: string) => {
-    const path = rawPath.trim();
-    const value = readPath(source, path);
-
-    if (value === undefined) {
-      throw new ToolInputError(
-        `config references "{{${path}}}", but that path is not present in toolState`,
-      );
-    }
+    const value = resolveTemplatePath(rawPath.trim(), source);
 
     if (typeof value === "string") return value;
     if (typeof value === "number" || typeof value === "boolean") {
@@ -32,6 +42,21 @@ export function interpolateTemplate(
 
     return JSON.stringify(value);
   });
+}
+
+/**
+ * Resolves a template string. A value that is exactly one placeholder keeps
+ * the native type from toolState, so `"{{folder.id}}"` becomes a number and
+ * `"{{matched}}"` becomes a boolean. Strings with surrounding text still
+ * interpolate to a string.
+ */
+function resolveTemplateString(
+  template: string,
+  source: Record<string, unknown>,
+): unknown {
+  const whole = WHOLE_TEMPLATE_PATTERN.exec(template);
+  if (whole) return resolveTemplatePath(whole[1]?.trim() ?? "", source);
+  return interpolateTemplate(template, source);
 }
 
 /** True when a config value contains a `{{path}}` template anywhere inside it. */
@@ -60,7 +85,7 @@ export function resolveTemplateValues(
   value: unknown,
   source: Record<string, unknown>,
 ): unknown {
-  if (typeof value === "string") return interpolateTemplate(value, source);
+  if (typeof value === "string") return resolveTemplateString(value, source);
   if (Array.isArray(value)) {
     return value.map((item) => resolveTemplateValues(item, source));
   }

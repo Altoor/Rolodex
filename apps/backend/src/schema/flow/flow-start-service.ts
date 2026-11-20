@@ -9,6 +9,7 @@ import {
 } from "@repo/db";
 import {
   assertValidTaskConfig,
+  defaultCanRunInParallel,
   type TaskOutputType,
 } from "../task/task/task-service";
 import { createQueuedTask } from "../task/queuedtask/queued-task-service";
@@ -132,6 +133,7 @@ export async function confirmFlowStartDraft(
         toolConfig,
         toolOutputType: outputType,
         fallbackTaskId,
+        canRunInParallel: defaultCanRunInParallel("tool", toolKey),
       })
       .returning();
 
@@ -197,21 +199,20 @@ export async function confirmFlowStartDraft(
     const resultDrafts = Array.isArray(decision.results)
       ? decision.results.flatMap((entry) => {
           const result = asRecord(entry);
-          return result
-            ? [
-                {
-                  option: asString(result.option),
-                  targetTaskId: asInt(result.targetTaskId),
-                  scoreThreshold: asNumber(result.scoreThreshold),
-                  probabilityThreshold: asNumber(
-                    result.probabilityThreshold,
-                  ),
-                  confidenceThreshold: asNumber(
-                    result.confidenceThreshold,
-                  ),
-                },
-              ]
-            : [];
+          if (!result) return [];
+          const probabilityThreshold = asNumber(result.probabilityThreshold);
+          return [
+            {
+              option: asString(result.option),
+              targetTaskId: asInt(result.targetTaskId),
+              scoreThreshold: asNumber(result.scoreThreshold),
+              probabilityThreshold:
+                decisionType === "choice"
+                  ? (probabilityThreshold ?? 0.8)
+                  : probabilityThreshold,
+              confidenceThreshold: asNumber(result.confidenceThreshold),
+            },
+          ];
         })
       : [];
 
@@ -275,6 +276,7 @@ export async function confirmFlowStartDraft(
           type: "decision",
           decisionId: createdDecision.id,
           forceUserDecideIfNoMatch: true,
+          canRunInParallel: defaultCanRunInParallel("decision", null),
         })
         .returning();
 
@@ -369,6 +371,7 @@ export async function confirmFlowStartDraft(
           name: draft.name,
           type: "userDecision",
           userDecisionType: choiceType,
+          canRunInParallel: defaultCanRunInParallel("userDecision", null),
           userDecisionConfig: {
             prompt:
               asString(userDecision.prompt) ?? "Choose an option for this task",

@@ -1,10 +1,14 @@
 "use client";
 
 import { useMutation, useQuery, useSubscription } from "@apollo/client/react";
-import { WIRE_DECISION_RESULT_TARGET } from "@repo/queries/flow/flow-mutations";
+import {
+  CONFIRM_NEXT_STEP,
+  WIRE_DECISION_RESULT_TARGET,
+} from "@repo/queries/flow/flow-mutations";
 import {
   ANSWER_USER_DECISION,
   DISMISS_QUEUED_TASK,
+  RETRY_QUEUED_TASK,
 } from "@repo/queries/tasks/task-mutations";
 import { ACTIVE_QUEUED_TASKS } from "@repo/queries/tasks/task-queries";
 import { QUEUED_TASK_EVENT } from "@repo/queries/tasks/task-subscriptions";
@@ -35,11 +39,17 @@ interface LiveRunState {
 export function useLandingRuns({ userId, loggedIn }: UseLandingRunsArgs) {
   const [answerUserDecision, { error: answerError }] =
     useMutation(ANSWER_USER_DECISION);
+  const [confirmNextStepMutation, { error: confirmError }] =
+    useMutation(CONFIRM_NEXT_STEP);
   const [dismissQueuedTask, { error: dismissError }] =
     useMutation(DISMISS_QUEUED_TASK);
+  const [retryQueuedTask, { error: retryError }] =
+    useMutation(RETRY_QUEUED_TASK);
   const [wireDecisionResultTarget] = useMutation(WIRE_DECISION_RESULT_TARGET);
   const [answeringStepId, setAnsweringStepId] = useState<number | null>(null);
   const [dismissingStepId, setDismissingStepId] = useState<number | null>(null);
+  const [retryingStepId, setRetryingStepId] = useState<number | null>(null);
+  const [retryErrorStepId, setRetryErrorStepId] = useState<number | null>(null);
   const [wiringStepId, setWiringStepId] = useState<number | null>(null);
 
   // Completed steps of an active run stay here so each chain-of-thought keeps
@@ -118,6 +128,22 @@ export function useLandingRuns({ userId, loggedIn }: UseLandingRunsArgs) {
     }
   };
 
+  // Approves a runtime next-step gate, optionally replacing the proposed task
+  // for this run only. Reuses the answering busy slot so all prompt buttons
+  // disable together.
+  const confirmNextStep = async (stepId: number, taskId?: number) => {
+    setAnsweringStepId(stepId);
+    try {
+      const { data } = await confirmNextStepMutation({
+        variables: { queuedTaskId: stepId, taskId },
+      });
+      const step = data?.confirmNextStep ? toStep(data.confirmNextStep) : null;
+      if (step) trackStep(step);
+    } finally {
+      setAnsweringStepId(null);
+    }
+  };
+
   // Dismissing a choice ends its whole run; the mutation returns every step it
   // completed so the prompts disappear immediately.
   const dismissRun = async (stepId: number) => {
@@ -130,6 +156,24 @@ export function useLandingRuns({ userId, loggedIn }: UseLandingRunsArgs) {
       }
     } finally {
       setDismissingStepId(null);
+    }
+  };
+
+  // Re-queues a failed step with its original task, state, and toolState. The
+  // new row arrives through the subscription; tracking the mutation response
+  // too makes it appear immediately.
+  const retryStep = async (stepId: number) => {
+    setRetryingStepId(stepId);
+    setRetryErrorStepId(null);
+    try {
+      const { data } = await retryQueuedTask({ variables: { id: stepId } });
+      const step = data?.retryQueuedTask ? toStep(data.retryQueuedTask) : null;
+      if (step) trackStep(step);
+    } catch {
+      // The mutation error is exposed through retryError.
+      setRetryErrorStepId(stepId);
+    } finally {
+      setRetryingStepId(null);
     }
   };
 
@@ -170,12 +214,17 @@ export function useLandingRuns({ userId, loggedIn }: UseLandingRunsArgs) {
     openRuns,
     answeringStepId,
     dismissingStepId,
+    retryingStepId,
+    retryErrorStepId,
     wiringStepId,
-    answerError: answerError?.message ?? null,
+    answerError: answerError?.message ?? confirmError?.message ?? null,
     dismissError: dismissError?.message ?? null,
+    retryError: retryError?.message ?? null,
     setRunOpen,
     answerChoice,
+    confirmNextStep,
     dismissRun,
+    retryStep,
     wireDecisionTarget,
   };
 

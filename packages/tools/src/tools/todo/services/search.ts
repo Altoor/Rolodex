@@ -15,7 +15,11 @@ import {
   readNumber,
   readString,
 } from "../../../utils";
-import { ToolInputError, type ToolRunContext } from "../../../model";
+import {
+  ToolInputError,
+  ToolNoMatchError,
+  type ToolRunContext,
+} from "../../../model";
 import { selectTodoWithDecision } from "./selection";
 
 type TodoRow = typeof todos.$inferSelect;
@@ -210,7 +214,7 @@ export async function findTodoMatches(
 
     const userTodos = await listUserTodos(context.userId, includeArchived);
     if (userTodos.length === 0) {
-      throw new ToolInputError("no matching todo found");
+      throw new ToolNoMatchError("no matching todo found");
     }
 
     const selected = await selectTodoWithDecision(userTodos, queryText, model);
@@ -231,7 +235,7 @@ export async function findTodoMatches(
 
   let best = candidates[0];
   if (!best) {
-    throw new ToolInputError("no matching todo found");
+    throw new ToolNoMatchError("no matching todo found");
   }
 
   for (const candidate of candidates.slice(1)) {

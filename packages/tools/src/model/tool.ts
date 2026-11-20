@@ -8,6 +8,9 @@ export type ToolInputMode = "text" | "json";
 
 export type ToolOutputType = "normal" | "foreach";
 
+/** Ollama model slots a tool may call while executing. */
+export type ToolModelRole = "generation" | "decision" | "vision" | "embedding";
+
 export interface ToolDefinition {
   /** Stable identifier stored on tasks, e.g. "prompt" or "find_todo". */
   key: string;
@@ -22,6 +25,17 @@ export interface ToolDefinition {
   outputTypes?: ToolOutputType[];
   /** Additional description shown when foreach output is selected. */
   foreachOutputDescription?: string;
+  /**
+   * True when executing this tool can call a model service (Ollama, Whisper,
+   * vision/OCR, embeddings). Model-backed tools default to exclusive queue
+   * execution because they compete for the same backend.
+   */
+  usesModel?: boolean;
+  /**
+   * Model slots this tool may call. The queue uses this to preload models
+   * before execution. Omit for deterministic tools.
+   */
+  modelRoles?: ToolModelRole[];
   /** Example `toolConfig` the tools page can display. */
   exampleConfig?: ToolConfig | null;
 }

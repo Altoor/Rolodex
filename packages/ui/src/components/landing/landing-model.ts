@@ -16,6 +16,7 @@ export interface StepResult {
     | "true"
     | "false"
     | "awaiting_user"
+    | "awaiting_approval"
     | "unwired";
   nextTaskId?: number | null;
   branchLabel?: string;
@@ -30,6 +31,10 @@ export interface StepResult {
   unwiredResultId?: number;
   unwiredOption?: string;
   unwiredOptionDescription?: string | null;
+  /** Decision-model answer and model name, kept for the manual-choice UI. */
+  answer?: unknown;
+  effectiveAnswer?: unknown;
+  model?: string | null;
 }
 
 export interface QueuedTaskStep {
@@ -42,7 +47,13 @@ export interface QueuedTaskStep {
   model: string | null;
   decisionModel: string | null;
   state: string | null;
-  task: { id: number | null; name: string | null; type: string | null } | null;
+  task: {
+    id: number | null;
+    name: string | null;
+    type: string | null;
+    toolKey?: string | null;
+    toolConfig?: unknown;
+  } | null;
 }
 
 export interface QueuedTaskRow {
@@ -56,7 +67,13 @@ export interface QueuedTaskRow {
   model: string | null;
   decisionModel: string | null;
   state: string | null;
-  task: { id: number | null; name: string | null; type: string | null } | null;
+  task: {
+    id: number | null;
+    name: string | null;
+    type: string | null;
+    toolKey?: string | null;
+    toolConfig?: unknown;
+  } | null;
 }
 
 export interface LandingTask {
@@ -99,12 +116,17 @@ export interface LandingRunsState {
   openRuns: Record<string, boolean>;
   answeringStepId: number | null;
   dismissingStepId: number | null;
+  retryingStepId: number | null;
+  retryErrorStepId: number | null;
   wiringStepId: number | null;
   answerError: string | null;
   dismissError: string | null;
+  retryError: string | null;
   setRunOpen: (runId: string, open: boolean) => void;
   answerChoice: (stepId: number, optionId: string) => Promise<void>;
+  confirmNextStep: (stepId: number, taskId?: number) => Promise<void>;
   dismissRun: (stepId: number) => Promise<void>;
+  retryStep: (stepId: number) => Promise<void>;
   wireDecisionTarget: (
     stepId: number,
     resultId: number,

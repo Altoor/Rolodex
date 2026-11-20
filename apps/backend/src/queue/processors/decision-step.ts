@@ -4,6 +4,7 @@ import {
   DEFAULT_MODEL,
   getDecisionModelForUser,
   getOllamaClient,
+  getOllamaKeepAlive,
 } from "@repo/ai";
 import { setupQuestions } from "../../schema/ai/ai-service";
 import { getUserSettings } from "../../schema/user/user-settings-service";
@@ -48,8 +49,9 @@ export async function processDecisionStep(
   let model = DEFAULT_MODEL;
   let modelError: string | undefined;
 
+  let questions: ReturnType<typeof setupQuestions>;
   try {
-    const questions = setupQuestions([
+    questions = setupQuestions([
       {
         type: decision.type,
         instruction: decision.instruction,
@@ -58,15 +60,27 @@ export async function processDecisionStep(
         optionDescriptions: decision.optionDescriptions ?? undefined,
       },
     ]);
+  } catch (err) {
+    await finishStep(row.id, "failed", {
+      note: `decision setup error: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    });
+    return;
+  }
+
+  try {
     model =
       row.decisionModel ??
       task.decisionModel ??
       (await getDecisionModelForUser(row.queued_by));
     const ollama = await getOllamaClient();
+    const keepAlive = await getOllamaKeepAlive();
     response = await ollama.systemone({
       model,
       state: modelState,
       questions,
+      ...(keepAlive !== undefined ? { keep_alive: keepAlive } : {}),
     });
     answer = response.answers[decision.decisionPremise];
 

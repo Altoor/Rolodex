@@ -1,0 +1,1 @@
+ALTER TABLE "queuedTasks" ADD COLUMN "nextStepApproved" bool DEFAULT false NOT NULL;

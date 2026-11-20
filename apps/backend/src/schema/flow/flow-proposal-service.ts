@@ -5,15 +5,13 @@ import { db, fileEntries, tasks } from "@repo/db";
 import {
   getDecisionModelForUser,
   getOllamaClient,
+  getOllamaKeepAlive,
 } from "@repo/ai";
 import { getToolDefinition, listToolDefinitions } from "@repo/tools";
 import { getUserSettings } from "../user/user-settings-service";
 
 export type FlowStartKind =
-  | "existingTask"
-  | "newToolTask"
-  | "newDecisionTask"
-  | "newUserDecisionTask";
+  "existingTask" | "newToolTask" | "newDecisionTask" | "newUserDecisionTask";
 
 export interface FlowStartCandidate {
   key: string;
@@ -108,9 +106,9 @@ async function attachmentText(
   fileIds: number[] | null | undefined,
   folderIds: number[] | null | undefined,
 ): Promise<string> {
-  const ids = [
-    ...new Set([...(fileIds ?? []), ...(folderIds ?? [])]),
-  ].filter((id) => Number.isInteger(id) && id > 0);
+  const ids = [...new Set([...(fileIds ?? []), ...(folderIds ?? [])])].filter(
+    (id) => Number.isInteger(id) && id > 0,
+  );
 
   if (ids.length === 0) return "";
 
@@ -202,9 +200,13 @@ export async function proposeFlowStart(
 
   let response;
   try {
-    response = await (await getOllamaClient()).systemone({
+    const keepAlive = await getOllamaKeepAlive();
+    response = await (
+      await getOllamaClient()
+    ).systemone({
       model,
       state: stateText,
+      ...(keepAlive !== undefined ? { keep_alive: keepAlive } : {}),
       questions: {
         startingStep: {
           type: "choice",
@@ -229,8 +231,7 @@ export async function proposeFlowStart(
   }
 
   const answer = response.answers.startingStep as
-    | SystemOneChoiceAnswer
-    | undefined;
+    SystemOneChoiceAnswer | undefined;
 
   if (!answer || answer.type !== "choice") {
     throw new GraphQLError(

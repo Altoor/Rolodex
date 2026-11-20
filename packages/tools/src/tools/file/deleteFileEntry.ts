@@ -12,6 +12,7 @@ const definition: ToolDefinition = {
   description:
     "Delete a file or folder from the files tree and mark its index rows as deleted. Non-empty folders require recursive=true.",
   category: "file",
+  usesModel: true,
   inputMode: "json",
   inputSchema: {
     type: "object",

@@ -104,6 +104,8 @@ export function buildTaskVariables(
       values.type === "userDecision" ? values.userDecisionType : undefined,
     userDecisionConfig:
       values.type === "userDecision" ? values.userDecisionConfig : undefined,
+    canRunInParallel: values.canRunInParallel,
+    prioritize: values.prioritize,
   };
 }
 

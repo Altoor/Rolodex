@@ -12,6 +12,7 @@ const definition: ToolDefinition = {
   description:
     "Read video metadata and a streaming URL. Frame extraction can be added later.",
   category: "file",
+  usesModel: true,
   inputMode: "json",
   inputSchema: {
     type: "object",

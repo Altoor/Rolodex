@@ -62,35 +62,39 @@ export function extractBlockTodos(output: unknown): TodoItemData[] {
   return todos;
 }
 
+function looksLikeTodo(value: unknown): boolean {
+  if (!isRecord(value) || typeof value.name !== "string") return false;
+
+  // Todo tool entries carry todo-specific fields. Files also have a `name`
+  // and a `candidates` list, but never these fields.
+  return (
+    typeof value.done === "boolean" ||
+    "doByDate" in value ||
+    "archivedAt" in value
+  );
+}
+
 function hasTodoShape(output: unknown): boolean {
   if (!isRecord(output)) return false;
 
   if (typeof output.name === "string") {
     // A bare todo item from display_block. Require a todo-specific field so
     // unrelated objects that happen to have a name do not match.
-    return (
-      typeof output.done === "boolean" ||
-      "doByDate" in output ||
-      typeof output.createdAt === "string" ||
-      typeof output.archivedAt === "string"
-    );
+    return looksLikeTodo(output) || typeof output.createdAt === "string";
   }
 
   if (isRecord(output.todo) && typeof output.todo.name === "string") {
     return true;
   }
 
-  for (const key of ["todos", "candidates"]) {
-    const value = output[key];
-    if (
-      Array.isArray(value) &&
-      value.some((item) => isRecord(item) && typeof item.name === "string")
-    ) {
-      return true;
-    }
+  if (Array.isArray(output.todos) && output.todos.some(looksLikeTodo)) {
+    return true;
   }
 
-  return false;
+  // `candidates` is shared with file tools, so require todo fields here.
+  return (
+    Array.isArray(output.candidates) && output.candidates.some(looksLikeTodo)
+  );
 }
 
 export function TodoBlock({ output }: BlockComponentProps) {

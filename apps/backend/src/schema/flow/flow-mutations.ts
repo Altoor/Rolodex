@@ -11,12 +11,10 @@ import {
   proposeFlowStart,
   type FlowStartKind as FlowStartKindValue,
 } from "./flow-proposal-service";
-import {
-  draftFlowStartTask,
-  refineFlowTaskDraft,
-} from "./flow-draft-service";
+import { draftFlowStartTask, refineFlowTaskDraft } from "./flow-draft-service";
 import { confirmFlowStartDraft } from "./flow-start-service";
 import { wireDecisionResultTarget } from "./flow-decision-target-service";
+import { confirmNextStep } from "../../queue/confirm-next-step";
 
 builder.mutationType({
   fields: (t) => ({
@@ -28,11 +26,7 @@ builder.mutationType({
         fileIds: t.arg.intList(),
         folderIds: t.arg.intList(),
       },
-      resolve: async (
-        _root,
-        { state, prompt, fileIds, folderIds },
-        ctx,
-      ) => {
+      resolve: async (_root, { state, prompt, fileIds, folderIds }, ctx) => {
         const userId = requireUserId(ctx);
         return proposeFlowStart(
           userId,
@@ -135,6 +129,18 @@ builder.mutationType({
       },
     }),
 
+    confirmNextStep: t.field({
+      type: QueuedTask,
+      args: {
+        queuedTaskId: t.arg.int({ required: true }),
+        taskId: t.arg.int(),
+      },
+      resolve: async (_root, { queuedTaskId, taskId }, ctx) => {
+        const userId = requireUserId(ctx);
+        return confirmNextStep(userId, queuedTaskId, taskId);
+      },
+    }),
+
     wireDecisionResultTarget: t.field({
       type: QueuedTask,
       args: {
@@ -142,11 +148,7 @@ builder.mutationType({
         resultId: t.arg.int({ required: true }),
         targetTaskId: t.arg.int({ required: true }),
       },
-      resolve: async (
-        _root,
-        { queuedTaskId, resultId, targetTaskId },
-        ctx,
-      ) => {
+      resolve: async (_root, { queuedTaskId, resultId, targetTaskId }, ctx) => {
         const userId = requireUserId(ctx);
         return wireDecisionResultTarget(
           userId,

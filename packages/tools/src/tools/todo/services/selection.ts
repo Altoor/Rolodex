@@ -1,6 +1,6 @@
 import type { SystemOneChoiceQuestion } from "ollama";
-import { getOllamaClient } from "@repo/ai";
-import { ToolInputError } from "../../../model";
+import { getOllamaClient, getOllamaKeepAlive } from "@repo/ai";
+import { ToolInputError, ToolNoMatchError } from "../../../model";
 
 interface SelectableTodo {
   id: number;
@@ -64,10 +64,14 @@ export async function selectTodoWithDecision<T extends SelectableTodo>(
     questions: { [premise]: question },
   });
 
-  const response = await (await getOllamaClient()).systemone({
+  const keepAlive = await getOllamaKeepAlive();
+  const response = await (
+    await getOllamaClient()
+  ).systemone({
     model,
     state: request,
     questions: { [premise]: question },
+    ...(keepAlive !== undefined ? { keep_alive: keepAlive } : {}),
   });
 
   const answer = response.answers[premise];
@@ -78,7 +82,7 @@ export async function selectTodoWithDecision<T extends SelectableTodo>(
   console.log("answer:", answer);
 
   if (answer.choice === NONE_OPTION) {
-    throw new ToolInputError("no matching todo found");
+    throw new ToolNoMatchError("no matching todo found");
   }
 
   const id = Number(

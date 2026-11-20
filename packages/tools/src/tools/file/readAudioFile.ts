@@ -19,6 +19,7 @@ const definition: ToolDefinition = {
   description:
     "Read audio metadata and a streaming URL. Set transcribe to true to send the file to the Whisper API configured on the Settings page.",
   category: "file",
+  usesModel: true,
   inputMode: "json",
   inputSchema: {
     type: "object",

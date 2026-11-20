@@ -163,15 +163,19 @@ function parseDecisionDraft(
     if (!record) return [];
     const targetTaskId = asInt(record.targetTaskId);
     const validTarget =
-      targetTaskId != null && targetIds.has(targetTaskId)
-        ? targetTaskId
-        : null;
+      targetTaskId != null && targetIds.has(targetTaskId) ? targetTaskId : null;
+    const probabilityThreshold = asNumber(record.probabilityThreshold);
     return [
       {
         option: asString(record.option),
         targetTaskId: validTarget,
         scoreThreshold: asNumber(record.scoreThreshold),
-        probabilityThreshold: asNumber(record.probabilityThreshold),
+        // Generated choice results start at 0.8 unless the model supplied an
+        // explicit threshold.
+        probabilityThreshold:
+          type === "choice"
+            ? (probabilityThreshold ?? 0.8)
+            : probabilityThreshold,
         confidenceThreshold: asNumber(record.confidenceThreshold),
       },
     ];
@@ -182,7 +186,7 @@ function parseDecisionDraft(
       option: type === "noul" ? null : (options[0]?.name ?? null),
       targetTaskId: null,
       scoreThreshold: type === "score" ? 0.5 : null,
-      probabilityThreshold: type === "choice" ? 0.5 : null,
+      probabilityThreshold: type === "choice" ? 0.8 : null,
       confidenceThreshold: null,
     });
   }
@@ -396,7 +400,7 @@ function promptForKind(
         "You build one runnable automation task. Return only JSON matching the schema. " +
         "Use an existing tool key and a config that satisfies its input schema. " +
         "Keep model prompts short and explicit. When the task should process only the " +
-        "files uploaded or attached to the run, use scan_files with scope \"uploaded\".",
+        'files uploaded or attached to the run, use scan_files with scope "uploaded".',
       prompt: [
         context,
         "Available tools:",
@@ -506,7 +510,9 @@ export async function draftFlowStartTask(
     };
 
     if (!toolKey) {
-      warnings.push("The model did not choose a tool. Pick one before creating.");
+      warnings.push(
+        "The model did not choose a tool. Pick one before creating.",
+      );
     } else {
       try {
         await assertValidTaskConfig({

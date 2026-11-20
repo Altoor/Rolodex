@@ -2,11 +2,7 @@
 
 import { Badge } from "#components/ui/badge";
 import { Button } from "#components/ui/button";
-import {
-  Field,
-  FieldDescription,
-  FieldLabel,
-} from "#components/ui/field";
+import { Field, FieldDescription, FieldLabel } from "#components/ui/field";
 import { Spinner } from "#components/ui/spinner";
 import { Textarea } from "#components/ui/textarea";
 import { LoaderCircle, Play, Sparkles, Wrench } from "lucide-react";
@@ -27,6 +23,10 @@ import type { LandingTask } from "../landing/landing-model";
 interface FlowStartAssistantProps {
   assistant: FlowStartAssistantState;
   tasks: LandingTask[];
+  /** Build mode creates tasks for the builder instead of starting runs. */
+  mode?: "start" | "build";
+  /** Drops the outer card chrome so a parent panel can host the content. */
+  embedded?: boolean;
 }
 
 function ConfidenceBadge({ confidence }: { confidence: number | null }) {
@@ -67,9 +67,7 @@ function userDecisionWiringContext(
 ): string {
   return [
     `Task: ${draft.name}`,
-    draft.userDecision?.prompt
-      ? `Question: ${draft.userDecision.prompt}`
-      : "",
+    draft.userDecision?.prompt ? `Question: ${draft.userDecision.prompt}` : "",
     `Option: ${option.label}`,
     option.description ? `Option description: ${option.description}` : "",
   ]
@@ -96,9 +94,15 @@ function toolWiringContext(draft: FlowTaskDraft): string {
 export function FlowStartAssistant({
   assistant,
   tasks,
+  mode = "start",
+  embedded = false,
 }: FlowStartAssistantProps) {
   const [proposalPrompt, setProposalPrompt] = useState("");
   const [draftPrompt, setDraftPrompt] = useState("");
+  const buildMode = mode === "build";
+  const shell = embedded
+    ? "flex flex-col gap-4"
+    : "mt-3 flex flex-col gap-4 rounded-lg border bg-card p-4";
 
   const {
     proposal,
@@ -124,7 +128,7 @@ export function FlowStartAssistant({
     const runnable = isDraftRunnable(draft);
 
     return (
-      <div className="mt-3 flex flex-col gap-4 rounded-lg border bg-card p-4">
+      <div className={shell}>
         <div className="flex items-start justify-between gap-2">
           <div>
             <p className="text-sm font-medium">Review the new task</p>
@@ -225,23 +229,25 @@ export function FlowStartAssistant({
             onClick={() => void confirmDraft(false)}
           >
             {busy === "confirm" ? <Spinner /> : <Wrench />}
-            Create only
+            {buildMode ? "Create task" : "Create only"}
           </Button>
-          <Button
-            type="button"
-            disabled={anyBusy || !runnable}
-            title={
-              runnable
-                ? undefined
-                : "This draft needs a result target or at least one option before it can run."
-            }
-            onClick={() => void confirmDraft(true)}
-          >
-            {busy === "confirm" ? <Spinner /> : <Play />}
-            Create and run
-          </Button>
+          {buildMode ? null : (
+            <Button
+              type="button"
+              disabled={anyBusy || !runnable}
+              title={
+                runnable
+                  ? undefined
+                  : "This draft needs a result target or at least one option before it can run."
+              }
+              onClick={() => void confirmDraft(true)}
+            >
+              {busy === "confirm" ? <Spinner /> : <Play />}
+              Create and run
+            </Button>
+          )}
         </div>
-        {!runnable ? (
+        {!buildMode && !runnable ? (
           <FieldDescription>
             Fix the warning above, or use “Create only” and finish it in the
             task builder.
@@ -253,14 +259,14 @@ export function FlowStartAssistant({
 
   if (!proposal) {
     return notice ? (
-      <div className="mt-3 rounded-lg border bg-card p-3">
+      <div className={embedded ? "" : "mt-3 rounded-lg border bg-card p-3"}>
         <FieldDescription>{notice}</FieldDescription>
       </div>
     ) : null;
   }
 
   return (
-    <div className="mt-3 flex flex-col gap-4 rounded-lg border bg-card p-4">
+    <div className={shell}>
       <div className="flex items-start justify-between gap-2">
         <div>
           <p className="text-sm font-medium">Suggested starting step</p>
@@ -351,14 +357,16 @@ export function FlowStartAssistant({
           >
             {busy === "draft" || busy === "confirm" ? (
               <Spinner />
-            ) : isNewKind(selectedCandidate.kind) ? (
+            ) : isNewKind(selectedCandidate.kind) || buildMode ? (
               <Wrench />
             ) : (
               <Play />
             )}
             {isNewKind(selectedCandidate.kind)
               ? "Build this task"
-              : "Start this task"}
+              : buildMode
+                ? "Edit this task"
+                : "Start this task"}
           </Button>
         ) : null}
       </div>

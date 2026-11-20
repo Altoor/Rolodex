@@ -25,10 +25,19 @@ import { toStep, type QueuedTaskStep } from "../landing/landing-model";
 type BusyAction = "propose" | "refine" | "draft" | "refineDraft" | "confirm";
 
 interface UseFlowStartAssistantArgs {
-  onTrackedStep: (step: QueuedTaskStep) => void;
-  onOpenRun: (runId: string) => void;
+  onTrackedStep?: (step: QueuedTaskStep) => void;
+  onOpenRun?: (runId: string) => void;
   /** Clears the landing composer once a run has actually started. */
-  onStarted: () => void;
+  onStarted?: () => void;
+  /**
+   * Build mode never starts a run. Existing-task candidates open that task in
+   * the builder instead, and confirming a draft only creates the task.
+   */
+  buildMode?: boolean;
+  /** Called with the new task after a draft is created in build mode. */
+  onCreated?: (taskId: number, taskName: string) => void;
+  /** Called when an existing-task candidate is chosen in build mode. */
+  onExistingTask?: (taskId: number) => void;
 }
 
 export interface FlowStartAssistantState {
@@ -61,6 +70,9 @@ export function useFlowStartAssistant({
   onTrackedStep,
   onOpenRun,
   onStarted,
+  buildMode = false,
+  onCreated,
+  onExistingTask,
 }: UseFlowStartAssistantArgs): FlowStartAssistantState {
   const [proposal, setProposal] = useState<FlowStartProposal | null>(null);
   const [draft, setDraft] = useState<FlowTaskDraft | null>(null);
@@ -176,16 +188,14 @@ export function useFlowStartAssistant({
       },
     });
 
-    const step = data?.createQueuedTask
-      ? toStep(data.createQueuedTask)
-      : null;
+    const step = data?.createQueuedTask ? toStep(data.createQueuedTask) : null;
     if (step) {
-      onTrackedStep(step);
-      onOpenRun(step.runId);
+      onTrackedStep?.(step);
+      onOpenRun?.(step.runId);
     }
 
     reset();
-    onStarted();
+    onStarted?.();
   };
 
   const buildCandidate = async (candidate: FlowStartCandidate) => {
@@ -194,6 +204,12 @@ export function useFlowStartAssistant({
     if (candidate.kind === "existingTask") {
       if (candidate.taskId == null) {
         setError("This candidate has no task to start");
+        return;
+      }
+
+      if (buildMode) {
+        onExistingTask?.(candidate.taskId);
+        reset();
         return;
       }
 
@@ -261,8 +277,12 @@ export function useFlowStartAssistant({
     const current = draftRef.current;
     if (!current || busy) return;
 
-    if (start && !isDraftRunnable(current)) {
-      setError("This draft cannot be run yet. Create it only, or fix the warning.");
+    const shouldStart = buildMode ? false : start;
+
+    if (shouldStart && !isDraftRunnable(current)) {
+      setError(
+        "This draft cannot be run yet. Create it only, or fix the warning.",
+      );
       return;
     }
 
@@ -276,21 +296,28 @@ export function useFlowStartAssistant({
           draft: current as unknown as Record<string, unknown>,
           state: stateRef.current,
           fileIds: fileIdsRef.current,
-          start,
+          start: shouldStart,
         },
       });
 
       const result = data?.confirmFlowStartDraft;
-      const step = result?.queuedTask
-        ? toStep(result.queuedTask)
-        : null;
+      const step = result?.queuedTask ? toStep(result.queuedTask) : null;
       if (step) {
-        onTrackedStep(step);
-        onOpenRun(step.runId);
+        onTrackedStep?.(step);
+        onOpenRun?.(step.runId);
+      }
+
+      if (buildMode) {
+        const createdTaskId = result?.taskId;
+        if (createdTaskId != null) {
+          onCreated?.(createdTaskId, result?.taskName ?? current.name);
+        }
+        reset();
+        return;
       }
 
       reset();
-      if (step) onStarted();
+      if (step) onStarted?.();
       else setNotice(`Created "${result?.taskName ?? current.name}".`);
     } catch (err) {
       setError(messageFrom(err));

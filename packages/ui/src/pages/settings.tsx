@@ -75,6 +75,10 @@ function SettingsPageContent() {
               : "faster_whisper",
           whisperApiUrl: settings.whisperApiUrl ?? "",
           whisperModel: settings.whisperModel,
+          maxParallelTasks: settings.maxParallelTasks ?? 5,
+          ollamaKeepAlive: settings.ollamaKeepAlive ?? null,
+          preloadModels: settings.preloadModels ?? true,
+          warmModelsOnStartup: settings.warmModelsOnStartup ?? false,
         }}
         onSaved={() => setSaved(true)}
         onDirty={() => setSaved(false)}

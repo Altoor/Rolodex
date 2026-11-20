@@ -23,6 +23,8 @@ const definition: ToolDefinition = {
   description:
     "Create a todo from explicit name, description, do-by date, and done values. Values can come from toolConfig or from an earlier tool's toolState.",
   category: "todo",
+  usesModel: true,
+  modelRoles: ["embedding"],
   inputMode: "json",
   inputSchema: {
     type: "object",

@@ -31,6 +31,7 @@ import { readOtherFileTool } from "../tools/file/readOtherFile";
 import { createFolderTool } from "../tools/file/createFolder";
 import { createFileTool } from "../tools/file/createFile";
 import { deleteFileEntryTool } from "../tools/file/deleteFileEntry";
+import { moveFilesTool } from "../tools/file/moveFiles";
 
 export const tools: Tool[] = [
   promptTool,
@@ -55,6 +56,7 @@ export const tools: Tool[] = [
   findFoldersTool,
   scanFilesTool,
   updateFileMetadataTool,
+  moveFilesTool,
   detectFileTypeTool,
   readPlaintextFileTool,
   readTextFileTool,

@@ -1,5 +1,7 @@
 import type { Tool, ToolDefinition } from "../../model";
-import { findTodoMatches } from "./services/search";
+import { ToolNoMatchError } from "../../model";
+import { mergeToolInput, readBoolean } from "../../utils";
+import { findTodoMatches, type TodoCandidate } from "./services/search";
 
 const definition: ToolDefinition = {
   key: "find_todos",
@@ -7,6 +9,8 @@ const definition: ToolDefinition = {
   description:
     "Find a list of the user's todos by name/description using vector similarity, with lexical and decision-model fallbacks.",
   category: "todo",
+  usesModel: true,
+  modelRoles: ["decision", "embedding"],
   inputMode: "json",
   inputSchema: {
     type: "object",
@@ -30,6 +34,12 @@ const definition: ToolDefinition = {
         description: "Include archived todos. Defaults to false.",
         default: false,
       },
+      allowEmpty: {
+        type: "boolean",
+        description:
+          "Return an empty list with `matched: false` instead of failing when nothing matches. Defaults to false.",
+        default: false,
+      },
     },
   },
   outputDescription:
@@ -47,11 +57,37 @@ export const findTodosTool: Tool = {
   definition,
 
   async execute(context) {
-    const { candidates } = await findTodoMatches(context);
+    const allowEmpty =
+      readBoolean(mergeToolInput(context), "allowEmpty") ?? false;
+
+    let candidates: TodoCandidate[];
+
+    try {
+      ({ candidates } = await findTodoMatches(context));
+    } catch (err) {
+      if (!allowEmpty || !(err instanceof ToolNoMatchError)) throw err;
+
+      const empty = {
+        output: {
+          todos: [],
+          candidates: [],
+          matched: false,
+          warning: err.message,
+        },
+        summary: err.message,
+        toolStateAppend: { todos: [], matched: false },
+      };
+
+      if (context.outputType === "foreach") {
+        return { ...empty, foreach: { items: [] } };
+      }
+
+      return empty;
+    }
 
     if (context.outputType === "foreach") {
       return {
-        output: { todos: candidates },
+        output: { todos: candidates, matched: true },
         summary: `Found ${candidates.length} todos`,
         foreach: {
           items: candidates.map((todo) => ({ todo })),
@@ -62,9 +98,10 @@ export const findTodosTool: Tool = {
     return {
       output: {
         todos: candidates,
+        matched: true,
       },
       summary: `Found ${candidates.length} todos`,
-      toolStateAppend: { todos: candidates },
+      toolStateAppend: { todos: candidates, matched: true },
     };
   },
 };
