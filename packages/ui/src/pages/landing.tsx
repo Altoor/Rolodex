@@ -3,7 +3,6 @@
 import { LandingComposer } from "../components/landing/landing-composer";
 import { LandingRuns } from "../components/landing/landing-runs";
 import { useLandingPage } from "../components/landing/use-landing-page";
-import { FlowStartAssistant } from "../components/flow/flow-start-assistant";
 import { EmptyState } from "#components/feedback/empty-state";
 import { LoadingState } from "#components/feedback/loading-state";
 import { PageContainer } from "#components/layout/page-container";
@@ -17,7 +16,6 @@ export default function LandingPage() {
     composer,
     runs,
     flowAutoImprovement,
-    flowAssistant,
   } = useLandingPage();
 
   if (authLoading) {
@@ -51,11 +49,6 @@ export default function LandingPage() {
         tasks={tasks}
         {...composer}
         autoEnabled={flowAutoImprovement}
-        assistant={
-          flowAutoImprovement ? (
-            <FlowStartAssistant assistant={flowAssistant} tasks={tasks} />
-          ) : null
-        }
       >
         <LandingRuns
           tasks={tasks}

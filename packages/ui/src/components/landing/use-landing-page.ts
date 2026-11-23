@@ -4,8 +4,8 @@ import { useQuery } from "@apollo/client/react";
 import { TASKS } from "@repo/queries/tasks/task-queries";
 import { useMemo, useRef } from "react";
 import { useAuth } from "../auth/auth-provider";
-import { useFlowStartAssistant } from "../flow/use-flow-start-assistant";
 import { useLandingComposer } from "./use-landing-composer";
+import { useLandingPlan } from "./use-landing-plan";
 import { useLandingRuns } from "./use-landing-runs";
 
 /**
@@ -26,7 +26,7 @@ export function useLandingPage() {
   const flowAutoImprovement = user?.settings?.flowAutoImprovement ?? false;
   const resetComposerRef = useRef<() => void>(() => {});
 
-  const flowAssistant = useFlowStartAssistant({
+  const planner = useLandingPlan({
     onTrackedStep: runStream.trackStep,
     onOpenRun: runStream.openRun,
     onStarted: () => resetComposerRef.current(),
@@ -37,7 +37,7 @@ export function useLandingPage() {
     tasksLoading,
     defaultTaskId: user?.settings?.defaultTaskId ?? null,
     flowAutoImprovement,
-    onAutoStart: flowAssistant.propose,
+    onAutoPlan: planner.planAndStart,
     resetRef: resetComposerRef,
     onTrackedStep: runStream.trackStep,
     onOpenRun: runStream.openRun,
@@ -50,6 +50,5 @@ export function useLandingPage() {
     composer,
     runs: runStream.state,
     flowAutoImprovement,
-    flowAssistant,
   };
 }

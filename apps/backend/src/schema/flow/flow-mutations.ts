@@ -2,6 +2,8 @@ import { builder } from "../builder";
 import { requireUserId } from "../auth";
 import { QueuedTask } from "../task/queuedtask/queued-task";
 import {
+  FlowPlanStartResult,
+  FlowRunReviewResult,
   FlowStartKind,
   FlowStartProposal,
   FlowStartResult,
@@ -14,10 +16,51 @@ import {
 import { draftFlowStartTask, refineFlowTaskDraft } from "./flow-draft-service";
 import { confirmFlowStartDraft } from "./flow-start-service";
 import { wireDecisionResultTarget } from "./flow-decision-target-service";
+import { planAndStartFlow } from "./flow-plan-service";
+import { reviewFlowRun } from "./flow-run-review-service";
 import { confirmNextStep } from "../../queue/confirm-next-step";
 
 builder.mutationType({
   fields: (t) => ({
+    planAndStartFlow: t.field({
+      type: FlowPlanStartResult,
+      args: {
+        state: t.arg.string({ required: true }),
+        prompt: t.arg.string(),
+        fileIds: t.arg.intList(),
+        folderIds: t.arg.intList(),
+        startTaskId: t.arg.int(),
+      },
+      resolve: async (
+        _root,
+        { state, prompt, fileIds, folderIds, startTaskId },
+        ctx,
+      ) => {
+        const userId = requireUserId(ctx);
+        return planAndStartFlow(
+          userId,
+          state,
+          prompt ?? null,
+          fileIds,
+          folderIds,
+          startTaskId ?? null,
+        );
+      },
+    }),
+
+    reviewFlowRun: t.field({
+      type: FlowRunReviewResult,
+      args: {
+        runId: t.arg.string({ required: true }),
+        accepted: t.arg.boolean({ required: true }),
+        feedback: t.arg.string(),
+      },
+      resolve: async (_root, { runId, accepted, feedback }, ctx) => {
+        const userId = requireUserId(ctx);
+        return reviewFlowRun(userId, runId, accepted, feedback ?? null);
+      },
+    }),
+
     proposeFlowStart: t.field({
       type: FlowStartProposal,
       args: {

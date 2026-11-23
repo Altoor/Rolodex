@@ -32,6 +32,7 @@ import {
 interface LandingRunStepProps {
   step: QueuedTaskStep;
   tasks: LandingTask[];
+  runAutoPlanned: boolean;
   flowAutoImprovement: boolean;
   answering: boolean;
   dismissing: boolean;
@@ -73,6 +74,7 @@ function statusIcon(status: StepStatus) {
 export function LandingRunStep({
   step,
   tasks,
+  runAutoPlanned,
   flowAutoImprovement,
   answering,
   dismissing,
@@ -209,12 +211,14 @@ export function LandingRunStep({
         />
       ) : null}
       {flowAutoImprovement &&
+      !runAutoPlanned &&
       step.taskId != null &&
       step.task?.type === "decision" &&
       step.status === "completed" ? (
         <DecisionReviewPanel queuedTaskId={step.id} />
       ) : null}
       {flowAutoImprovement &&
+      !runAutoPlanned &&
       step.taskId != null &&
       step.task?.type === "userDecision" ? (
         <UserDecisionRevisionPanel

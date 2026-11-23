@@ -8,6 +8,13 @@ import type {
 } from "./flow-proposal-service";
 import type { FlowTaskDraft as FlowTaskDraftModel } from "./flow-draft-service";
 import type { FlowStartResult as FlowStartResultModel } from "./flow-start-service";
+import type { FlowPlanStartResult as FlowPlanStartResultModel } from "./flow-plan-service";
+import type {
+  FlowRunReviewContext as FlowRunReviewContextModel,
+  FlowRunReviewResult as FlowRunReviewResultModel,
+  FlowRunReviewStatus as FlowRunReviewStatusModel,
+  FlowRunReviewStep as FlowRunReviewStepModel,
+} from "./flow-run-review-service";
 
 export const FlowStartKind = builder.enumType("FlowStartKind", {
   values: [
@@ -105,5 +112,94 @@ export const FlowStartResult = builder
         resolve: (parent) => parent.queuedTask ?? null,
       }),
       warnings: t.exposeStringList("warnings", { nullable: true }),
+    }),
+  });
+
+export const FlowPlanStartResult = builder
+  .objectRef<FlowPlanStartResultModel>("FlowPlanStartResult")
+  .implement({
+    fields: (t) => ({
+      goal: t.exposeString("goal"),
+      startTaskId: t.exposeInt("startTaskId"),
+      taskIds: t.exposeIntList("taskIds"),
+      warnings: t.exposeStringList("warnings"),
+      queuedTask: t.field({
+        type: QueuedTask,
+        nullable: true,
+        resolve: (parent) => parent.queuedTask ?? null,
+      }),
+    }),
+  });
+
+export const FlowRunReviewStatus = builder.enumType("FlowRunReviewStatus", {
+  values: [
+    "running",
+    "awaiting_review",
+    "accepted",
+    "revised",
+  ] as const,
+});
+
+export const FlowRunOutcome = builder.enumType("FlowRunOutcome", {
+  values: ["completed", "failed"] as const,
+});
+
+export const FlowRunReviewStep = builder
+  .objectRef<FlowRunReviewStepModel>("FlowRunReviewStep")
+  .implement({
+    fields: (t) => ({
+      queuedTaskId: t.exposeInt("queuedTaskId"),
+      taskId: t.exposeInt("taskId"),
+      taskName: t.exposeString("taskName", { nullable: true }),
+      status: t.exposeString("status"),
+      depth: t.exposeInt("depth"),
+      note: t.exposeString("note", { nullable: true }),
+    }),
+  });
+
+export const FlowRunReview = builder
+  .objectRef<FlowRunReviewContextModel>("FlowRunReview")
+  .implement({
+    fields: (t) => ({
+      runId: t.exposeString("runId"),
+      goal: t.exposeString("goal", { nullable: true }),
+      status: t.field({
+        type: FlowRunReviewStatus,
+        resolve: (parent) => parent.status as FlowRunReviewStatusModel,
+      }),
+      outcome: t.field({
+        type: FlowRunOutcome,
+        nullable: true,
+        resolve: (parent) => parent.outcome,
+      }),
+      canReview: t.exposeBoolean("canReview"),
+      steps: t.field({
+        type: [FlowRunReviewStep],
+        resolve: (parent) => parent.steps,
+      }),
+      review: t.field({
+        type: "JSON",
+        nullable: true,
+        resolve: (parent) => parent.review,
+      }),
+    }),
+  });
+
+export const FlowRunReviewResult = builder
+  .objectRef<FlowRunReviewResultModel>("FlowRunReviewResult")
+  .implement({
+    fields: (t) => ({
+      runId: t.exposeString("runId"),
+      status: t.field({
+        type: FlowRunReviewStatus,
+        resolve: (parent) => parent.status as FlowRunReviewStatusModel,
+      }),
+      accepted: t.exposeBoolean("accepted"),
+      revisionRunId: t.exposeString("revisionRunId", { nullable: true }),
+      queuedTask: t.field({
+        type: QueuedTask,
+        nullable: true,
+        resolve: (parent) => parent.queuedTask ?? null,
+      }),
     }),
   });

@@ -13,6 +13,15 @@ export interface CreateQueuedTaskInput {
   state: string;
   fileIds?: number[] | null;
   folderIds?: number[] | null;
+  /**
+   * Pre-built initial tool state. Used when a revised auto-planned run reuses
+   * the original run's attachments instead of uploading new files.
+   */
+  toolState?: Record<string, unknown>[] | null;
+  /** Marks the run as planner-created so it is not gated step-by-step. */
+  autoPlanned?: boolean;
+  /** The end goal the planner is trying to reach. */
+  flowGoal?: string | null;
 }
 
 async function loadContextEntries(
@@ -71,13 +80,19 @@ export async function createQueuedTask(
     );
   }
 
-  const [files, folders] = await Promise.all([
-    loadContextEntries(input.fileIds, "file"),
-    loadContextEntries(input.folderIds, "folder"),
-  ]);
+  let files: Awaited<ReturnType<typeof loadContextEntries>> = [];
+  let folders: Awaited<ReturnType<typeof loadContextEntries>> = [];
+  if (!input.toolState) {
+    [files, folders] = await Promise.all([
+      loadContextEntries(input.fileIds, "file"),
+      loadContextEntries(input.folderIds, "folder"),
+    ]);
+  }
 
-  const toolState: Record<string, unknown>[] = [];
-  if (files.length > 0 || folders.length > 0) {
+  const toolState: Record<string, unknown>[] = input.toolState
+    ? [...input.toolState]
+    : [];
+  if (!input.toolState && (files.length > 0 || folders.length > 0)) {
     toolState.push({
       // Marks the run's initial attachments so tools such as scan_files can
       // distinguish them from files produced by earlier steps.
@@ -95,6 +110,8 @@ export async function createQueuedTask(
     // A new user submission starts a new chain run.
     runId: randomUUID(),
     queued_by: userId,
+    autoPlanned: input.autoPlanned ?? false,
+    flowGoal: input.flowGoal ?? null,
   };
 
   const [created] = await db.insert(queuedTasks).values(queuedTask).returning();

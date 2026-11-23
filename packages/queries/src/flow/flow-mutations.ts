@@ -168,6 +168,9 @@ export const CONFIRM_NEXT_STEP = gql(/* GraphQL */ `
       depth
       status
       runId
+      autoPlanned
+      flowGoal
+      runReview
       queued_by
       queued_at
       result
@@ -203,6 +206,9 @@ export const WIRE_DECISION_RESULT_TARGET = gql(/* GraphQL */ `
       depth
       status
       runId
+      autoPlanned
+      flowGoal
+      runReview
       queued_by
       queued_at
       result
@@ -214,6 +220,100 @@ export const WIRE_DECISION_RESULT_TARGET = gql(/* GraphQL */ `
         name
         type
         toolKey
+      }
+    }
+  }
+`);
+
+export const PLAN_AND_START_FLOW = gql(/* GraphQL */ `
+  mutation PlanAndStartFlow(
+    $state: String!
+    $prompt: String
+    $fileIds: [Int!]
+    $folderIds: [Int!]
+    $startTaskId: Int
+  ) {
+    planAndStartFlow(
+      state: $state
+      prompt: $prompt
+      fileIds: $fileIds
+      folderIds: $folderIds
+      startTaskId: $startTaskId
+    ) {
+      goal
+      startTaskId
+      taskIds
+      warnings
+      queuedTask {
+        id
+        taskId
+        state
+        toolState
+        parentQueuedTaskId
+        depth
+        status
+        runId
+        autoPlanned
+        flowGoal
+        runReview
+        queued_by
+        queued_at
+        result
+        pendingChoice
+        model
+        decisionModel
+        task {
+          id
+          name
+          type
+          toolKey
+          toolConfig
+        }
+      }
+    }
+  }
+`);
+
+export const REVIEW_FLOW_RUN = gql(/* GraphQL */ `
+  mutation ReviewFlowRun(
+    $runId: String!
+    $accepted: Boolean!
+    $feedback: String
+  ) {
+    reviewFlowRun(
+      runId: $runId
+      accepted: $accepted
+      feedback: $feedback
+    ) {
+      runId
+      status
+      accepted
+      revisionRunId
+      queuedTask {
+        id
+        taskId
+        state
+        toolState
+        parentQueuedTaskId
+        depth
+        status
+        runId
+        autoPlanned
+        flowGoal
+        runReview
+        queued_by
+        queued_at
+        result
+        pendingChoice
+        model
+        decisionModel
+        task {
+          id
+          name
+          type
+          toolKey
+          toolConfig
+        }
       }
     }
   }

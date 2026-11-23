@@ -15,15 +15,18 @@ export function LandingRuns({
   retryingStepId,
   retryErrorStepId,
   wiringStepId,
+  reviewingRunId,
   answerError,
   dismissError,
   retryError,
+  reviewError,
   setRunOpen,
   answerChoice,
   confirmNextStep,
   dismissRun,
   retryStep,
   wireDecisionTarget,
+  reviewRun,
 }: LandingRunsProps) {
   if (runs.length === 0) {
     return (
@@ -48,9 +51,11 @@ export function LandingRuns({
           retryingStepId={retryingStepId}
           retryErrorStepId={retryErrorStepId}
           wiringStepId={wiringStepId}
+          reviewingRunId={reviewingRunId}
           answerError={answerError}
           dismissError={dismissError}
           retryError={retryError}
+          reviewError={reviewError}
           onAnswer={(stepId, optionId) => {
             void answerChoice(stepId, optionId);
           }}
@@ -62,6 +67,7 @@ export function LandingRuns({
             void retryStep(stepId);
           }}
           onWireDecisionTarget={wireDecisionTarget}
+          onReviewRun={reviewRun}
         />
       ))}
     </>

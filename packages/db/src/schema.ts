@@ -316,6 +316,13 @@ export const queuedTasks = pgTable("queuedTasks", {
   // Set when the user approved a runtime next-step gate (or explicitly wired
   // this step), so the queue does not ask again when it re-claims the row.
   nextStepApproved: boolean("nextStepApproved").default(false).notNull(),
+  // Marks the first step of a run the planner created. Auto-planned runs are
+  // not gated step-by-step; the whole flow is reviewed when it finishes.
+  autoPlanned: boolean("autoPlanned").default(false).notNull(),
+  // The end goal the planner was asked to achieve for this run.
+  flowGoal: text("flowGoal"),
+  // Run-level outcome review: { status, feedback, reviewedAt }.
+  runReview: json("runReview"),
   queued_at: timestamp("queued_at", { withTimezone: true })
     .defaultNow()
     .notNull(),

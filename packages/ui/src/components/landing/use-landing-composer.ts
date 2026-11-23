@@ -27,7 +27,11 @@ interface UseLandingComposerArgs {
   tasksLoading: boolean;
   defaultTaskId: number | null;
   flowAutoImprovement: boolean;
-  onAutoStart: (state: string, fileIds: number[]) => Promise<void>;
+  onAutoPlan: (
+    state: string,
+    fileIds: number[],
+    startTaskId: number | null,
+  ) => Promise<void>;
   resetRef: MutableRefObject<() => void>;
   onTrackedStep: (step: QueuedTaskStep) => void;
   onOpenRun: (runId: string) => void;
@@ -43,7 +47,7 @@ export function useLandingComposer({
   tasksLoading,
   defaultTaskId,
   flowAutoImprovement,
-  onAutoStart,
+  onAutoPlan,
   resetRef,
   onTrackedStep,
   onOpenRun,
@@ -152,10 +156,11 @@ export function useLandingComposer({
 
       const state = inputs.state.trim() || stateFromAttachments(attachments);
 
-      if (flowAutoImprovement && inputs.taskId === AUTO_TASK_ID) {
-        await onAutoStart(
+      if (flowAutoImprovement) {
+        await onAutoPlan(
           state,
           uploaded.map((entry) => entry.id),
+          inputs.taskId === AUTO_TASK_ID ? null : parseInt(inputs.taskId, 10),
         );
         setAttachments([]);
         return;

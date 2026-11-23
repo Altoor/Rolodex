@@ -23,7 +23,6 @@ import type { LandingComposerProps } from "./landing-model";
 export function LandingComposer({
   tasks,
   autoEnabled,
-  assistant,
   control,
   submit,
   onKeyDown,
@@ -90,7 +89,6 @@ export function LandingComposer({
             {isSubmitting ? <Spinner /> : "Submit"}
           </Button>
         </form>
-        {assistant}
       </CardContent>
       <CardFooter className="flex-col items-stretch gap-3">
         {children}

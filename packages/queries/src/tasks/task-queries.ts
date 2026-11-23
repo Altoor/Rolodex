@@ -137,6 +137,9 @@ export const QUEUED_TASK = gql(/* GraphQL */ `
       depth
       status
       runId
+      autoPlanned
+      flowGoal
+      runReview
       queued_by
       queued_at
       result
@@ -165,6 +168,9 @@ export const ACTIVE_QUEUED_TASKS = gql(/* GraphQL */ `
       depth
       status
       runId
+      autoPlanned
+      flowGoal
+      runReview
       queued_by
       queued_at
       result

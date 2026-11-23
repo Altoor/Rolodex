@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useSubscription } from "@apollo/client/react";
 import {
   CONFIRM_NEXT_STEP,
+  REVIEW_FLOW_RUN,
   WIRE_DECISION_RESULT_TARGET,
 } from "@repo/queries/flow/flow-mutations";
 import {
@@ -46,11 +47,14 @@ export function useLandingRuns({ userId, loggedIn }: UseLandingRunsArgs) {
   const [retryQueuedTask, { error: retryError }] =
     useMutation(RETRY_QUEUED_TASK);
   const [wireDecisionResultTarget] = useMutation(WIRE_DECISION_RESULT_TARGET);
+  const [reviewFlowRun] = useMutation(REVIEW_FLOW_RUN);
   const [answeringStepId, setAnsweringStepId] = useState<number | null>(null);
   const [dismissingStepId, setDismissingStepId] = useState<number | null>(null);
   const [retryingStepId, setRetryingStepId] = useState<number | null>(null);
   const [retryErrorStepId, setRetryErrorStepId] = useState<number | null>(null);
   const [wiringStepId, setWiringStepId] = useState<number | null>(null);
+  const [reviewingRunId, setReviewingRunId] = useState<string | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
 
   // Completed steps of an active run stay here so each chain-of-thought keeps
   // its history.
@@ -200,6 +204,36 @@ export function useLandingRuns({ userId, loggedIn }: UseLandingRunsArgs) {
     }
   };
 
+  // Accepts a finished auto-planned run, or re-plans it from the user's
+  // feedback and starts the revised run. The returned row is the accepted root
+  // or the new run's root, so it appears immediately.
+  const reviewRun = async (
+    runId: string,
+    accepted: boolean,
+    feedback?: string,
+  ) => {
+    setReviewingRunId(runId);
+    setReviewError(null);
+    try {
+      const { data } = await reviewFlowRun({
+        variables: { runId, accepted, feedback },
+      });
+      const step = data?.reviewFlowRun?.queuedTask
+        ? toStep(data.reviewFlowRun.queuedTask)
+        : null;
+      if (step) {
+        trackStep(step);
+        if (!accepted) openRun(step.runId);
+      }
+    } catch (error) {
+      setReviewError(
+        error instanceof Error ? error.message : "Could not review the run",
+      );
+    } finally {
+      setReviewingRunId(null);
+    }
+  };
+
   const setRunOpen = useCallback((runId: string, open: boolean) => {
     setOpenRuns((previous) => ({ ...previous, [runId]: open }));
   }, []);
@@ -217,15 +251,18 @@ export function useLandingRuns({ userId, loggedIn }: UseLandingRunsArgs) {
     retryingStepId,
     retryErrorStepId,
     wiringStepId,
+    reviewingRunId,
     answerError: answerError?.message ?? confirmError?.message ?? null,
     dismissError: dismissError?.message ?? null,
     retryError: retryError?.message ?? null,
+    reviewError,
     setRunOpen,
     answerChoice,
     confirmNextStep,
     dismissRun,
     retryStep,
     wireDecisionTarget,
+    reviewRun,
   };
 
   return { state, trackStep, openRun };

@@ -37,11 +37,23 @@ export interface StepResult {
   model?: string | null;
 }
 
+export interface RunReview {
+  status?: "accepted" | "revised" | string;
+  feedback?: string;
+  revisionRunId?: string | null;
+  reviewedAt?: string;
+  reviewedBy?: number;
+}
+
 export interface QueuedTaskStep {
   id: number;
   taskId: number | null;
   status: "queued" | "running" | "awaiting_input" | "completed" | "failed";
   runId: string;
+  depth: number;
+  autoPlanned: boolean;
+  flowGoal: string | null;
+  runReview: RunReview | null;
   result: StepResult | null;
   pendingChoice: PendingChoice | null;
   model: string | null;
@@ -62,6 +74,10 @@ export interface QueuedTaskRow {
   status:
     "queued" | "running" | "awaiting_input" | "completed" | "failed" | null;
   runId: string | null;
+  depth?: number | null;
+  autoPlanned?: boolean | null;
+  flowGoal?: string | null;
+  runReview?: unknown;
   result: unknown;
   pendingChoice?: unknown;
   model: string | null;
@@ -84,11 +100,15 @@ export interface LandingTask {
 export interface LandingRun {
   runId: string;
   state: string | null;
+  goal: string | null;
   steps: QueuedTaskStep[];
   startTaskId: number | null;
   pending: boolean;
   awaitingInput: boolean;
   failed: boolean;
+  autoPlanned: boolean;
+  runReview: RunReview | null;
+  canReview: boolean;
 }
 
 export interface LandingFormInputs {
@@ -119,9 +139,11 @@ export interface LandingRunsState {
   retryingStepId: number | null;
   retryErrorStepId: number | null;
   wiringStepId: number | null;
+  reviewingRunId: string | null;
   answerError: string | null;
   dismissError: string | null;
   retryError: string | null;
+  reviewError: string | null;
   setRunOpen: (runId: string, open: boolean) => void;
   answerChoice: (stepId: number, optionId: string) => Promise<void>;
   confirmNextStep: (stepId: number, taskId?: number) => Promise<void>;
@@ -132,12 +154,16 @@ export interface LandingRunsState {
     resultId: number,
     targetTaskId: number,
   ) => Promise<void>;
+  reviewRun: (
+    runId: string,
+    accepted: boolean,
+    feedback?: string,
+  ) => Promise<void>;
 }
 
 export interface LandingComposerProps extends LandingComposerState {
   tasks: LandingTask[];
   autoEnabled: boolean;
-  assistant?: ReactNode;
   children: ReactNode;
 }
 
@@ -154,6 +180,10 @@ export function toStep(row: QueuedTaskRow): QueuedTaskStep | null {
     taskId: row.taskId ?? null,
     status: row.status ?? "queued",
     runId: row.runId,
+    depth: row.depth ?? 0,
+    autoPlanned: row.autoPlanned ?? false,
+    flowGoal: row.flowGoal ?? null,
+    runReview: (row.runReview as RunReview | null | undefined) ?? null,
     result: (row.result as StepResult | null) ?? null,
     pendingChoice: (row.pendingChoice as PendingChoice | null) ?? null,
     model: row.model ?? null,
@@ -194,20 +224,30 @@ export function groupRuns(steps: QueuedTaskStep[]): LandingRun[] {
   return [...byRun.entries()]
     .map(([runId, runSteps]) => {
       const ordered = [...runSteps].sort((a, b) => a.id - b.id);
+      const root = ordered.find((step) => step.depth === 0) ?? ordered[0];
+      const pending = ordered.some(
+        (step) =>
+          step.status === "queued" ||
+          step.status === "running" ||
+          step.status === "awaiting_input",
+      );
+      const autoPlanned = root?.autoPlanned ?? false;
+      const runReview = root?.runReview ?? null;
 
       return {
         runId,
-        state: ordered[0]?.state ?? null,
+        state: root?.state ?? null,
+        goal: root?.flowGoal ?? null,
         steps: ordered,
-        startTaskId: ordered[0]?.taskId ?? null,
-        pending: ordered.some(
-          (step) =>
-            step.status === "queued" ||
-            step.status === "running" ||
-            step.status === "awaiting_input",
+        startTaskId: root?.taskId ?? null,
+        pending,
+        awaitingInput: ordered.some(
+          (step) => step.status === "awaiting_input",
         ),
-        awaitingInput: ordered.some((step) => step.status === "awaiting_input"),
         failed: ordered.some((step) => step.status === "failed"),
+        autoPlanned,
+        runReview,
+        canReview: autoPlanned && !pending && !runReview,
       };
     })
     .sort((a, b) => (a.steps[0]?.id ?? 0) - (b.steps[0]?.id ?? 0));
