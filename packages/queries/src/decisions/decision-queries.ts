@@ -31,11 +31,6 @@ export const DECISIONS = gql(/* GraphQL */ `
       instruction
       id
       decisionPremise
-      biases {
-        id
-        option
-        bias
-      }
     }
   }
 `);
@@ -50,11 +45,6 @@ export const GET_DECISION = gql(/* GraphQL */ `
       instruction
       id
       decisionPremise
-      biases {
-        id
-        option
-        bias
-      }
     }
   }
 `);

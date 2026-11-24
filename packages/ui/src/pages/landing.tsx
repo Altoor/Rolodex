@@ -3,6 +3,7 @@
 import { LandingComposer } from "../components/landing/landing-composer";
 import { LandingRuns } from "../components/landing/landing-runs";
 import { useLandingPage } from "../components/landing/use-landing-page";
+import { AssistedRuns } from "../components/assisted";
 import { EmptyState } from "#components/feedback/empty-state";
 import { LoadingState } from "#components/feedback/loading-state";
 import { PageContainer } from "#components/layout/page-container";
@@ -15,7 +16,9 @@ export default function LandingPage() {
     tasks,
     composer,
     runs,
-    flowAutoImprovement,
+    autoImprovement,
+    assistedRunIds,
+    answerAssistedUserChoice,
   } = useLandingPage();
 
   if (authLoading) {
@@ -48,13 +51,17 @@ export default function LandingPage() {
       <LandingComposer
         tasks={tasks}
         {...composer}
-        autoEnabled={flowAutoImprovement}
+        autoEnabled={autoImprovement}
       >
-        <LandingRuns
-          tasks={tasks}
-          flowAutoImprovement={flowAutoImprovement}
-          {...runs}
-        />
+        {autoImprovement ? (
+          <AssistedRuns
+            enabled
+            extraRunIds={assistedRunIds}
+            onAnswerUserChoice={answerAssistedUserChoice}
+          />
+        ) : (
+          <LandingRuns tasks={tasks} {...runs} />
+        )}
       </LandingComposer>
     </PageContainer>
   );

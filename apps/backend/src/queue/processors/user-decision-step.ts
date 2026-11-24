@@ -202,14 +202,17 @@ function buildDynamicOptions(
 export async function buildUserDecisionPendingOptions(
   task: TaskRow,
   toolState: ToolStateEntry[],
+  overrideOptions?: UserDecisionOptionRow[],
 ): Promise<{
   choiceType: PendingChoiceType;
   config: Record<string, unknown>;
   options: PendingChoiceOption[];
 }> {
-  const options = await db.query.userDecisionOptions.findMany({
-    where: { taskId: task.id },
-  });
+  const options =
+    overrideOptions ??
+    (await db.query.userDecisionOptions.findMany({
+      where: { taskId: task.id },
+    }));
   options.sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
 
   const config = asRecord(task.userDecisionConfig) ?? {};
@@ -229,12 +232,13 @@ export async function buildUserDecisionPendingOptions(
 export async function buildUserDecisionPendingChoice(
   task: TaskRow,
   toolState: ToolStateEntry[],
+  overrideOptions?: UserDecisionOptionRow[],
 ): Promise<PendingChoice | null> {
   const {
     choiceType,
     config,
     options: pendingOptions,
-  } = await buildUserDecisionPendingOptions(task, toolState);
+  } = await buildUserDecisionPendingOptions(task, toolState, overrideOptions);
 
   if (pendingOptions.length === 0) return null;
 
@@ -249,21 +253,28 @@ export async function buildUserDecisionPendingChoice(
   };
 }
 
+export interface ParkedUserDecision {
+  pendingChoice: PendingChoice;
+  result: Record<string, unknown>;
+}
+
 /** Creates a persisted user choice and parks the step until it is answered. */
 export async function processUserDecisionStep(
   row: QueuedRow,
   task: TaskRow,
-): Promise<void> {
+  overrideOptions?: UserDecisionOptionRow[],
+): Promise<ParkedUserDecision | null> {
   const pendingChoice = await buildUserDecisionPendingChoice(
     task,
     row.toolState,
+    overrideOptions,
   );
 
   if (!pendingChoice) {
     await finishStep(row.id, "failed", {
       note: "user decision has no options for this run",
     });
-    return;
+    return null;
   }
 
   const pendingOptions = pendingChoice.options;
@@ -277,4 +288,5 @@ export async function processUserDecisionStep(
   };
 
   await awaitStep(row.id, pendingChoice, result, result.summary);
+  return { pendingChoice, result };
 }

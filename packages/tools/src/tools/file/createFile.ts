@@ -24,13 +24,14 @@ import {
   statEntry,
   writeTextFile,
 } from "./services/storage";
+import { withMarkdownFallback } from "./services/name";
 import { detectFileTypeFromName } from "./services/type";
 
 const definition: ToolDefinition = {
   key: "create_file",
   name: "Create file",
   description:
-    "Create a plaintext (UTF-8) file inside the files tree. Non-plaintext extensions are rejected.",
+    "Create a plaintext (UTF-8) file inside the files tree. Non-plaintext extensions are rejected; names without an extension get `.md` appended.",
   category: "file",
   usesModel: true,
   modelRoles: ["embedding"],
@@ -50,7 +51,7 @@ const definition: ToolDefinition = {
       name: {
         type: "string",
         description:
-          "File name including extension, e.g. note.txt. No slashes.",
+          "File name including extension, e.g. note.txt. Names without an extension get `.md` appended. No slashes.",
       },
       content: {
         type: "string",
@@ -84,8 +85,10 @@ export const createFileTool: Tool = {
     try {
       const input = mergeToolInput(context);
 
-      const name = validateEntryName(
-        requireNonEmptyString(readString(input, "name"), "name"),
+      const name = withMarkdownFallback(
+        validateEntryName(
+          requireNonEmptyString(readString(input, "name"), "name"),
+        ),
       );
       const content = readString(input, "content") ?? "";
       const description = readString(input, "description");

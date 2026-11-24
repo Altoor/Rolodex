@@ -37,21 +37,20 @@ export const relations = defineRelations(schema, (r) => ({
       from: r.decisions.authorId,
       to: r.users.id,
     }),
-    biases: r.many.decisionBiases(),
   },
 
-  decisionBiases: {
-    decision: r.one.decisions({
-      from: r.decisionBiases.decisionId,
-      to: r.decisions.id,
+  runs: {
+    user: r.one.users({
+      from: r.runs.userId,
+      to: r.users.id,
     }),
-  },
-
-  decisionFeedback: {
-    decision: r.one.decisions({
-      from: r.decisionFeedback.decisionId,
-      to: r.decisions.id,
+    startTask: r.one.tasks({
+      from: r.runs.startTaskId,
+      to: r.tasks.id,
     }),
+    steps: r.many.queuedTasks(),
+    attempts: r.many.stepAttempts(),
+    traceEvents: r.many.traceEvents(),
   },
 
   queuedTasks: {
@@ -63,6 +62,36 @@ export const relations = defineRelations(schema, (r) => ({
     task: r.one.tasks({
       from: r.queuedTasks.taskId,
       to: r.tasks.id,
+    }),
+
+    run: r.one.runs({
+      from: r.queuedTasks.runId,
+      to: r.runs.id,
+    }),
+
+    attempts: r.many.stepAttempts(),
+  },
+
+  stepAttempts: {
+    step: r.one.queuedTasks({
+      from: r.stepAttempts.queuedTaskId,
+      to: r.queuedTasks.id,
+    }),
+    run: r.one.runs({
+      from: r.stepAttempts.runId,
+      to: r.runs.id,
+    }),
+    traceEvents: r.many.traceEvents(),
+  },
+
+  traceEvents: {
+    run: r.one.runs({
+      from: r.traceEvents.runId,
+      to: r.runs.id,
+    }),
+    attempt: r.one.stepAttempts({
+      from: r.traceEvents.attemptId,
+      to: r.stepAttempts.id,
     }),
   },
 

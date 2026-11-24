@@ -23,6 +23,12 @@ import {
 } from "./entry";
 import { normalizeRelativePath } from "./paths";
 import { selectFileEntryWithDecision } from "./selection";
+import {
+  DEFAULT_MINIMUM_CONFIDENCE,
+  DEFAULT_MINIMUM_SCORE,
+  passesMinimumScore,
+  readMinimumThreshold,
+} from "../../search-thresholds";
 import { toFileEntryRef, type FileEntryCandidate } from "./dto";
 
 export type FileEntryKind = "file" | "folder";
@@ -80,6 +86,16 @@ export async function findFileMatches(
     1,
     Math.floor(readNumber(input, "limit") ?? options.limit ?? 5),
   );
+  const minimumScore = readMinimumThreshold(
+    input,
+    "minimumScore",
+    DEFAULT_MINIMUM_SCORE,
+  );
+  const minimumConfidence = readMinimumThreshold(
+    input,
+    "minimumConfidence",
+    DEFAULT_MINIMUM_CONFIDENCE,
+  );
 
   const kindCondition =
     kind !== undefined ? eq(fileEntries.kind, kind) : undefined;
@@ -124,6 +140,10 @@ export async function findFileMatches(
         },
       ];
     });
+
+    candidates = candidates.filter((candidate) =>
+      passesMinimumScore(candidate.score, minimumScore),
+    );
   }
 
   if (candidates.length === 0) {
@@ -171,6 +191,7 @@ export async function findFileMatches(
       queryText,
       model,
       kind,
+      minimumConfidence,
     );
 
     candidates = [

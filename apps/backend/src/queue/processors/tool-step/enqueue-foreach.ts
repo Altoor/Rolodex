@@ -1,9 +1,11 @@
 import type { ToolExecution, ToolStateEntry } from "@repo/tools";
+import type { queuedTasks } from "@repo/db";
 import { MAX_CHAIN_DEPTH, MAX_FOREACH_ITEMS } from "../../constants";
-import { enqueueSteps } from "../../step-store";
 import type { QueuedRow } from "../../types";
 
-export interface EnqueueForeachArgs {
+export type QueuedStepInsert = typeof queuedTasks.$inferInsert;
+
+export interface PlanForeachArgs {
   row: QueuedRow;
   execution: ToolExecution;
   nextTaskId: number | null;
@@ -11,26 +13,26 @@ export interface EnqueueForeachArgs {
   nextToolState: ToolStateEntry[];
 }
 
-export interface ForeachEnqueueResult {
+export interface ForeachPlan {
   itemCount: number;
   nextTaskId: number | null;
-  childQueuedTaskIds: number[];
+  nextSteps: QueuedStepInsert[];
   note?: string;
   failureNote?: string;
 }
 
 /**
- * Fans a foreach tool result out into child steps. Returns a failure note when
- * the item limit or configuration is invalid; otherwise returns the ids of the
- * enqueued children.
+ * Plans the fan-out rows for a foreach tool. Planning is separated from
+ * insertion so the standard queue can enqueue immediately while an assisted
+ * step can wait for acceptance.
  */
-export async function enqueueForeach({
+export function planForeach({
   row,
   execution,
   nextTaskId,
   nextState,
   nextToolState,
-}: EnqueueForeachArgs): Promise<ForeachEnqueueResult> {
+}: PlanForeachArgs): ForeachPlan {
   const items = execution.foreach?.items ?? [];
   const itemCount = items.length;
 
@@ -38,7 +40,7 @@ export async function enqueueForeach({
     return {
       itemCount,
       nextTaskId,
-      childQueuedTaskIds: [],
+      nextSteps: [],
       failureNote: `foreach returned ${items.length} items; max is ${MAX_FOREACH_ITEMS}`,
     };
   }
@@ -49,7 +51,7 @@ export async function enqueueForeach({
     return {
       itemCount,
       nextTaskId,
-      childQueuedTaskIds: [],
+      nextSteps: [],
       failureNote: "foreach has no next task configured",
     };
   }
@@ -58,14 +60,16 @@ export async function enqueueForeach({
     return {
       itemCount,
       nextTaskId: null,
-      childQueuedTaskIds: [],
+      nextSteps: [],
       note: `max chain depth (${MAX_CHAIN_DEPTH}) reached — run stopped`,
     };
   }
 
   if (items.length > 0 && forkTaskId != null) {
-    const childQueuedTaskIds = await enqueueSteps(
-      items.map((item) => ({
+    return {
+      itemCount,
+      nextTaskId: forkTaskId,
+      nextSteps: items.map((item) => ({
         taskId: forkTaskId,
         state: nextState,
         toolState: [...nextToolState, item],
@@ -76,19 +80,13 @@ export async function enqueueForeach({
         model: execution.nextModel ?? row.model,
         decisionModel: execution.nextDecisionModel ?? row.decisionModel,
       })),
-    );
-
-    return {
-      itemCount,
-      nextTaskId: forkTaskId,
-      childQueuedTaskIds,
     };
   }
 
   return {
     itemCount,
     nextTaskId: null,
-    childQueuedTaskIds: [],
+    nextSteps: [],
     note: "foreach returned no items — no next tasks enqueued",
   };
 }

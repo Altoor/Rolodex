@@ -142,67 +142,6 @@ export const decisions = pgTable("decisions", {
   authorId: integer("authorId").notNull(),
 });
 
-/**
- * Learned per-option bias applied to a System One answer before result
- * matching. Tasks and decisions are workspace-global, so these biases are
- * global per decision rather than per user.
- */
-export const decisionBiases = pgTable(
-  "decisionBiases",
-  {
-    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-    decisionId: integer("decisionId")
-      .notNull()
-      .references(() => decisions.id, { onDelete: "cascade" }),
-    option: text("option").notNull(),
-    bias: real("bias").notNull().default(0),
-    updatedAt: timestamp("updatedAt", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-  },
-  (table) => [
-    uniqueIndex("decision_biases_decision_option_idx").on(
-      table.decisionId,
-      table.option,
-    ),
-  ],
-);
-
-/**
- * One review per queued decision step. The stored deltas let a changed review
- * be reversed before applying the new correction.
- */
-export const decisionFeedback = pgTable(
-  "decisionFeedback",
-  {
-    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-    queuedTaskId: integer("queuedTaskId").notNull().unique(),
-    taskId: integer("taskId").notNull(),
-    decisionId: integer("decisionId")
-      .notNull()
-      .references(() => decisions.id, { onDelete: "cascade" }),
-    runId: uuid("runId").notNull(),
-    predictedResultId: integer("predictedResultId"),
-    actualResultId: integer("actualResultId"),
-    correct: boolean("correct").notNull(),
-    appliedDeltas: json("appliedDeltas")
-      .$type<{ key: string; delta: number }[]>()
-      .notNull()
-      .default(sql`'[]'::json`),
-    reviewedBy: integer("reviewedBy").notNull(),
-    createdAt: timestamp("createdAt", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-    updatedAt: timestamp("updatedAt", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-  },
-  (table) => [
-    index("decision_feedback_decision_idx").on(table.decisionId),
-    index("decision_feedback_run_idx").on(table.runId),
-  ],
-);
-
 export const userDecisionOptions = pgTable("userDecisionOptions", {
   id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
   taskId: integer("taskId").notNull(),
@@ -281,7 +220,142 @@ export const tasks = pgTable("tasks", {
   // Prioritized steps jump to the top of the queue, even when they must run
   // exclusively.
   prioritize: boolean("prioritize").default(false).notNull(),
+  // Draft tasks belong to an assisted task-builder run. They are hidden from
+  // normal task lists/export and promoted or deleted when the run ends.
+  isDraft: boolean("isDraft").default(false).notNull(),
+  draftOwnerId: integer("draftOwnerId"),
 });
+
+export const runMode = pgEnum("runMode", ["standard", "assisted"]);
+
+export const runStatus = pgEnum("runStatus", [
+  "running",
+  "awaiting_step_review",
+  "awaiting_decision_review",
+  "awaiting_user_choice",
+  "completed",
+  "cancelled",
+  "failed",
+]);
+
+/**
+ * One chain run. Standard runs are executed by the queue exactly as before;
+ * assisted runs pause after each reviewed step until the user accepts it.
+ */
+export const runs = pgTable(
+  "runs",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: integer("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    mode: runMode("mode").default("standard").notNull(),
+    status: runStatus("status").default("running").notNull(),
+    state: text("state").notNull(),
+    startTaskId: integer("startTaskId"),
+    startTaskSnapshot: json("startTaskSnapshot"),
+    parentRunId: uuid("parentRunId"),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updatedAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("runs_status_user_idx").on(table.status, table.userId),
+    index("runs_mode_idx").on(table.mode),
+  ],
+);
+
+export const attemptKind = pgEnum("attemptKind", [
+  "initial",
+  "revision",
+  "replay",
+]);
+
+export const attemptStatus = pgEnum("attemptStatus", [
+  "running",
+  "succeeded",
+  "failed",
+  "cancelled",
+  "committed",
+]);
+
+/**
+ * One execution of a step with a particular task snapshot. A rejected outcome
+ * is kept here until the run is accepted/cancelled so it can be previewed and
+ * compared; it is never partially committed.
+ */
+export const stepAttempts = pgTable(
+  "stepAttempts",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    queuedTaskId: integer("queuedTaskId")
+      .notNull()
+      .references(() => queuedTasks.id, { onDelete: "cascade" }),
+    runId: uuid("runId")
+      .notNull()
+      .references(() => runs.id, { onDelete: "cascade" }),
+    attemptNumber: integer("attemptNumber").notNull(),
+    kind: attemptKind("kind").default("initial").notNull(),
+    status: attemptStatus("status").default("running").notNull(),
+    taskSnapshot: json("taskSnapshot").notNull(),
+    beforeState: text("beforeState").notNull(),
+    beforeToolState: json("beforeToolState")
+      .notNull()
+      .default(sql`'[]'::json`),
+    afterState: text("afterState"),
+    afterToolState: json("afterToolState"),
+    result: json("result"),
+    effectJournal: json("effectJournal"),
+    revision: json("revision"),
+    review: json("review"),
+    workspaceKey: text("workspaceKey"),
+    cause: text("cause"),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    finishedAt: timestamp("finishedAt", { withTimezone: true }),
+    committedAt: timestamp("committedAt", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("step_attempts_step_number_idx").on(
+      table.queuedTaskId,
+      table.attemptNumber,
+    ),
+    index("step_attempts_run_idx").on(table.runId),
+  ],
+);
+
+/**
+ * Append-only observable trace for an assisted run. Events are scoped to the
+ * run and removed with it.
+ */
+export const traceEvents = pgTable(
+  "traceEvents",
+  {
+    id: bigint("id", { mode: "number" })
+      .primaryKey()
+      .generatedAlwaysAsIdentity(),
+    runId: uuid("runId")
+      .notNull()
+      .references(() => runs.id, { onDelete: "cascade" }),
+    attemptId: integer("attemptId").references(() => stepAttempts.id, {
+      onDelete: "cascade",
+    }),
+    sequence: integer("sequence").notNull(),
+    kind: text("kind").notNull(),
+    payload: json("payload"),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("trace_events_run_sequence_idx").on(table.runId, table.sequence),
+    index("trace_events_attempt_idx").on(table.attemptId),
+  ],
+);
 
 export const queuedTaskStatus = pgEnum("queuedTaskStatus", [
   "queued",
@@ -313,16 +387,6 @@ export const queuedTasks = pgTable("queuedTasks", {
   result: json("result"),
   // Immutable snapshot of a choice that is waiting for the user.
   pendingChoice: json("pendingChoice"),
-  // Set when the user approved a runtime next-step gate (or explicitly wired
-  // this step), so the queue does not ask again when it re-claims the row.
-  nextStepApproved: boolean("nextStepApproved").default(false).notNull(),
-  // Marks the first step of a run the planner created. Auto-planned runs are
-  // not gated step-by-step; the whole flow is reviewed when it finishes.
-  autoPlanned: boolean("autoPlanned").default(false).notNull(),
-  // The end goal the planner was asked to achieve for this run.
-  flowGoal: text("flowGoal"),
-  // Run-level outcome review: { status, feedback, reviewedAt }.
-  runReview: json("runReview"),
   queued_at: timestamp("queued_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
@@ -386,8 +450,8 @@ export const userSettings = pgTable("userSettings", {
   defaultTaskId: integer("defaultTaskId").references(() => tasks.id, {
     onDelete: "set null",
   }),
-  /** Opt in to model-assisted flow creation and run review. */
-  flowAutoImprovement: boolean("flowAutoImprovement").default(false).notNull(),
+  /** Opt in to assisted runs from the landing page and task builder. */
+  autoImprovement: boolean("autoImprovement").default(false).notNull(),
   defaultModelName: text("defaultModelName").references(() => models.name, {
     onDelete: "set null",
   }),

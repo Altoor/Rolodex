@@ -38,6 +38,13 @@ export interface ToolDefinition {
   modelRoles?: ToolModelRole[];
   /** Example `toolConfig` the tools page can display. */
   exampleConfig?: ToolConfig | null;
+  /**
+   * True when all of the tool's effects are covered by the trial workspace
+   * (database rows and the files tree). Set `false` for a tool that calls an
+   * external service or mutates something the trial cannot roll back; assisted
+   * runs reject it instead of pretending the effect was sandboxed.
+   */
+  trialSafe?: boolean;
 }
 
 export interface Tool {

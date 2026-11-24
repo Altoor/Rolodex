@@ -36,6 +36,7 @@ import {
   toBranchTaskOptions,
   toModelNames,
 } from "./task-builder-service";
+import { buildTaskSnapshot } from "./build-task-snapshot";
 import TaskDecisionSection from "./components/taskDecisionSection";
 import TaskBuilderAssistant from "./components/taskBuilderAssistant";
 import UserDecisionSection from "./components/userDecisionSection";
@@ -45,7 +46,7 @@ interface TaskBuilderProps {
   onSelectTaskId: (taskId: number) => void;
 }
 
-const TaskBuilder = ({ selectedTaskId, onSelectTaskId }: TaskBuilderProps) => {
+const TaskBuilder = ({ selectedTaskId }: TaskBuilderProps) => {
   const methods = useForm<TaskFormValues>({
     defaultValues: emptyTaskFormValues,
   });
@@ -214,11 +215,6 @@ const TaskBuilder = ({ selectedTaskId, onSelectTaskId }: TaskBuilderProps) => {
     updateResultError ??
     deleteResultError;
 
-  const useAssistantTask = (id: number) => {
-    setAssistantOpen(false);
-    onSelectTaskId(id);
-  };
-
   return (
     <FormProvider {...methods}>
       <div className="flex flex-col gap-2">
@@ -227,9 +223,15 @@ const TaskBuilder = ({ selectedTaskId, onSelectTaskId }: TaskBuilderProps) => {
         ) : null}
         {assistantOpen ? (
           <TaskBuilderAssistant
-            tasks={tasksData?.tasks ?? []}
-            onCreated={useAssistantTask}
-            onEditTask={useAssistantTask}
+            taskId={taskId}
+            getSnapshot={() =>
+              buildTaskSnapshot(getValues(), selectedDecisionId)
+            }
+            onStarted={(nextTaskId) => {
+              if (nextTaskId != null && taskId === undefined) {
+                setCreatedTaskId(nextTaskId);
+              }
+            }}
             onClose={() => setAssistantOpen(false)}
           />
         ) : null}

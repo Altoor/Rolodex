@@ -137,9 +137,6 @@ export const QUEUED_TASK = gql(/* GraphQL */ `
       depth
       status
       runId
-      autoPlanned
-      flowGoal
-      runReview
       queued_by
       queued_at
       result
@@ -168,9 +165,6 @@ export const ACTIVE_QUEUED_TASKS = gql(/* GraphQL */ `
       depth
       status
       runId
-      autoPlanned
-      flowGoal
-      runReview
       queued_by
       queued_at
       result
@@ -183,6 +177,42 @@ export const ACTIVE_QUEUED_TASKS = gql(/* GraphQL */ `
         type
         toolKey
         toolConfig
+      }
+    }
+  }
+`);
+
+export const STANDARD_RUN_HISTORY = gql(/* GraphQL */ `
+  query StandardRunHistory($limit: Int, $offset: Int) {
+    standardRunHistory(limit: $limit, offset: $offset) {
+      id
+      status
+      state
+      startTaskId
+      createdAt
+      updatedAt
+      steps {
+        id
+        taskId
+        state
+        toolState
+        parentQueuedTaskId
+        depth
+        status
+        runId
+        queued_by
+        queued_at
+        result
+        pendingChoice
+        model
+        decisionModel
+        task {
+          id
+          name
+          type
+          toolKey
+          toolConfig
+        }
       }
     }
   }

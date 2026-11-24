@@ -285,7 +285,7 @@ function parseDecision(value: unknown, index: number): ExportDecision {
     name,
     type: asEnum(record.type, DECISION_TYPES, "choice"),
     decisionPremise:
-      asString(record.decisionPremise) ?? "Which option fits best?",
+      asString(record.decisionPremise) ?? "decision",
     instruction:
       asString(record.instruction) ??
       "Choose the option that best fits the current state.",

@@ -27,16 +27,14 @@ export const setupQuestion = ({
           extensions: { code: "BAD_USER_INPUT" },
         });
       }
-      if (!optionDescriptions) {
-        throw new GraphQLError("missing optionDescriptions for choice", {
-          extensions: { code: "BAD_USER_INPUT" },
-        });
-      }
 
+      // Descriptions are optional. Older decisions (and some imports) store
+      // `null`, and the criteria can be built from the option names alone.
+      const descriptions = optionDescriptions ?? [];
       const criteria = Object.fromEntries(
         options.map((option, index) => [
           option,
-          optionDescriptions[index] ?? "",
+          descriptions[index] ?? "",
         ]),
       );
 

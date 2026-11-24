@@ -6,6 +6,7 @@ import {
 } from "@repo/ai";
 import { ToolInputError } from "../../../model";
 import { readFileBuffer } from "./storage";
+import { withUserState } from "./user-state";
 
 function envInt(name: string, fallback: number): number {
   const raw = process.env[name]?.trim();
@@ -111,6 +112,8 @@ export async function describeImageTexts(
     userId: number;
     requests: ImageVisionRequest[];
     maxBytes?: number;
+    /** Optional run context passed to every vision request. */
+    userState?: string;
   },
 ): Promise<{ text: ImageVisionText; warning?: string }> {
   const failures: string[] = [];
@@ -145,10 +148,11 @@ export async function describeImageTexts(
 
   const results = await Promise.allSettled(
     options.requests.map(async (request) => {
+      const prompt = request.prompt?.trim() || defaultVisionPrompt(request.kind);
       const response = await withTimeout(
         client.generate({
           model,
-          prompt: request.prompt?.trim() || defaultVisionPrompt(request.kind),
+          prompt: withUserState(prompt, options.userState),
           images: [buffer.toString("base64")],
           stream: false,
           ...keepAliveOption,

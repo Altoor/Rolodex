@@ -21,13 +21,6 @@ export const QueuedTask = builder.drizzleObject("queuedTasks", {
       resolve: (parent) => parent.status,
     }),
     runId: t.exposeString("runId"),
-    autoPlanned: t.exposeBoolean("autoPlanned"),
-    flowGoal: t.exposeString("flowGoal", { nullable: true }),
-    runReview: t.field({
-      type: "JSON",
-      nullable: true,
-      resolve: (parent) => parent.runReview ?? null,
-    }),
     result: t.field({
       type: "JSON",
       nullable: true,

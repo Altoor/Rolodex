@@ -12,6 +12,7 @@ import { ensureFileType } from "./services/fileType";
 import { DEFAULT_MAX_BINARY_BYTES } from "./services/limits";
 import { resolveFileEntryRow } from "./services/search";
 import { readFileBuffer } from "./services/storage";
+import { trimUserState } from "./services/user-state";
 import {
   describeImageTexts,
   type ImageVisionRequest,
@@ -59,7 +60,7 @@ const definition: ToolDefinition = {
   key: "read_image_file",
   name: "Read image file",
   description:
-    "Read image metadata and a preview URL. Set describe or ocr to send the image to the configured vision model. Vision failures are reported as a warning and do not block the metadata read.",
+    "Read image metadata and a preview URL. Set describe or ocr to send the image to the configured vision model. The run's user state is included as context by default; set includeState to false to omit it. Vision failures are reported as a warning and do not block the metadata read.",
   category: "file",
   usesModel: true,
   modelRoles: ["vision"],
@@ -89,6 +90,12 @@ const definition: ToolDefinition = {
         type: "string",
         description:
           "Optional custom vision prompt. It replaces the description prompt, or the OCR prompt when OCR is the only requested output.",
+      },
+      includeState: {
+        type: "boolean",
+        description:
+          "Include the run's user state in the vision prompt so the model can use context such as names or instructions. Defaults to true.",
+        default: true,
       },
       includeBase64: {
         type: "boolean",
@@ -129,6 +136,10 @@ export const readImageFileTool: Tool = {
       const describe = readBoolean(input, "describe") ?? false;
       const ocr = readBoolean(input, "ocr") ?? false;
       const prompt = readString(input, "prompt")?.trim() || undefined;
+      const includeState = readBoolean(input, "includeState") ?? true;
+      const userState = includeState
+        ? trimUserState(context.state)
+        : undefined;
       const requests = visionRequests(describe, ocr, prompt);
       const maxBytes =
         readNumber(input, "maxBytes") ?? DEFAULT_MAX_BINARY_BYTES;
@@ -158,6 +169,7 @@ export const readImageFileTool: Tool = {
           userId: context.userId,
           requests,
           maxBytes,
+          userState,
         });
 
         if (result.text.description || result.text.ocr) vision = result.text;

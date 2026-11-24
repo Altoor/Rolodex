@@ -234,6 +234,24 @@ appended to toolState so a stale match from an earlier step is cleared. Successf
 lookups report `matched: true`. Foreach lookups still enqueue no children when
 nothing matches.
 
+### Find thresholds
+
+The find tools accept two optional thresholds. `minimumScore` (default `0`)
+decides when a vector candidate is good enough to return without asking the
+decision model; lower-scoring candidates are ignored and the tool falls through
+to lexical and decision-model lookup. `minimumConfidence` (default `0`) is the
+decision-model confidence (or `noul` probability) a fallback selection must
+reach. A below-threshold selection behaves like any other miss, so
+`allowEmpty: true` returns `matched: false` instead of failing.
+
+```json
+{
+  "query": "invoice from March",
+  "minimumScore": 0.7,
+  "minimumConfidence": 0.8
+}
+```
+
 `scan_files` has two output modes:
 
 - Normal: appends `{ changes, counts }`; unchanged entries are omitted unless
@@ -296,7 +314,8 @@ text. Both are opt-in:
 You can also pass a custom `prompt`, which implies vision even when `describe`
 and `ocr` are false. `describe` writes a `description` string, `ocr` writes an
 `ocr` string, and setting both makes two vision calls so the fields stay
-separate. A custom prompt replaces the description prompt, or the OCR prompt
+separate. The run's user state is prepended to each vision prompt by default;
+set `includeState: false` to use only the prompt and the image. A custom prompt replaces the description prompt, or the OCR prompt
 when OCR is the only requested output. Vision output also includes
 `visionModel`.
 

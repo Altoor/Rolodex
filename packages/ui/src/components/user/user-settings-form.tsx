@@ -32,7 +32,7 @@ const NONE = "__none__";
 
 interface UserSettingsFormProps {
   initialDefaultTaskId: number | null;
-  initialFlowAutoImprovement: boolean;
+  initialAutoImprovement: boolean;
   initialDefaultModelName: string | null;
   initialDefaultDecisionModelName: string | null;
   initialDefaultVisionModelName: string | null;
@@ -46,7 +46,7 @@ interface UserSettingsFormProps {
  */
 export function UserSettingsForm({
   initialDefaultTaskId,
-  initialFlowAutoImprovement,
+  initialAutoImprovement,
   initialDefaultModelName,
   initialDefaultDecisionModelName,
   initialDefaultVisionModelName,
@@ -71,8 +71,8 @@ export function UserSettingsForm({
   const [defaultTaskId, setDefaultTaskId] = useState(
     initialDefaultTaskId?.toString() ?? NONE,
   );
-  const [flowAutoImprovement, setFlowAutoImprovement] = useState(
-    initialFlowAutoImprovement,
+  const [autoImprovement, setFlowAutoImprovement] = useState(
+    initialAutoImprovement,
   );
   const [defaultModelName, setDefaultModelName] = useState(
     initialDefaultModelName ?? NONE,
@@ -91,7 +91,7 @@ export function UserSettingsForm({
     const { error } = await updateSettings({
       variables: {
         defaultTaskId: defaultTaskId === NONE ? null : Number(defaultTaskId),
-        flowAutoImprovement,
+        autoImprovement,
         defaultModelName: defaultModelName === NONE ? null : defaultModelName,
         defaultDecisionModelName:
           defaultDecisionModelName === NONE ? null : defaultDecisionModelName,
@@ -114,7 +114,7 @@ export function UserSettingsForm({
       <CardContent className="flex flex-col gap-5">
         <Field orientation="horizontal">
           <Checkbox
-            checked={flowAutoImprovement}
+            checked={autoImprovement}
             onCheckedChange={(checked) => {
               setFlowAutoImprovement(checked === true);
               onDirty?.();
@@ -122,11 +122,11 @@ export function UserSettingsForm({
             disabled={saving}
           />
           <div className="flex flex-col gap-0.5">
-            <FieldLabel>Flow auto improvement</FieldLabel>
+            <FieldLabel>Assisted runs</FieldLabel>
             <FieldDescription>
-              Let a local model propose a starting task when none is selected,
-              draft new task settings, and review decision choices after a run.
-              Corrections nudge future choices toward what you mark as right.
+              Start reviewed assisted runs from the landing page or task
+              builder. Each tool or decision step pauses so you can accept it,
+              repair it, or cancel before its effects are committed.
             </FieldDescription>
           </div>
         </Field>

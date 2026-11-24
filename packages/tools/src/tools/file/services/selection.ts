@@ -1,6 +1,10 @@
 import type { SystemOneChoiceQuestion } from "ollama";
 import { getOllamaClient, getOllamaKeepAlive } from "@repo/ai";
 import { ToolInputError, ToolNoMatchError } from "../../../model";
+import {
+  assertMinimumConfidence,
+  DEFAULT_MINIMUM_CONFIDENCE,
+} from "../../search-thresholds";
 
 interface SelectableFileEntry {
   id: number;
@@ -25,6 +29,7 @@ export async function selectFileEntryWithDecision<
   request: string,
   model: string | null | undefined,
   kindLabel?: "file" | "folder",
+  minimumConfidence = DEFAULT_MINIMUM_CONFIDENCE,
 ): Promise<T> {
   const label = kindLabel ?? "file or folder";
 
@@ -78,6 +83,8 @@ export async function selectFileEntryWithDecision<
   if (answer.choice === NONE_OPTION) {
     throw new ToolNoMatchError(`no matching ${label} found`);
   }
+
+  assertMinimumConfidence(answer, minimumConfidence, label);
 
   const id = Number(
     answer.choice.startsWith(ENTRY_OPTION_PREFIX)

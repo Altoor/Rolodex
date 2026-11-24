@@ -15,21 +15,21 @@ export const CREATEUSER = gql(/* GraphQL */ `
 export const UPDATE_USER_SETTINGS = gql(/* GraphQL */ `
   mutation UpdateUserSettings(
     $defaultTaskId: Int
-    $flowAutoImprovement: Boolean
+    $autoImprovement: Boolean
     $defaultModelName: String
     $defaultDecisionModelName: String
     $defaultVisionModelName: String
   ) {
     updateUserSettings(
       defaultTaskId: $defaultTaskId
-      flowAutoImprovement: $flowAutoImprovement
+      autoImprovement: $autoImprovement
       defaultModelName: $defaultModelName
       defaultDecisionModelName: $defaultDecisionModelName
       defaultVisionModelName: $defaultVisionModelName
     ) {
       userId
       defaultTaskId
-      flowAutoImprovement
+      autoImprovement
       defaultModelName
       defaultDecisionModelName
       defaultVisionModelName

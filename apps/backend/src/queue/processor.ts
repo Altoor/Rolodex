@@ -1,6 +1,7 @@
 import { db, getAppSettings } from "@repo/db";
-import { gateNextStep } from "./gate-next-step";
+import { processAssistedStep } from "./assisted-step";
 import { warmQueuedRows } from "./model-warmup";
+import { getRun, setRunStatus, settleStandardRunIfIdle } from "./run-store";
 import { processDecisionStep } from "./processors/decision-step";
 import { processToolStep } from "./processors/tool-step";
 import { processUserDecisionStep } from "./processors/user-decision-step";
@@ -44,6 +45,21 @@ async function processQueue(): Promise<void> {
   const running = new Map<number, Promise<void>>();
   let exclusiveRunning = false;
 
+  /**
+   * Assisted runs are sequential, so a step that cannot run means the run is
+   * over. Standard runs may fan out, so leave their history alone here.
+   */
+  const failAssistedRun = async (
+    row: QueuedRow,
+    note: string,
+  ): Promise<void> => {
+    const run = await getRun(row.runId).catch(() => undefined);
+    if (run?.mode === "assisted") {
+      await setRunStatus(run.id, "failed").catch(() => undefined);
+      console.error(`Queue: assisted run ${run.id} failed: ${note}`);
+    }
+  };
+
   /** Starts one step and keeps it in the in-flight map until it settles. */
   const launch = (row: QueuedRow, task: TaskRow): void => {
     const promise = (async () => {
@@ -54,14 +70,35 @@ async function processQueue(): Promise<void> {
         await finishStep(row.id, "failed", {
           note: `queue error: ${message}`,
         }).catch(() => undefined);
+        await failAssistedRun(row, `queue error: ${message}`);
       } finally {
         running.delete(row.id);
         if (!task.canRunInParallel) exclusiveRunning = false;
+        // Standard chains can fan out; this only ends the run once every
+        // branch has settled. Assisted runs keep their review statuses.
+        await settleStandardRunIfIdle(row.runId).catch(() => undefined);
       }
     })();
 
     running.set(row.id, promise);
     if (!task.canRunInParallel) exclusiveRunning = true;
+  };
+
+  /**
+   * Loads the task for a step and forces assisted-run steps to run alone, even
+   * when their task definition allows parallel execution.
+   */
+  const loadRunnableTask = async (
+    row: QueuedRow,
+  ): Promise<TaskRow | undefined> => {
+    const task = await db.query.tasks.findFirst({
+      where: { id: row.taskId },
+    });
+    if (!task) return undefined;
+    const run = await getRun(row.runId);
+    return run?.mode === "assisted"
+      ? { ...task, canRunInParallel: false }
+      : task;
   };
 
   try {
@@ -79,13 +116,13 @@ async function processQueue(): Promise<void> {
         const row = await findNextQueuedStep();
         if (!row) break;
 
-        const task = await db.query.tasks.findFirst({
-          where: { id: row.taskId },
-        });
+        const task = await loadRunnableTask(row);
         if (!task) {
           await finishStep(row.id, "failed", {
             note: "task no longer exists",
           });
+          await failAssistedRun(row, "task no longer exists");
+          await settleStandardRunIfIdle(row.runId).catch(() => undefined);
           continue;
         }
 
@@ -112,13 +149,13 @@ async function processQueue(): Promise<void> {
       if (running.size < maxParallel) {
         const row = await findNextQueuedStep({ onlyParallel: true });
         if (row) {
-          const task = await db.query.tasks.findFirst({
-            where: { id: row.taskId },
-          });
+          const task = await loadRunnableTask(row);
           if (!task) {
             await finishStep(row.id, "failed", {
               note: "task no longer exists",
             });
+            await failAssistedRun(row, "task no longer exists");
+            await settleStandardRunIfIdle(row.runId).catch(() => undefined);
             continue;
           }
 
@@ -146,9 +183,13 @@ async function processStep(row: QueuedRow, task: TaskRow): Promise<void> {
   const claimed = await claimStep(row, task.name);
   if (!claimed) return;
 
-  // With auto improvement on, every step after the first waits for the user to
-  // confirm it (or replace it) before it runs.
-  if (await gateNextStep(row, task)) return;
+  // Assisted runs execute one step at a time and stop for review instead of
+  // enqueueing their successor immediately.
+  const run = await getRun(row.runId);
+  if (run?.mode === "assisted") {
+    await processAssistedStep(row, task);
+    return;
+  }
 
   if (task.type === "tool") {
     await processToolStep(row, task);

@@ -68,69 +68,70 @@ subscription drops.
 - Browser auth tokens expire after 7 days by default
   (`AUTH_TOKEN_TTL_SECONDS`).
 
-## Flow auto improvement
+## Assisted runs
 
-Enable **Flow auto improvement** on `/user` to let local models assist with
-starting and improving flows. The toggle is stored per user in
-`userSettings.flowAutoImprovement`. It is off by default, and the landing page
-behaves exactly as before while it is off.
+Enable **Auto improvement** on `/user` to let local models help you start and
+improve runs. The toggle is stored per user in `userSettings.autoImprovement`
+and is off by default; while it is off, the landing page and task queue behave
+exactly as before.
 
-When enabled:
+When enabled, a run started from the landing composer or the task-queue
+assistant is an **assisted run**:
 
-- The landing page's starting-task picker always offers **No task**. With the
-  setting on it reads **No task — let the model decide** and is preselected when
-  no default task is configured. With the setting off, choosing it and
-  submitting asks you to pick a task or enable the feature instead of creating a
-  run. A concrete task still starts immediately through the existing path.
-- With auto selected, submit asks the System One decision model to propose an
-  existing task or a new tool, decision, or user-decision task. The prompt
-  includes the current task candidates and the available tool catalog. You can
-  accept the proposal, choose another candidate, or refine it with a short
-  prompt.
-- Choosing a new task kind asks the generation model to draft its config,
-  decision options, or user-decision options. The prompt includes the existing
-  task list and the available tool catalog, and asks for only the fewest
-  meaningful options, each tied to a task, tool, or new choice instead of
-  filler. Every field is editable, the draft can be refined with a prompt, and
-  confirmation can create the task, optionally starting a run. A new decision
-  task needs at least one wired result target before it can be started;
-  otherwise use **Create only**.
-- Every decision/user-decision option without a next task prompts you to use an
-  existing task or define a new one. A new next task is drafted with the same
-  editor, created without starting a run, and wired into the option. If an
-  auto-improvement run reaches a decision whose chosen option has no next task,
-  the run pauses on the same chooser and resumes from the newly wired task.
-- Every step after the first pauses before it runs. The prompt shows the
-  proposed task and lets you run it, choose another existing task, or draft a
-  new one. The override applies to that run only; it does not rewire the saved
-  flow. The first step of a run and targets you just wired explicitly are not
-  asked about again.
-- A new tool task whose tool produces output also asks what runs after it:
-  another existing task, a new task or tool (which asks again), or the end of
-  the flow. The choice is saved as the tool task's fallback task.
-- Completed decision steps get a **Review decision** action. Marking the model
-  answer wrong stores a small additive bias for the decision options (or the
-  `__score__` / `__noul__` key) and uses it before result matching on later
-  runs. Re-reviewing reverses the previous correction first. Biases are global
-  per decision because tasks and decisions are shared workspace objects.
-- User-decision steps get a **Revise options** action. The generation model can
-  suggest missing static options; adding them to a waiting run refreshes its
-  pending choice immediately. The full task builder is linked for deeper
-  edits.
+- The first step always pauses for review. The review shows the model's output
+  and a trace of every prompt and response, and lets you accept it, describe a
+  different outcome, replace the task, skip to the next task, or insert tasks
+  before/after the step. Revisions run from the original checkpoint, never from
+  the rejected attempt's effects.
+- The task-queue assistant runs the **current unsaved builder draft**. Nothing
+  is written to the saved task until you accept the reviewed step. The run
+  records a transient snapshot instead.
+- Decision steps ask "Is this the right choice?" You can accept the match, pick
+  a different option for this run, optimize the wording (up to three model
+  attempts), edit the wording yourself, or add an option. Assisted decisions
+  below the **0.8 confidence floor** or with no match are parked until you pick
+  an option explicitly. Decision premises are one or two words (the key the
+  model answers under), and optimization/manual edits enforce that limit.
+- If the chosen option has no next task, the run asks you to wire an existing
+  task or draft a new tool task inline. The wiring is saved on the decision
+  result, so later runs take the same branch.
+- User-decision steps pause for the user as usual. While paused you can edit
+  the prompt, labels, values, and targets; saving applies the edits to the run.
+- Cancel discards the current trial and every uncommitted attempt, deletes
+  draft tasks created only for the run, and leaves task/decision definitions at
+  their last accepted state. There is no version history for accepted
+  revisions.
 
-Model output is never trusted directly: drafts are validated and editable, and
-model failures return an error without creating rows. The local models are
-resolved from the current user's settings, and review/revision mutations check
-ownership of the queued step.
+### Sandbox and commit
 
-If you need to remove the feature, the migration can be rolled back with:
+Every tool step runs in an isolated trial:
 
-```sql
-DROP TABLE "decisionFeedback";
-DROP TABLE "decisionBiases";
-ALTER TABLE "userSettings" DROP COLUMN "flowAutoImprovement";
-ALTER TABLE "queuedTasks" DROP COLUMN "nextStepApproved";
-```
+- Database rows are cloned into a per-attempt Postgres schema, and `tools`
+  route writes there through an `AsyncLocalStorage`-backed `db` proxy.
+- The files tree is copied to `.trials/<runId>/<attemptId>/` and file tools use
+  that root.
+- Accept computes a scoped diff against the baseline and applies only the rows
+  and files the attempt changed. Concurrent edits to the same row/path surface
+  as a `CONFLICT` and leave the trial in place for a retry.
+- Reject, cancel, and supersede discard the schema and files directory.
+- Tools may set `trialSafe: false` when their effects cannot be rolled back;
+  assisted runs reject those tools instead of presenting a false sandbox.
+
+The trial workspace implementation lives in `packages/trial-workspace`; run
+`pnpm --filter backend trials:cleanup` (also invoked at backend startup) to
+remove schemas/directories left behind by a crashed process.
+
+### Retention and traces
+
+Trace events are scoped to the owning run and persist until the run or its
+queued task is deleted. The trace accordion loads history and subscribes to
+`assistedTraceEvent` for new events; the run itself is no longer polled. The
+run list also exposes finished/cancelled/failed assisted runs under **Browse
+run history**.
+
+Assisted runs execute one step at a time, including `foreach` children, even
+when the task allows parallelism. Standard runs keep their normal parallel and
+auto-commit behaviour.
 
 ## Parallel task execution
 
@@ -175,9 +176,10 @@ The `/settings` page stores installation-wide endpoints in the singleton
   once after startup. Keep it off on shared hosts or when VRAM is limited.
 
 `read_audio_file` accepts `transcribe: true` to send the file to that endpoint.
-The Settings page requires an authenticated user. If the table is empty, the
-backend falls back to `OLLAMA_BASE_URL`, `WHISPER_BACKEND`, `WHISPER_API_URL`,
-and `WHISPER_MODEL`.
+By default the run's user state is sent as transcription context too; set
+`includeState: false` to omit it. The Settings page requires an authenticated
+user. If the table is empty, the backend falls back to `OLLAMA_BASE_URL`,
+`WHISPER_BACKEND`, `WHISPER_API_URL`, and `WHISPER_MODEL`.
 
 ### Vision and OCR
 
@@ -189,6 +191,11 @@ then the `VISION_MODEL` environment variable. There is no built-in text-only
 fallback: if neither is configured, the tool reports a clear warning and still
 returns the image metadata and preview URL. Vision errors never fail the task,
 and image bytes only enter toolState when `includeBase64: true`.
+
+The run's user state is included in the vision prompt by default, so instructions
+such as “These are from Aamans Grønne køkken. Write the book name and page number
+in the description.” reach the vision model. Set `includeState: false` on the
+`read_image_file` task to use only the image and the tool's own prompt.
 
 Ollama loads models lazily, and a cold large vision model can take longer than
 the inference timeout. The backend therefore preloads the vision model as soon

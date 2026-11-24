@@ -24,6 +24,18 @@ const definition: ToolDefinition = {
         description: "Number of candidates to return. Defaults to 15.",
         default: 15,
       },
+      minimumScore: {
+        type: "number",
+        description:
+          "Minimum vector similarity score (0..1) accepted without asking the decision model. Defaults to 0.",
+        default: 0,
+      },
+      minimumConfidence: {
+        type: "number",
+        description:
+          "Minimum decision-model confidence (0..1) required for a fallback match. Defaults to 0.",
+        default: 0,
+      },
       decisionModel: {
         type: "string",
         description:

@@ -3,9 +3,6 @@ import type { PendingChoice } from "#components/userDecision/userChoiceBlock";
 import type { FormEvent, KeyboardEventHandler, ReactNode } from "react";
 import type { Control } from "react-hook-form";
 
-/** The landing picker's "let the model decide" sentinel. */
-export const AUTO_TASK_ID = "__auto__";
-
 /** The executor stores this on each step's `result` column. */
 export interface StepResult {
   branch?:
@@ -15,9 +12,7 @@ export interface StepResult {
     | "none"
     | "true"
     | "false"
-    | "awaiting_user"
-    | "awaiting_approval"
-    | "unwired";
+    | "awaiting_user";
   nextTaskId?: number | null;
   branchLabel?: string;
   summary?: string;
@@ -27,22 +22,12 @@ export interface StepResult {
   outputType?: "normal" | "foreach";
   itemCount?: number;
   childQueuedTaskIds?: number[];
-  /** Set when the chosen option has no target task yet. */
-  unwiredResultId?: number;
-  unwiredOption?: string;
-  unwiredOptionDescription?: string | null;
-  /** Decision-model answer and model name, kept for the manual-choice UI. */
   answer?: unknown;
   effectiveAnswer?: unknown;
   model?: string | null;
-}
-
-export interface RunReview {
-  status?: "accepted" | "revised" | string;
-  feedback?: string;
-  revisionRunId?: string | null;
-  reviewedAt?: string;
-  reviewedBy?: number;
+  /** Set when the failed step was replaced by a retry. */
+  retried?: boolean;
+  retriedAt?: string;
 }
 
 export interface QueuedTaskStep {
@@ -51,9 +36,6 @@ export interface QueuedTaskStep {
   status: "queued" | "running" | "awaiting_input" | "completed" | "failed";
   runId: string;
   depth: number;
-  autoPlanned: boolean;
-  flowGoal: string | null;
-  runReview: RunReview | null;
   result: StepResult | null;
   pendingChoice: PendingChoice | null;
   model: string | null;
@@ -72,12 +54,14 @@ export interface QueuedTaskRow {
   id: number | null;
   taskId: number | null;
   status:
-    "queued" | "running" | "awaiting_input" | "completed" | "failed" | null;
+    | "queued"
+    | "running"
+    | "awaiting_input"
+    | "completed"
+    | "failed"
+    | null;
   runId: string | null;
   depth?: number | null;
-  autoPlanned?: boolean | null;
-  flowGoal?: string | null;
-  runReview?: unknown;
   result: unknown;
   pendingChoice?: unknown;
   model: string | null;
@@ -100,15 +84,12 @@ export interface LandingTask {
 export interface LandingRun {
   runId: string;
   state: string | null;
-  goal: string | null;
   steps: QueuedTaskStep[];
   startTaskId: number | null;
   pending: boolean;
   awaitingInput: boolean;
   failed: boolean;
-  autoPlanned: boolean;
-  runReview: RunReview | null;
-  canReview: boolean;
+  cancelled?: boolean;
 }
 
 export interface LandingFormInputs {
@@ -138,27 +119,13 @@ export interface LandingRunsState {
   dismissingStepId: number | null;
   retryingStepId: number | null;
   retryErrorStepId: number | null;
-  wiringStepId: number | null;
-  reviewingRunId: string | null;
   answerError: string | null;
   dismissError: string | null;
   retryError: string | null;
-  reviewError: string | null;
   setRunOpen: (runId: string, open: boolean) => void;
   answerChoice: (stepId: number, optionId: string) => Promise<void>;
-  confirmNextStep: (stepId: number, taskId?: number) => Promise<void>;
   dismissRun: (stepId: number) => Promise<void>;
   retryStep: (stepId: number) => Promise<void>;
-  wireDecisionTarget: (
-    stepId: number,
-    resultId: number,
-    targetTaskId: number,
-  ) => Promise<void>;
-  reviewRun: (
-    runId: string,
-    accepted: boolean,
-    feedback?: string,
-  ) => Promise<void>;
 }
 
 export interface LandingComposerProps extends LandingComposerState {
@@ -169,7 +136,6 @@ export interface LandingComposerProps extends LandingComposerState {
 
 export interface LandingRunsProps extends LandingRunsState {
   tasks: LandingTask[];
-  flowAutoImprovement: boolean;
 }
 
 export function toStep(row: QueuedTaskRow): QueuedTaskStep | null {
@@ -181,9 +147,6 @@ export function toStep(row: QueuedTaskRow): QueuedTaskStep | null {
     status: row.status ?? "queued",
     runId: row.runId,
     depth: row.depth ?? 0,
-    autoPlanned: row.autoPlanned ?? false,
-    flowGoal: row.flowGoal ?? null,
-    runReview: (row.runReview as RunReview | null | undefined) ?? null,
     result: (row.result as StepResult | null) ?? null,
     pendingChoice: (row.pendingChoice as PendingChoice | null) ?? null,
     model: row.model ?? null,
@@ -225,29 +188,24 @@ export function groupRuns(steps: QueuedTaskStep[]): LandingRun[] {
     .map(([runId, runSteps]) => {
       const ordered = [...runSteps].sort((a, b) => a.id - b.id);
       const root = ordered.find((step) => step.depth === 0) ?? ordered[0];
-      const pending = ordered.some(
-        (step) =>
-          step.status === "queued" ||
-          step.status === "running" ||
-          step.status === "awaiting_input",
-      );
-      const autoPlanned = root?.autoPlanned ?? false;
-      const runReview = root?.runReview ?? null;
 
       return {
         runId,
         state: root?.state ?? null,
-        goal: root?.flowGoal ?? null,
         steps: ordered,
         startTaskId: root?.taskId ?? null,
-        pending,
+        pending: ordered.some(
+          (step) =>
+            step.status === "queued" ||
+            step.status === "running" ||
+            step.status === "awaiting_input",
+        ),
         awaitingInput: ordered.some(
           (step) => step.status === "awaiting_input",
         ),
-        failed: ordered.some((step) => step.status === "failed"),
-        autoPlanned,
-        runReview,
-        canReview: autoPlanned && !pending && !runReview,
+        failed: ordered.some(
+          (step) => step.status === "failed" && step.result?.retried !== true,
+        ),
       };
     })
     .sort((a, b) => (a.steps[0]?.id ?? 0) - (b.steps[0]?.id ?? 0));
@@ -272,6 +230,7 @@ export function runHeaderStatus(
 export function runTitle(run: LandingRun, startName: string | null): string {
   const suffix = startName ? ` — ${startName}` : "";
 
+  if (run.cancelled) return `Run stopped${suffix}`;
   if (run.failed) return `Run failed${suffix}`;
   if (run.awaitingInput) return `Waiting for your choice${suffix}`;
   if (run.pending) return `Working${startName ? ` on ${startName}` : ""}`;
@@ -320,16 +279,12 @@ export function stepBranchLabel(
       return `fallback: ${target != null ? nameForTask(target) : null}`;
     case "tool":
       if (target != null) {
-        const prefix = result.branchLabel
-          ? `${result.branchLabel}: `
-          : "next: ";
+        const prefix = result.branchLabel ? `${result.branchLabel}: ` : "next: ";
         return `${prefix}${nameForTask(target)}`;
       }
       return result.branchLabel ?? "tool result";
     case "awaiting_user":
       return "waiting for your choice";
-    case "unwired":
-      return "needs a next task";
     default:
       return undefined;
   }
@@ -341,10 +296,11 @@ export function stepDetail(step: QueuedTaskStep): string | undefined {
     [
       step.result?.summary,
       step.result?.note,
+      step.result?.retried ? "retried" : null,
       step.model ? `generation: ${step.model}` : null,
       step.decisionModel ? `decision: ${step.decisionModel}` : null,
     ]
-      .filter((part): part is string => !!part)
+      .filter((part): part is string => Boolean(part))
       .join(" — ") || undefined
   );
 }

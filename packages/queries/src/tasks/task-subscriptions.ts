@@ -13,9 +13,6 @@ export const QUEUED_TASK_EVENT = gql(/* GraphQL */ `
         depth
         status
         runId
-        autoPlanned
-        flowGoal
-        runReview
         queued_by
         queued_at
         result

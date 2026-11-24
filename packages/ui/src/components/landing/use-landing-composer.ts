@@ -11,8 +11,8 @@ import {
 } from "react";
 import { useForm, type SubmitHandler } from "react-hook-form";
 import { FileUploadError, uploadFilesToServer } from "../files/file-actions";
+import { START_ASSISTED_RUN } from "../assisted";
 import {
-  AUTO_TASK_ID,
   stateFromAttachments,
   toStep,
   type LandingComposerState,
@@ -26,33 +26,30 @@ interface UseLandingComposerArgs {
   tasks: LandingTask[];
   tasksLoading: boolean;
   defaultTaskId: number | null;
-  flowAutoImprovement: boolean;
-  onAutoPlan: (
-    state: string,
-    fileIds: number[],
-    startTaskId: number | null,
-  ) => Promise<void>;
+  autoImprovement: boolean;
   resetRef: MutableRefObject<() => void>;
   onTrackedStep: (step: QueuedTaskStep) => void;
   onOpenRun: (runId: string) => void;
+  onAssistedStarted: (runId: string) => void;
 }
 
 /**
  * Owns the landing composer form, attachments, and upload-on-submit flow.
- * Queued steps are handed back to the caller so the run stream stays in one
+ * Submitted runs are handed back to the caller so the run stream stays in one
  * place.
  */
 export function useLandingComposer({
   tasks,
   tasksLoading,
   defaultTaskId,
-  flowAutoImprovement,
-  onAutoPlan,
+  autoImprovement,
   resetRef,
   onTrackedStep,
   onOpenRun,
+  onAssistedStarted,
 }: UseLandingComposerArgs) {
   const [createQueuedTask] = useMutation(CREATE_QUEUED_TASK);
+  const [startAssistedRun] = useMutation(START_ASSISTED_RUN);
   const [attachments, setAttachments] = useState<File[]>([]);
   const [attachError, setAttachError] = useState<unknown>(null);
   const [submitError, setSubmitError] = useState<unknown>(null);
@@ -92,19 +89,18 @@ export function useLandingComposer({
   });
 
   // Select the user's default task once the task list arrives, unless the
-  // current selection is still valid. With auto improvement on, auto is the
-  // fallback when there is no usable default.
+  // current selection is still valid.
   useEffect(() => {
     if (tasksLoading) return;
 
     const currentTaskId = getValues("taskId");
-    const currentIsValid =
-      currentTaskId === AUTO_TASK_ID ||
-      tasks.some((task) => String(task.id) === currentTaskId);
+    const currentIsValid = tasks.some(
+      (task) => String(task.id) === currentTaskId,
+    );
     if (currentIsValid) return;
 
     if (tasks.length === 0) {
-      reset({ ...getValues(), taskId: AUTO_TASK_ID });
+      reset({ ...getValues(), taskId: "" });
       return;
     }
 
@@ -113,19 +109,12 @@ export function useLandingComposer({
         ? defaultTaskId
         : null;
 
-    if (preferredTaskId != null) {
-      reset({ ...getValues(), taskId: String(preferredTaskId) });
-      return;
-    }
-
     reset({
       ...getValues(),
-      taskId: flowAutoImprovement ? AUTO_TASK_ID : String(tasks[0]?.id),
+      taskId: String(preferredTaskId ?? tasks[0]?.id),
     });
-  }, [tasksLoading, tasks, defaultTaskId, flowAutoImprovement, getValues, reset]);
+  }, [tasksLoading, tasks, defaultTaskId, getValues, reset]);
 
-  // The auto-start assistant resets the composer after a run starts, without
-  // owning the form itself.
   useEffect(() => {
     resetRef.current = () => {
       setAttachments([]);
@@ -139,12 +128,9 @@ export function useLandingComposer({
     setAttachError(null);
     setSubmitError(null);
 
-    if (!flowAutoImprovement && inputs.taskId === AUTO_TASK_ID) {
-      setSubmitError(
-        new Error(
-          "Choose a starting task, or turn on Flow auto improvement in settings to let the model decide.",
-        ),
-      );
+    const taskId = parseInt(inputs.taskId, 10);
+    if (!Number.isFinite(taskId)) {
+      setSubmitError(new Error("Choose a starting task."));
       return;
     }
 
@@ -155,23 +141,22 @@ export function useLandingComposer({
           : [];
 
       const state = inputs.state.trim() || stateFromAttachments(attachments);
+      const fileIds = uploaded.map((entry) => entry.id);
 
-      if (flowAutoImprovement) {
-        await onAutoPlan(
-          state,
-          uploaded.map((entry) => entry.id),
-          inputs.taskId === AUTO_TASK_ID ? null : parseInt(inputs.taskId, 10),
-        );
+      if (autoImprovement) {
+        const { data } = await startAssistedRun({
+          variables: { input: { taskId, state, fileIds } },
+        });
+        const runId = (data as { startAssistedRun?: { id?: string } } | undefined)
+          ?.startAssistedRun?.id;
+        if (runId) onAssistedStarted(runId);
         setAttachments([]);
+        reset({ state: "", taskId: inputs.taskId });
         return;
       }
 
       const { data } = await createQueuedTask({
-        variables: {
-          taskId: parseInt(inputs.taskId, 10),
-          state,
-          fileIds: uploaded.map((entry) => entry.id),
-        },
+        variables: { taskId, state, fileIds },
       });
 
       const step = data?.createQueuedTask

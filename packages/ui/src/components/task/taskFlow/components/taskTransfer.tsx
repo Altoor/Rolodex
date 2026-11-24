@@ -92,7 +92,7 @@ const TaskTransfer = () => {
         disabled={exporting}
         onClick={() => void download()}
       >
-        {exporting ? <Spinner /> : <Download />}
+        {exporting ? <Spinner /> : <Upload />}
         Export
       </Button>
       <Button
@@ -102,7 +102,7 @@ const TaskTransfer = () => {
         disabled={importing}
         onClick={() => fileInput.current?.click()}
       >
-        {importing ? <Spinner /> : <Upload />}
+        {importing ? <Spinner /> : <Download />}
         Import
       </Button>
       <input

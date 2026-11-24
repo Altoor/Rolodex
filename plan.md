@@ -1,6 +1,7 @@
 # Assisted Runs Refactor Plan
 
-Status: **plan only — do not implement yet**
+Status: **implemented on `feature/self-improvement` working tree — see
+§16 Implementation status**
 
 Scope: revise the whole `feature/self-improvement` branch compared with `main`.
 Primary reference branch: `feature/self-improvement` at `8bf9f24`.
@@ -1759,3 +1760,143 @@ Each phase should land as one reviewable change (or a small series):
 
 Do not squash phases 0–3 with the later feature work; the removals and
 foundations should be reviewable independently.
+
+---
+
+## 16. Implementation status
+
+The refactor is implemented on the `feature/self-improvement` working tree.
+This section records what landed against the phases in §11 and what remains.
+
+### Phase status
+
+| Phase | Status | Notes |
+|---|---|---|
+| 0 — Baseline, guardrails, test harness | **Partial** | Vitest is installed with `test`, `test:unit`, and `test:watch`. Only pure domain/services have unit tests (confidence normalization, revision validation, decision diffs, tool-config validation, file naming/user state, result matching; 44 tests). There is no DB integration harness, RTL/jsdom setup, fake model adapter, import-boundary lint rule, file-size budget script, or baseline standard-queue test yet. |
+| 1 — Remove bias | **Complete** | Bias modules, tables, relations, GraphQL fields, queries, UI, and docs are gone. The migration drops `decisionBiases` and `decisionFeedback`. Decision execution stores the raw answer and never applies a bias. |
+| 2 — Remove end-to-end flow creation | **Complete** | Planner/proposer/draft/confirm/run-review/gate services and their mutations are deleted. `autoPlanned`, `flowGoal`, `runReview`, and `nextStepApproved` are dropped; `flowAutoImprovement` is now `autoImprovement`. Landing requires an explicit task, and the task-builder assistant runs the current draft instead of creating a flow. Structured generation is implemented directly in the assisted application services rather than as a shared primitive. |
+| 3 — Runs, attempts, checkpoints, traces | **Complete (with one deviation)** | `runs`, `stepAttempts`, and `traceEvents` exist; `tasks.isDraft`/`draftOwnerId` hide drafts from other users. Standard and assisted submissions both create run rows, and the migration backfills runs for pre-existing queued chains. The assisted read model, ownership checks, snapshot storage, and trace replay query are in place. **Deviation:** standard runs do not persist a task snapshot; only assisted attempts do. Execution is shared, but the "snapshot for every run" part of §6.4 is not implemented. |
+| 4 — Trial workspace and effect journal | **Complete (with caveats)** | Trial setup, scoped Drizzle commit, file manifest/commit, discard, and orphan cleanup live in `@repo/trial-workspace`. Each attempt clones `todos` and `fileEntries` plus a read-only baseline schema and copies the files tree to `.trials/<run>/<attempt>/`. Commit compares trial vs baseline and applies only changed rows/files with conflict detection; discard drops both schemas and the directory. Tools declare `trialSafe?: false` when an effect cannot be rolled back, and assisted runs reject those tools. Cleanup runs at backend startup and via `pnpm --filter backend trials:cleanup`. Not implemented: a true idempotent effect journal (commit is still a scoped diff), trial content preview in the UI, workspace/repository ports in tools, and deferred embeddings. |
+| 5 — Assisted execution and tool-step review | **Complete** | Tool steps execute inside a trial, then park at `awaiting_step_review`. Accept commits effects and finishes the step; reject/revision re-runs from the checkpoint; cancel discards. Assisted steps are excluded from the standard queue views and forced to run alone, including foreach children, even when their task allows parallelism. Standard runs still auto-commit and keep parallel/priority behaviour. Tools can declare `trialSafe: false`, and assisted runs fail them before creating a trial. |
+| 6 — Step revision engine | **Complete (manual verification)** | `updateToolConfig`, `replaceTask`, `runNext`, `insertBefore`, `insertAfter`, and `insertBeforeAndAfter` are implemented and validated by `smoke:assisted-revision`. Validation enforces proposal shape, required fields, confidence range, exactly two insertions for `insertBeforeAndAfter`, tool existence/input-schema/foreach support, target existence, cycle rejection, and `MAX_CHAIN_DEPTH`. `replaceTask` now builds functional tool, decision, and user-decision snapshots (negative ids are promoted on accept). Revision coverage is a smoke script, not an automated Vitest integration suite. |
+| 7 — Decision review and optimization | **Complete** | Decision attempts record normalized confidence and the matched result. Review supports accept, explicit override, wording optimization (capped at 3 attempts), manual wording editing, and new-option creation. Matches below 0.8 or with no match are parked, and `acceptAttempt` rejects them until the user overrides; decision revisions resolved by override persist their snapshot. Choice options are never renamed by the optimizer, and nothing in the optimizer path can lower a threshold. New options and overrides route through the target-wiring review (`wireDecisionTargetTask`/`createDecisionTargetTask`). Verified end-to-end with `smoke:assisted-decision` using `tev1:4b`. |
+| 8 — User-decision editing and cancellation | **Complete (with caveats)** | `saveUserDecisionOptions` additively updates or inserts static labels/descriptions/values/targets without deleting dynamic or yes/no rows; answering resumes or completes the assisted run and commits its attempt. Cancel discards the current trial and uncommitted attempts, repairs inserted-chain edges, deletes only run-owned draft tasks, and leaves definitions at their last accepted state. Hard delete removes steps, attempts, traces, draft tasks, and trial directories. Orphan cleanup runs at startup/on demand. Not implemented: a server-side staged option draft (the UI edits locally and saves explicitly) and wording editing for `yesNo` options beyond their configured labels. |
+| 9 — Trace capture and streaming | **Complete (with caveats)** | Trace rows persist with per-run sequences, redaction, and truncation; `attemptTrace` and the `assistedTraceEvent` subscription exist. The trace accordion loads history and appends live events from the run subscription, and run/review queries no longer poll. Not implemented: a separate `packages/observability`, token-stream/duration instrumentation in `@repo/ai`, and prompt-token capture. |
+| 10 — UI rebuild | **Complete (with caveats)** | Landing composer, run list, run timeline, review panels, trace accordion, and the task-builder assistant are rebuilt around assisted runs. The old flow UI is gone. `components/assisted` is split into atoms/molecules/organisms/templates plus hooks/domain, data access is in hooks, semantic confidence/diff tokens replace generic variants, review actions emit events only, and the history view browses finished runs. Not implemented: RTL component/hook tests and a full reduced-motion audit. |
+| 11 — Hardening and docs | **Complete (with caveats)** | `pnpm check-types`, `pnpm lint` (including `apps/backend`), `pnpm test`, `pnpm build`, and `pnpm codegen` pass. README documents assisted runs, sandbox/commit, 0.8 review, traces, retention, and no-version-history behaviour. Four smoke scripts cover the workspace, the tool-step lifecycle, revisions, and decision review. Not done: automated failure/idempotency and disk-usage checks, DB/RTL integration suites, and a full golden-scenario run with real models. |
+
+### Verification commands
+
+```bash
+pnpm check-types
+pnpm lint
+pnpm test
+pnpm build
+pnpm codegen
+
+pnpm --filter backend smoke:assisted-workspace
+pnpm --filter backend smoke:assisted-run
+pnpm --filter backend smoke:assisted-revision
+pnpm --filter backend smoke:assisted-decision
+```
+
+The smoke scripts mutate the development database, clean up their own tasks
+(except retained run history), and must be run against a disposable or
+development database. `smoke:assisted-decision` needs Ollama with a decision
+model; override `SMOKE_DECISION_MODEL` to change the default `tev1:4b`. It also
+covers the unwired-option target review, including drafting a next tool task,
+creating it, persisting the wiring, and continuing the run.
+
+### Migration notes
+
+`apps/backend/drizzle/20261123123317_deep_havok/migration.sql` was rewritten
+for the branch and applied to the development database. It creates the run,
+attempt, and trace tables, drops the flow/bias columns and tables, renames
+`flowAutoImprovement`, and backfills standard runs for pre-existing queued
+chains. It is a forward migration for the development database, not a
+maintainable upgrade path for a released schema.
+
+### Post-implementation fixes
+
+Three defects found while exercising real tasks were fixed after the first
+implementation pass:
+
+- Choice decisions no longer require `optionDescriptions` at execution time.
+  Decisions created before descriptions were mandatory (or imported without
+  them) now run with empty criteria instead of failing with
+  `decision setup error: missing optionDescriptions for choice`.
+- The scheduler no longer spins forever on a `queued` step whose task was
+  deleted. Such a step is marked failed, and an assisted run with no remaining
+  work is marked failed instead of staying `running`.
+- `setRunStatus` no longer overwrites a terminal (`completed`, `cancelled`,
+  `failed`) run. This closes a race where an in-flight attempt finishing after
+  cancellation made the cancelled run look active again.
+
+- The decision optimizer no longer lets the model rename or add choice options.
+  Choice results are matched by exact option string, so an optimized option such
+  as "It relates to files (...creating, or updating...)" previously produced a
+  selectable choice with no result wiring and therefore a false “no match”.
+  Optimization now preserves the original option list and only adopts new
+  descriptions for those exact names.
+
+- A decision task with no attached decision is now rejected before a run is
+  created, with an actionable message. The assistant pre-checks the builder
+  draft, `startAssistedRun` validates the snapshot, and the queue failure note
+  is actionable. Previously the run was created and then failed with the
+  internal `decision task has no decisionId`.
+
+- Creating a decision from the task builder now selects it for the task, so
+  saving the task stores `decisionId`. Previously the decision was persisted but
+  never attached, leaving decision tasks unrunnable.
+
+- Applying a builder snapshot no longer blanks the saved decision's premise,
+  instruction, or option descriptions. The builder snapshot only carries
+  `{ id, type, options }`, so snapshot application now merges those fields
+  against the stored row instead of overwriting missing fields with empty
+  values.
+
+- Assisted decision matching now recognizes a result whose option matched but
+  has no target task yet. It no longer reports “no match” or hides the chosen
+  option. The decision parks on a target review, and the user can wire an
+  existing task or have the model draft the next tool task inline. Drafting,
+  creating, and wiring are explicit steps, and the run continues only after the
+  target is chosen. The wiring is persisted on the decision result so future
+  runs take the same branch automatically.
+- Overriding a decision to an unwired option now opens the same target review
+  instead of failing with “That option has no next task”. Accepting an unwired
+  match is blocked with an actionable message. Standard runs keep their previous
+  behaviour: unwired results are not considered matches and the fallback path is
+  unchanged. The review is backed by `draftDecisionTargetTask`,
+  `wireDecisionTargetTask`, and `createDecisionTargetTask`; the inline panel lets
+  the user refine the drafted task/config, choose an existing task, and continue.
+- Trace recording no longer fails if the attempt is deleted while a model call
+  is still in flight (for example, the user cancels the run while the next-task
+  draft is generating). The event is stored on the run without the attempt id
+  instead of surfacing a `traceEvents_attemptId_stepAttempts_id_fkey` error.
+- `create_file` now appends `.md` when the requested name has no usable
+  extension. Previously an extensionless name such as `ALPH` was classified as
+  `other` and rejected, so a branch that asked for “a file called ALPH” could
+  never complete. Explicit extensions are unchanged, and non-plaintext types are
+  still rejected.
+
+- Decision premises are constrained to one or two words. Decision creation,
+  updates, replacement drafts, manual wording edits, and the optimizer all
+  enforce the limit; the optimizer prompt asks for a short key and falls back to
+  the current valid premise (or derives one word) if the model returns a
+  sentence.
+
+The decision review panel also no longer continues immediately when an option
+is clicked. Selecting an option is now a separate step, so "use this choice for
+this run" and "optimize wording" remain visible and usable before the run
+continues. Revision attempts now render a **What changed** block that compares
+the previous and current decision snapshots: premise, instruction, changed
+option descriptions, and added/removed options, plus the optimizer feedback.
+
+### Remaining follow-ups
+
+1. Add DB integration tests, RTL component/hook tests, and a fake model adapter.
+2. Add automated failure/idempotency and disk-usage checks for trials.
+3. Add a true effect journal if partial-commit replay is needed; the current
+   commit is a scoped diff with conflict detection.
+4. Add trial content preview and deferred embedding generation.
+5. Run a full golden scenario with real models and a disposable database.

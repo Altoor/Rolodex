@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { GraphQLError } from "graphql";
 import { and, eq, inArray, lt } from "drizzle-orm";
 import { db, fileEntries, queuedTasks } from "@repo/db";
@@ -6,6 +5,7 @@ import { toFileEntryRef } from "@repo/tools/tools/file/services/dto";
 import { getUserSettings } from "../../user/user-settings-service";
 import { triggerQueue } from "../../../queue";
 import { warmQueuedRows } from "../../../queue/model-warmup";
+import { createRun, getRun, reopenStandardRun, setRunStatus, settleStandardRunIfIdle } from "../../../queue/run-store";
 import { dismissRun, isRunDismissed, publish } from "../../../queue/step-store";
 
 export interface CreateQueuedTaskInput {
@@ -14,14 +14,10 @@ export interface CreateQueuedTaskInput {
   fileIds?: number[] | null;
   folderIds?: number[] | null;
   /**
-   * Pre-built initial tool state. Used when a revised auto-planned run reuses
-   * the original run's attachments instead of uploading new files.
+   * Pre-built initial tool state. Used when a revised assisted run reuses the
+   * original run's attachments instead of uploading new files.
    */
   toolState?: Record<string, unknown>[] | null;
-  /** Marks the run as planner-created so it is not gated step-by-step. */
-  autoPlanned?: boolean;
-  /** The end goal the planner is trying to reach. */
-  flowGoal?: string | null;
 }
 
 async function loadContextEntries(
@@ -102,16 +98,21 @@ export async function createQueuedTask(
     });
   }
 
+  const run = await createRun({
+    userId,
+    mode: "standard",
+    state: input.state,
+    startTaskId: resolvedTaskId,
+  });
+
   const queuedTask = {
     taskId: resolvedTaskId,
     state: input.state,
     toolState,
     depth: 0,
     // A new user submission starts a new chain run.
-    runId: randomUUID(),
+    runId: run.id,
     queued_by: userId,
-    autoPlanned: input.autoPlanned ?? false,
-    flowGoal: input.flowGoal ?? null,
   };
 
   const [created] = await db.insert(queuedTasks).values(queuedTask).returning();
@@ -139,6 +140,8 @@ export async function completeQueuedTask(id: number) {
     .set({ status: "completed" })
     .where(eq(queuedTasks.id, id))
     .returning();
+
+  await settleStandardRunIfIdle(queuedTask.runId).catch(() => undefined);
   return updated;
 }
 
@@ -188,6 +191,18 @@ export async function dismissQueuedTask(userId: number, queuedTaskId: number) {
   const dismissedAt = new Date().toISOString();
   const updatedSteps = [];
 
+  const requestedStep = activeSteps.find((step) => step.id === queuedTask.id);
+  if (!requestedStep) {
+    throw new GraphQLError("This run is no longer active", {
+      extensions: { code: "BAD_USER_INPUT" },
+    });
+  }
+
+  // Mark the run cancelled before completing its steps. A step that is still
+  // executing settles in its own finally block, which only touches runs that
+  // are still "running".
+  await setRunStatus(queuedTask.runId, "cancelled");
+
   for (const step of activeSteps) {
     const previous =
       typeof step.result === "object" && step.result !== null
@@ -216,13 +231,6 @@ export async function dismissQueuedTask(userId: number, queuedTaskId: number) {
       updatedSteps.push(updated);
       publish(updated, "run stopped by user");
     }
-  }
-
-  const current = updatedSteps.find((step) => step.id === queuedTask.id);
-  if (!current) {
-    throw new GraphQLError("This run is no longer active", {
-      extensions: { code: "BAD_USER_INPUT" },
-    });
   }
 
   return updatedSteps;
@@ -260,6 +268,35 @@ export async function retryQueuedTask(userId: number, queuedTaskId: number) {
     });
   }
 
+  let runId = queuedTask.runId;
+  const existingRun = await getRun(runId);
+  if (isRunDismissed(runId) || existingRun?.status === "cancelled") {
+    const run = await createRun({
+      userId: queuedTask.queued_by,
+      mode: "standard",
+      state: queuedTask.state,
+      startTaskId: queuedTask.taskId,
+    });
+    runId = run.id;
+  }
+
+  // Mark the failed row before inserting its replacement so a concurrent
+  // branch cannot settle the run as failed in between.
+  const previous =
+    typeof queuedTask.result === "object" && queuedTask.result !== null
+      ? (queuedTask.result as Record<string, unknown>)
+      : {};
+  await db
+    .update(queuedTasks)
+    .set({
+      result: {
+        ...previous,
+        retried: true,
+        retriedAt: new Date().toISOString(),
+      },
+    })
+    .where(eq(queuedTasks.id, queuedTask.id));
+
   const [retry] = await db
     .insert(queuedTasks)
     .values({
@@ -269,15 +306,21 @@ export async function retryQueuedTask(userId: number, queuedTaskId: number) {
       parentQueuedTaskId: queuedTask.parentQueuedTaskId,
       depth: queuedTask.depth,
       status: "queued",
-      runId: isRunDismissed(queuedTask.runId) ? randomUUID() : queuedTask.runId,
+      runId,
       queued_by: queuedTask.queued_by,
       model: queuedTask.model,
       decisionModel: queuedTask.decisionModel,
-      nextStepApproved: queuedTask.nextStepApproved,
     })
     .returning();
 
-  if (retry) void warmQueuedRows([retry]);
+  if (retry) {
+    // The failed row stays in history, but no longer decides the outcome.
+    // Reopen the run so the replacement can settle it again.
+    if (runId === queuedTask.runId) {
+      await reopenStandardRun(runId);
+    }
+    void warmQueuedRows([retry]);
+  }
   triggerQueue();
 
   return retry;

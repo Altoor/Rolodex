@@ -37,6 +37,12 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  /* Assisted review semantics: confidence floor and diff states. */
+  --color-confidence-low: var(--confidence-low);
+  --color-confidence-high: var(--confidence-high);
+  --color-diff-add: var(--diff-add);
+  --color-diff-remove: var(--diff-remove);
+  --color-review-pending: var(--review-pending);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -79,6 +85,11 @@
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
+  --confidence-low: oklch(0.577 0.245 27.325);
+  --confidence-high: oklch(0.527 0.154 150.069);
+  --diff-add: oklch(0.527 0.154 150.069);
+  --diff-remove: oklch(0.577 0.245 27.325);
+  --review-pending: oklch(0.705 0.15 85.047);
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -113,6 +124,11 @@
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
+  --confidence-low: oklch(0.704 0.191 22.216);
+  --confidence-high: oklch(0.696 0.17 162.48);
+  --diff-add: oklch(0.696 0.17 162.48);
+  --diff-remove: oklch(0.704 0.191 22.216);
+  --review-pending: oklch(0.769 0.188 70.08);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);

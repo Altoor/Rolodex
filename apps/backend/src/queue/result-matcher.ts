@@ -47,6 +47,28 @@ export function resultMatches(
   }
 }
 
+export interface ResultMatchOptions {
+  /**
+   * Assisted runs recognize an option that matches but has no target yet, so
+   * the user can wire one instead of seeing a false "no match".
+   */
+  allowUnwired?: boolean;
+}
+
+/** Finds the first result whose option/thresholds match the model answer. */
+export function findMatchingResult<T extends TaskResultRow>(
+  results: T[],
+  answer: SystemOneAnswer,
+  options?: ResultMatchOptions,
+): T | undefined {
+  return results.find(
+    (result) =>
+      result.type === answer.type &&
+      (options?.allowUnwired || result.resultTaskId != null) &&
+      resultMatches(result, answer),
+  );
+}
+
 export function summarizeAnswer(
   taskName: string,
   answer: SystemOneAnswer,
