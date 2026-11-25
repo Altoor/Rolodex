@@ -6,6 +6,8 @@ export const promptDefinition: ToolDefinition = {
   description:
     "Send a prompt to an installed Ollama model, wait for the answer, and return it. Optionally request structured fields.",
   category: "ai",
+  usesModel: true,
+  modelRoles: ["generation"],
   inputMode: "text",
   inputSchema: {
     type: "object",
@@ -19,6 +21,17 @@ export const promptDefinition: ToolDefinition = {
         type: "string",
         description:
           "Optional system prompt. Supports the same `{{path}}` placeholders as `prompt`.",
+      },
+      includeCurrentTime: {
+        type: "boolean",
+        description:
+          'Add the current date and time to the system prompt. Enable when the model must resolve relative dates such as "tomorrow" or "before Saturday".',
+        default: false,
+      },
+      timeZone: {
+        type: "string",
+        description:
+          'Optional IANA time zone for the current time, for example "Europe/Copenhagen". Defaults to the server time zone.',
       },
       model: {
         type: "string",

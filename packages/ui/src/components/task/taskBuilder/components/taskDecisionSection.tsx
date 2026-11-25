@@ -39,7 +39,10 @@ const TaskDecisionSection = ({
         selectedDecisionId={undefined}
         setSelectedDecisionId={onSelectDecision}
       />
-      <DecisionBuilder selectedDecisionId={undefined} />
+      <DecisionBuilder
+        selectedDecisionId={undefined}
+        onCreated={onSelectDecision}
+      />
     </>
   );
 };

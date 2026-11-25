@@ -11,14 +11,16 @@ import { toFileEntryRef } from "./services/dto";
 import { ensureFileType } from "./services/fileType";
 import { resolveFileEntryRow } from "./services/search";
 import { transcribeAudioFile } from "./services/transcribe";
+import { trimUserState } from "./services/user-state";
 import { buildFileViewUrl } from "./services/viewUrl";
 
 const definition: ToolDefinition = {
   key: "read_audio_file",
   name: "Read audio file",
   description:
-    "Read audio metadata and a streaming URL. Set transcribe to true to send the file to the Whisper API configured on the Settings page.",
+    "Read audio metadata and a streaming URL. Set transcribe to true to send the file to the Whisper API configured on the Settings page. The run's user state is sent as transcription context by default; set includeState to false to omit it.",
   category: "file",
+  usesModel: true,
   inputMode: "json",
   inputSchema: {
     type: "object",
@@ -50,6 +52,12 @@ const definition: ToolDefinition = {
         type: "number",
         description:
           "Maximum audio size to upload for transcription. Defaults to 25 MB.",
+      },
+      includeState: {
+        type: "boolean",
+        description:
+          "Include the run's user state as transcription context, which can help with names and vocabulary. Defaults to true.",
+        default: true,
       },
     },
   },
@@ -83,11 +91,13 @@ export const readAudioFileTool: Tool = {
       };
 
       const transcribe = readBoolean(input, "transcribe") ?? false;
+      const includeState = readBoolean(input, "includeState") ?? true;
       const transcription = transcribe
         ? await transcribeAudioFile(typedRow, {
             language: readString(input, "language"),
             model: readString(input, "model"),
             maxBytes: readNumber(input, "maxBytes"),
+            prompt: includeState ? trimUserState(context.state, 1_000) : undefined,
           })
         : undefined;
 

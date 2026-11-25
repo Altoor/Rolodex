@@ -15,7 +15,17 @@ import {
   readNumber,
   readString,
 } from "../../../utils";
-import { ToolInputError, type ToolRunContext } from "../../../model";
+import {
+  ToolInputError,
+  ToolNoMatchError,
+  type ToolRunContext,
+} from "../../../model";
+import {
+  DEFAULT_MINIMUM_CONFIDENCE,
+  DEFAULT_MINIMUM_SCORE,
+  passesMinimumScore,
+  readMinimumThreshold,
+} from "../../search-thresholds";
 import { selectTodoWithDecision } from "./selection";
 
 type TodoRow = typeof todos.$inferSelect;
@@ -124,6 +134,16 @@ export async function findTodoMatches(
   }
 
   const limit = Math.max(1, Math.floor(readNumber(input, "limit") ?? 5));
+  const minimumScore = readMinimumThreshold(
+    input,
+    "minimumScore",
+    DEFAULT_MINIMUM_SCORE,
+  );
+  const minimumConfidence = readMinimumThreshold(
+    input,
+    "minimumConfidence",
+    DEFAULT_MINIMUM_CONFIDENCE,
+  );
 
   const ownership = or(
     eq(todos.authorId, context.userId),
@@ -158,16 +178,18 @@ export async function findTodoMatches(
       .orderBy(distance)
       .limit(limit);
 
-    candidates = rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      description: row.description,
-      done: row.done,
-      doByDate: row.doByDate?.toISOString() ?? null,
-      createdAt: row.createdAt?.toISOString() ?? null,
-      archivedAt: row.archivedAt?.toISOString() ?? null,
-      score: 1 - Number(row.distance),
-    }));
+    candidates = rows
+      .map((row) => ({
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        done: row.done,
+        doByDate: row.doByDate?.toISOString() ?? null,
+        createdAt: row.createdAt?.toISOString() ?? null,
+        archivedAt: row.archivedAt?.toISOString() ?? null,
+        score: 1 - Number(row.distance),
+      }))
+      .filter((row) => passesMinimumScore(row.score, minimumScore));
   }
 
   if (candidates.length === 0) {
@@ -210,10 +232,15 @@ export async function findTodoMatches(
 
     const userTodos = await listUserTodos(context.userId, includeArchived);
     if (userTodos.length === 0) {
-      throw new ToolInputError("no matching todo found");
+      throw new ToolNoMatchError("no matching todo found");
     }
 
-    const selected = await selectTodoWithDecision(userTodos, queryText, model);
+    const selected = await selectTodoWithDecision(
+      userTodos,
+      queryText,
+      model,
+      minimumConfidence,
+    );
 
     candidates = [
       {
@@ -231,7 +258,7 @@ export async function findTodoMatches(
 
   let best = candidates[0];
   if (!best) {
-    throw new ToolInputError("no matching todo found");
+    throw new ToolNoMatchError("no matching todo found");
   }
 
   for (const candidate of candidates.slice(1)) {

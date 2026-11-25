@@ -7,7 +7,11 @@ import type { ApolloCache } from "@apollo/client/core";
 export const setTaskFieldInCache = (
   cache: ApolloCache,
   taskId: number,
-  field: "fallbackTaskId" | "onTrueTaskId" | "onFalseTaskId",
+  field:
+    | "fallbackTaskId"
+    | "onTrueTaskId"
+    | "onFalseTaskId"
+    | "joinTaskId",
   value: number | null,
 ) => {
   const ref = cache.identify({ __typename: "Task", id: taskId });

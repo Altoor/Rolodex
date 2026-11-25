@@ -10,6 +10,7 @@ const definition: ToolDefinition = {
   description:
     "Delete a todo. The todo can be selected by id, by find_todo output, or inferred from state.",
   category: "todo",
+  usesModel: true,
   inputMode: "json",
   inputSchema: {
     type: "object",

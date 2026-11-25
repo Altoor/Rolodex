@@ -14,6 +14,7 @@ const definition: ToolDefinition = {
   description:
     "Read an opaque/binary file as a download URL. Optionally include base64 bytes.",
   category: "file",
+  usesModel: true,
   inputMode: "json",
   inputSchema: {
     type: "object",

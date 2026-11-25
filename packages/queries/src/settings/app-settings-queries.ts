@@ -7,6 +7,10 @@ export const APP_SETTINGS = gql(/* GraphQL */ `
       transcriberBackend
       whisperApiUrl
       whisperModel
+      maxParallelTasks
+      ollamaKeepAlive
+      preloadModels
+      warmModelsOnStartup
       updatedAt
     }
   }

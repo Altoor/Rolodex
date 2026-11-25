@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "api_endpoints_key_hash_idx" ON "apiEndpoints" ("keyHash");

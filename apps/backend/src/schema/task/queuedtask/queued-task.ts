@@ -1,7 +1,14 @@
 import { builder } from "../../builder";
 
 export const QueuedTaskStatus = builder.enumType("QueuedTaskStatus", {
-  values: ["queued", "running", "awaiting_input", "completed", "failed"],
+  values: [
+    "queued",
+    "running",
+    "awaiting_input",
+    "waiting",
+    "completed",
+    "failed",
+  ],
 });
 
 export const QueuedTask = builder.drizzleObject("queuedTasks", {
@@ -15,6 +22,9 @@ export const QueuedTask = builder.drizzleObject("queuedTasks", {
       resolve: (parent) => parent.toolState ?? [],
     }),
     parentQueuedTaskId: t.exposeInt("parentQueuedTaskId", { nullable: true }),
+    forkGroupId: t.exposeString("forkGroupId", { nullable: true }),
+    forkIndex: t.exposeInt("forkIndex", { nullable: true }),
+    isJoin: t.exposeBoolean("isJoin"),
     depth: t.exposeInt("depth"),
     status: t.field({
       type: QueuedTaskStatus,

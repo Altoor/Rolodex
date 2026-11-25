@@ -15,6 +15,8 @@ import { setStateTool } from "../tools/toolState/setState";
 import { ifTool } from "../tools/if/ifTool";
 import { switchTool } from "../tools/switch/switchTool";
 import { displayBlockTool } from "../tools/display/displayBlock";
+import { endFlowTool } from "../tools/end/endFlow";
+import { joinTool } from "../tools/join/join";
 import { findFileTool } from "../tools/file/findFile";
 import { findFilesTool } from "../tools/file/findFiles";
 import { findFolderTool } from "../tools/file/findFolder";
@@ -31,6 +33,7 @@ import { readOtherFileTool } from "../tools/file/readOtherFile";
 import { createFolderTool } from "../tools/file/createFolder";
 import { createFileTool } from "../tools/file/createFile";
 import { deleteFileEntryTool } from "../tools/file/deleteFileEntry";
+import { moveFilesTool } from "../tools/file/moveFiles";
 
 export const tools: Tool[] = [
   promptTool,
@@ -49,12 +52,15 @@ export const tools: Tool[] = [
   ifTool,
   switchTool,
   displayBlockTool,
+  endFlowTool,
+  joinTool,
   findFileTool,
   findFilesTool,
   findFolderTool,
   findFoldersTool,
   scanFilesTool,
   updateFileMetadataTool,
+  moveFilesTool,
   detectFileTypeTool,
   readPlaintextFileTool,
   readTextFileTool,

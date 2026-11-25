@@ -24,6 +24,11 @@ export type TaskDecisionFormValue = {
 
 export type UserDecisionType = "yesNo" | "list" | "dropdown";
 export type UserDecisionOptionKind = "static" | "dynamic";
+export type DecisionStateMode = "none" | "all" | "paths";
+
+export type DecisionStatePathFormValue = {
+  path: string;
+};
 
 export type UserDecisionOptionFormValues = {
   id: number | null;
@@ -57,12 +62,17 @@ export type TaskFormValues = {
   toolOutputType: ToolOutputType;
   onTrueTaskId: string;
   onFalseTaskId: string;
+  joinTaskId: string;
   model: string | null;
   decisionModel: string | null;
+  decisionStateMode: DecisionStateMode;
+  decisionStatePaths: DecisionStatePathFormValue[];
   forceUserDecideIfNoMatch: boolean;
   userDecisionType: UserDecisionType;
   userDecisionConfig: UserDecisionConfigFormValues;
   userDecisionOptions: UserDecisionOptionFormValues[];
+  canRunInParallel: boolean;
+  prioritize: boolean;
 };
 
 export const USE_USER_DEFAULT_MODEL = "__user_default_model__";
@@ -78,8 +88,11 @@ export const emptyTaskFormValues: TaskFormValues = {
   toolOutputType: "normal",
   onTrueTaskId: NO_BRANCH_TASK,
   onFalseTaskId: NO_BRANCH_TASK,
+  joinTaskId: NO_BRANCH_TASK,
   model: null,
   decisionModel: null,
+  decisionStateMode: "none",
+  decisionStatePaths: [],
   forceUserDecideIfNoMatch: true,
   userDecisionType: "list",
   userDecisionConfig: {
@@ -89,6 +102,8 @@ export const emptyTaskFormValues: TaskFormValues = {
     noLabel: "No",
   },
   userDecisionOptions: [],
+  canRunInParallel: false,
+  prioritize: false,
 };
 
 type TaskRecord = NonNullable<GetTaskQuery["getTask"]>;
@@ -101,8 +116,24 @@ const asRecord = (value: unknown): Record<string, unknown> =>
 const asString = (value: unknown, fallback = ""): string =>
   typeof value === "string" ? value : fallback;
 
+const isDecisionStateMode = (value: unknown): value is DecisionStateMode =>
+  value === "none" || value === "all" || value === "paths";
+
+const parseDecisionStateConfig = (
+  value: unknown,
+): { mode: DecisionStateMode; paths: string[] } => {
+  const config = asRecord(value);
+  const mode = isDecisionStateMode(config.mode) ? config.mode : "none";
+  const paths = Array.isArray(config.paths)
+    ? config.paths.filter((path): path is string => typeof path === "string")
+    : [];
+
+  return { mode, paths };
+};
+
 export const taskToFormValues = (task: TaskRecord): TaskFormValues => {
   const userDecisionConfig = asRecord(task.userDecisionConfig);
+  const decisionState = parseDecisionStateConfig(task.decisionStateConfig);
 
   return {
     name: task.name ?? "",
@@ -135,8 +166,12 @@ export const taskToFormValues = (task: TaskRecord): TaskFormValues => {
       task.onTrueTaskId != null ? String(task.onTrueTaskId) : NO_BRANCH_TASK,
     onFalseTaskId:
       task.onFalseTaskId != null ? String(task.onFalseTaskId) : NO_BRANCH_TASK,
+    joinTaskId:
+      task.joinTaskId != null ? String(task.joinTaskId) : NO_BRANCH_TASK,
     model: task.model ?? null,
     decisionModel: task.decisionModel ?? null,
+    decisionStateMode: decisionState.mode,
+    decisionStatePaths: decisionState.paths.map((path) => ({ path })),
     forceUserDecideIfNoMatch: task.forceUserDecideIfNoMatch ?? true,
     userDecisionType:
       (task.userDecisionType as UserDecisionType | null) ?? "list",
@@ -164,5 +199,7 @@ export const taskToFormValues = (task: TaskRecord): TaskFormValues => {
         appendState: option.appendState ?? false,
         sortOrder: option.sortOrder ?? 0,
       })),
+    canRunInParallel: task.canRunInParallel ?? true,
+    prioritize: task.prioritize ?? false,
   };
 };

@@ -30,7 +30,8 @@ pnpm files:index --include-unchanged --hash always
 The same engine powers the **Refresh** button and the `scan_files` tool. Scans
 skip `.tmp/`, `.gitkeep`, common system files, and symlinks. They abort above
 5,000 disk entries (`--max-entries`), and `hash: "auto"` skips hashing files
-larger than 100 MB.
+larger than 100 MB. Set the tool's `scope` to `uploaded` to return only the
+files uploaded or attached to the current run.
 
 Embeddings are best-effort metadata. If Ollama is unavailable the file
 operation still succeeds; repair missing vectors later with:
@@ -67,6 +68,86 @@ subscription drops.
 - Browser auth tokens expire after 7 days by default
   (`AUTH_TOKEN_TTL_SECONDS`).
 
+## Assisted runs
+
+Enable **Auto improvement** on `/user` to let local models help you start and
+improve runs. The toggle is stored per user in `userSettings.autoImprovement`
+and is off by default; while it is off, the landing page and task queue behave
+exactly as before.
+
+When enabled, a run started from the landing composer or the task-queue
+assistant is an **assisted run**:
+
+- The first step always pauses for review. The review shows the model's output
+  and a trace of every prompt and response, and lets you accept it, describe a
+  different outcome, replace the task, skip to the next task, or insert tasks
+  before/after the step. Revisions run from the original checkpoint, never from
+  the rejected attempt's effects.
+- The task-queue assistant runs the **current unsaved builder draft**. Nothing
+  is written to the saved task until you accept the reviewed step. The run
+  records a transient snapshot instead.
+- Decision steps ask "Is this the right choice?" You can accept the match, pick
+  a different option for this run, optimize the wording (up to three model
+  attempts), edit the wording yourself, or add an option. Assisted decisions
+  below the **0.8 confidence floor** or with no match are parked until you pick
+  an option explicitly. Decision premises are one or two words (the key the
+  model answers under), and optimization/manual edits enforce that limit.
+- If the chosen option has no next task, the run asks you to wire an existing
+  task or draft a new tool task inline. The wiring is saved on the decision
+  result, so later runs take the same branch.
+- User-decision steps pause for the user as usual. While paused you can edit
+  the prompt, labels, values, and targets; saving applies the edits to the run.
+- Cancel discards the current trial and every uncommitted attempt, deletes
+  draft tasks created only for the run, and leaves task/decision definitions at
+  their last accepted state. There is no version history for accepted
+  revisions.
+
+### Sandbox and commit
+
+Every tool step runs in an isolated trial:
+
+- Database rows are cloned into a per-attempt Postgres schema, and `tools`
+  route writes there through an `AsyncLocalStorage`-backed `db` proxy.
+- The files tree is copied to `.trials/<runId>/<attemptId>/` and file tools use
+  that root.
+- Accept computes a scoped diff against the baseline and applies only the rows
+  and files the attempt changed. Concurrent edits to the same row/path surface
+  as a `CONFLICT` and leave the trial in place for a retry.
+- Reject, cancel, and supersede discard the schema and files directory.
+- Tools may set `trialSafe: false` when their effects cannot be rolled back;
+  assisted runs reject those tools instead of presenting a false sandbox.
+
+The trial workspace implementation lives in `packages/trial-workspace`; run
+`pnpm --filter backend trials:cleanup` (also invoked at backend startup) to
+remove schemas/directories left behind by a crashed process.
+
+### Retention and traces
+
+Trace events are scoped to the owning run and persist until the run or its
+queued task is deleted. The trace accordion loads history and subscribes to
+`assistedTraceEvent` for new events; the run itself is no longer polled. The
+run list also exposes finished/cancelled/failed assisted runs under **Browse
+run history**.
+
+Assisted runs execute one step at a time, including `foreach` children, even
+when the task allows parallelism. Standard runs keep their normal parallel and
+auto-commit behaviour.
+
+## Parallel task execution
+
+Every task has a **Can run in parallel** setting in the task builder. It
+defaults to off for `decision`/`textPrompt` tasks and for tools that can call
+Ollama, Whisper, vision/OCR, or embeddings. Deterministic tools and user
+decisions default to on. The queue runs parallel-capable steps first, executes
+them up to the configured limit, and runs a non-parallel step only when nothing
+else is in flight.
+
+Every task also has a **Prioritize** setting. A prioritized step jumps to the
+top of the queue ahead of older non-prioritized steps, whether or not it can run
+in parallel. If a prioritized task is non-parallel, the queue stops starting new
+parallel work, lets the in-flight steps drain, then runs the prioritized task
+alone. Ordering is prioritize, then parallel-capable, then oldest first.
+
 ## Service settings
 
 The `/settings` page stores installation-wide endpoints in the singleton
@@ -81,11 +162,24 @@ The `/settings` page stores installation-wide endpoints in the singleton
   faster-whisper requests, for example
   `Systran/faster-whisper-large-v3` or
   `deepdml/faster-whisper-large-v3-turbo-ct2`.
+- **Maximum parallel tasks** — how many parallel-capable queue steps may run
+  at once. Allowed range 1–50, default 5.
+- **Ollama keep-alive** — optional `keep_alive` sent with Ollama requests, for
+  example `30m` or `1h`. Leave it empty to use the Ollama server's own
+  `OLLAMA_KEEP_ALIVE`; the bundled compose files set 30m, and the app does not
+  override that unless this field is filled in. `-1` keeps models loaded until
+  Ollama needs the memory.
+- **Preload models before they run** — on by default. When a queued step needs
+  a model, the backend asks Ollama to load it while earlier work finishes.
+- **Preload configured models on startup** — off by default. Warms the users'
+  configured generation, decision, and vision models plus the embedding model
+  once after startup. Keep it off on shared hosts or when VRAM is limited.
 
 `read_audio_file` accepts `transcribe: true` to send the file to that endpoint.
-The Settings page requires an authenticated user. If the table is empty, the
-backend falls back to `OLLAMA_BASE_URL`, `WHISPER_BACKEND`, `WHISPER_API_URL`,
-and `WHISPER_MODEL`.
+By default the run's user state is sent as transcription context too; set
+`includeState: false` to omit it. The Settings page requires an authenticated
+user. If the table is empty, the backend falls back to `OLLAMA_BASE_URL`,
+`WHISPER_BACKEND`, `WHISPER_API_URL`, and `WHISPER_MODEL`.
 
 ### Vision and OCR
 
@@ -98,12 +192,27 @@ fallback: if neither is configured, the tool reports a clear warning and still
 returns the image metadata and preview URL. Vision errors never fail the task,
 and image bytes only enter toolState when `includeBase64: true`.
 
+The run's user state is included in the vision prompt by default, so instructions
+such as “These are from Aamans Grønne køkken. Write the book name and page number
+in the description.” reach the vision model. Set `includeState: false` on the
+`read_image_file` task to use only the image and the tool's own prompt.
+
+Ollama loads models lazily, and a cold large vision model can take longer than
+the inference timeout. The backend therefore preloads the vision model as soon
+as an image task is queued (and while the queue is waiting), then waits for the
+load separately before starting the 120s inference timer. The load budget is
+controlled by `MODEL_LOAD_TIMEOUT_MS` (default 300000) and the inference budget
+by `VISION_TIMEOUT_MS` (default 120000). Warmup is deduplicated per model, so
+description and OCR share one load, and a failed warmup is only logged.
+
 ### Tool config templates
 
 Every tool config string can reference earlier toolState with `{{path}}`, for
 example `{{content}}` or `{{file.name}}`. Templates are resolved after the
 normal config/state/toolState merge, including strings nested inside objects and
-arrays, and a missing path fails the task instead of being sent literally. This
+arrays, and a missing path fails the task instead of being sent literally. A
+value that is exactly one placeholder keeps the native type from toolState, so
+`"{{folder.id}}"` resolves to a number and `"{{matched}}"` to a boolean. This
 allows deterministic composition without a model call:
 
 ```json
@@ -122,6 +231,63 @@ default target. Each case is a separate output handle on the task flow, and
 targets can be wired by dragging from that handle. `switch` is deterministic;
 the `decision` task asks the configured decision model instead. See
 `packages/tools/README.md` for an example config.
+
+Decision tasks can optionally add accumulated tool state to the state sent to
+the decision model. In the task builder, **Decision model context** offers
+**None**, **All tool state**, or **Selected paths** (for example `file.path` or
+`files.0.name`). This only changes the decision model prompt; the run's state
+and tool state passed to later tasks are unchanged.
+
+Generated choice results start with a probability threshold of `0.8`. New result
+rows added in the draft editor use the same default; the threshold remains
+editable per result.
+
+### Task flow layout
+
+The task-flow chart places each task in a left-to-right column. A single chain
+runs straight to the right, and branches fan out vertically from their parent.
+The canvas can zoom out to 10% and uses the full window width on large displays.
+
+### Importing and exporting tasks
+
+The task-flow toolbar has **Export** and **Import** buttons. Export downloads
+every task with its results, user-decision options, tool/model settings, and the
+decisions those tasks reference. The file is versioned JSON:
+
+```json
+{
+  "format": "rolodex-tasks",
+  "version": 1,
+  "exportedAt": "2026-11-19T00:00:00.000Z",
+  "decisions": [],
+  "tasks": []
+}
+```
+
+Import recreates everything from the file and remaps all task references
+(`fallbackTaskId`, `onTrueTaskId`, `onFalseTaskId`, switch targets, result
+targets, and user-decision option targets) to the new IDs. Import is additive:
+existing tasks are never changed or deleted, so importing the same file twice
+creates another set of copies. References to tasks missing from the file are
+cleared with a warning in the import result.
+
+### Selecting, copying and pasting tasks
+
+Drag on empty canvas space to draw a selection box around tasks (partially
+covered tasks are included). Hold Shift, Cmd, or Ctrl while clicking to add or
+remove tasks from the selection.
+
+- Press Delete or Backspace to delete the selected tasks after one confirmation.
+- Right-click a selected task to **Copy**, **Export**, or **Delete** the
+  selection. The same menu works for a single task.
+- Use Ctrl/Cmd+C and Ctrl/Cmd+V to copy and paste the selection. Right-clicking
+  empty canvas space offers **Paste tasks** as well.
+
+Copy and paste uses the task export format. Pasted tasks get new IDs, internal
+links between copied tasks are remapped, and links to tasks outside the
+selection keep pointing at the existing tasks. Decisions referenced by copied
+tasks are reused instead of duplicated. Pasted tasks appear near the paste
+location or in the center of the canvas for keyboard paste.
 
 ### Task output blocks
 
@@ -151,6 +317,15 @@ Without the variable the browser keeps the API on port 4000 on the same host
 as the web app. When the web app is served on port 80 or 443, it instead uses
 its own origin, which suits a reverse proxy in front of both apps. Server
 rendering falls back to `http://localhost:4000`.
+
+The outward REST API has its own settings:
+
+- `API_PUBLIC_ORIGIN` sets the base URL returned in `statusUrl` and
+  `websocketUrl`, so a spoofed `Host` cannot change those links.
+- `API_CORS_ORIGINS` is a comma-separated allowlist of browser origins. `*`
+  explicitly allows any origin; without it the outward API stays same-origin.
+
+See `packages/api/README.md` for authentication, limits and operational notes.
 
 ## Docker Compose
 

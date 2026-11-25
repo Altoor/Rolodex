@@ -37,6 +37,7 @@ export const getUserSettings = async (userId: number) => {
 
 type UpdateSettingsInput = {
   defaultTaskId?: number | null;
+  autoImprovement?: boolean;
   defaultModelName?: string | null;
   defaultDecisionModelName?: string | null;
   defaultVisionModelName?: string | null;
@@ -89,6 +90,9 @@ export const updateUserSettings = async (
     .set({
       ...(input.defaultTaskId !== undefined
         ? { defaultTaskId: input.defaultTaskId }
+        : {}),
+      ...(input.autoImprovement !== undefined
+        ? { autoImprovement: input.autoImprovement }
         : {}),
       ...(input.defaultModelName !== undefined
         ? { defaultModelName: input.defaultModelName }

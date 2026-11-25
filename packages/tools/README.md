@@ -60,6 +60,29 @@ tasks can use `name`, `description`, and so on directly.
 
 `fields` and the raw `format` escape hatch cannot be combined.
 
+## Current date and time
+
+Models do not know the actual current date, so relative wording such as
+"tomorrow" or "before Saturday" has nothing to resolve against. Set
+`includeCurrentTime` to append the current time to the system prompt, and use
+`timeZone` to pick an IANA zone (it defaults to the server's zone):
+
+```json
+{
+  "includeCurrentTime": true,
+  "timeZone": "Europe/Copenhagen",
+  "fields": {
+    "doByDate": {
+      "type": "string",
+      "description": "Absolute ISO 8601 deadline, for example 2026-11-27T23:59:59+01:00"
+    }
+  }
+}
+```
+
+The injected block includes the ISO timestamp, weekday, zone and a reminder to
+resolve relative dates against it.
+
 ## Tool config templates
 
 Every tool config string supports `{{path}}` placeholders that resolve against
@@ -77,8 +100,11 @@ to embed a file's contents or another tool's output:
 
 For example, after `read_plaintext_file` the next task sees `{{content}}` and
 `{{file.name}}`. A missing path fails with a clear error instead of sending the
-literal placeholder. Templates are resolved after the normal config, state and
-toolState merge, so a composed config value wins over the fields it reads:
+literal placeholder. A value that is exactly one placeholder keeps the native
+type from toolState, so `"{{folder.id}}"` resolves to a number and
+`"{{matched}}"` to a boolean; placeholders mixed with other text still resolve
+to strings. Templates are resolved after the normal config, state and toolState
+merge, so a composed config value wins over the fields it reads:
 
 ```json
 { "description": "{{description}}\n\n{{ocr}}" }
@@ -183,8 +209,71 @@ File and folder tools share one lookup layer. They accept an explicit `id` or
 Available tools: `find_file`, `find_files`, `find_folder`, `find_folders`,
 `scan_files`, `create_file`, `create_folder`, `read_plaintext_file`,
 `read_text_file`, `read_image_file`, `read_audio_file`, `read_video_file`,
-`read_other_file`, `update_file_metadata`, `delete_file_entry`, and
-`detect_file_type`.
+`read_other_file`, `update_file_metadata`, `move_files`, `delete_file_entry`,
+and `detect_file_type`.
+
+### Moving files and folders
+
+`update_file_metadata` renames or moves one entry into an existing folder.
+`move_files` moves several entries at once and can create the destination folder
+in the same call. Sources can be ids, paths, or objects with `id`/`path`; they
+are read from `files`, `file`, `entries`, `entry`, `ids`, or `paths`. When the
+config defines any of those keys, only the configured keys are used, so
+unrelated toolState values are not moved by accident.
+
+```json
+{
+  "files": ["inbox/invoice-001.pdf", { "path": "inbox/invoice-002.pdf" }],
+  "folderName": "invoices",
+  "folderDescription": "Processed invoices"
+}
+```
+
+Use `parentId`/`parentPath` for an existing destination, or `folderName` to
+create or reuse a folder under that parent (or the root). `folderDescription` is
+only used when the folder is created. Moves are validated before anything is
+changed: a destination collision, a folder moved inside itself, duplicate
+targets, or moving both a folder and one of its children all fail with a clear
+error. The output contains `files`, `folders`, `destination`, `moved`, and
+`unchanged`; matching entries are appended to toolState as `{ file }`/`{ files }`
+and `{ folder }`/`{ folders }`.
+
+### Empty find results
+
+The find tools (`find_file`, `find_files`, `find_folder`, `find_folders`,
+`find_todo`, and `find_todos`) fail with `no matching ... found` by default. Set
+`allowEmpty: true` to return an empty result instead, so the flow can continue:
+
+```json
+{
+  "query": "missing folder",
+  "allowEmpty": true
+}
+```
+
+The output then contains `matched: false`, a `warning`, and an empty
+`file`/`folder`/`todo` or `files`/`folders`/`todos` value. The same keys are
+appended to toolState so a stale match from an earlier step is cleared. Successful
+lookups report `matched: true`. Foreach lookups still enqueue no children when
+nothing matches.
+
+### Find thresholds
+
+The find tools accept two optional thresholds. `minimumScore` (default `0`)
+decides when a vector candidate is good enough to return without asking the
+decision model; lower-scoring candidates are ignored and the tool falls through
+to lexical and decision-model lookup. `minimumConfidence` (default `0`) is the
+decision-model confidence (or `noul` probability) a fallback selection must
+reach. A below-threshold selection behaves like any other miss, so
+`allowEmpty: true` returns `matched: false` instead of failing.
+
+```json
+{
+  "query": "invoice from March",
+  "minimumScore": 0.7,
+  "minimumConfidence": 0.8
+}
+```
 
 `scan_files` has two output modes:
 
@@ -203,6 +292,21 @@ Available tools: `find_file`, `find_files`, `find_folder`, `find_folders`,
 }
 ```
 
+Set `scope: "uploaded"` to return only the files uploaded with or attached to
+the current run (files inside attached folders are included). This is useful
+when files are uploaded on the landing page and the flow should process just
+those files:
+
+```json
+{
+  "scope": "uploaded",
+  "kind": "file"
+}
+```
+
+Uploaded files are already indexed, so this scope includes unchanged entries by
+default. If the run has no uploads, the scan returns no entries and a warning.
+
 A typical summarise flow:
 
 ```text
@@ -212,8 +316,9 @@ scan_files (foreach, fileType: plaintext)
               └── update_file_metadata
 ```
 
-The files page runner seeds `files` and `folders` into the first step's
-toolState, so a task started by dropping files can process them without a scan.
+The files page runner seeds `files`, `folders`, and an `uploaded: true` marker
+into the first step's toolState, so a task started by dropping files can process
+them without a scan, and `scan_files` can target just those uploads.
 The UI Refresh button calls the same indexer as `pnpm files:index`.
 
 ### Vision and OCR
@@ -232,7 +337,8 @@ text. Both are opt-in:
 You can also pass a custom `prompt`, which implies vision even when `describe`
 and `ocr` are false. `describe` writes a `description` string, `ocr` writes an
 `ocr` string, and setting both makes two vision calls so the fields stay
-separate. A custom prompt replaces the description prompt, or the OCR prompt
+separate. The run's user state is prepended to each vision prompt by default;
+set `includeState: false` to use only the prompt and the image. A custom prompt replaces the description prompt, or the OCR prompt
 when OCR is the only requested output. Vision output also includes
 `visionModel`.
 

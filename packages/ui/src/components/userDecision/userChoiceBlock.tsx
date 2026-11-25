@@ -1,5 +1,6 @@
 "use client";
 
+import { DecisionAnswerDetails } from "#components/decision/answerDetails/decisionAnswerDetails";
 import { Badge } from "#components/ui/badge";
 import { Button } from "#components/ui/button";
 import {
@@ -26,7 +27,7 @@ export interface PendingChoiceOption {
 }
 
 export interface PendingChoice {
-  kind: "userDecision" | "decisionOutput";
+  kind: "userDecision" | "decisionOutput" | "decisionTarget" | "nextStep";
   taskId: number;
   prompt: string;
   choiceType: PendingChoiceType;
@@ -43,6 +44,10 @@ interface UserChoiceBlockProps {
   answering?: boolean;
   dismissing?: boolean;
   error?: string | null;
+  /** Raw decision-model answer shown when thresholds did not match. */
+  answer?: unknown;
+  answerModel?: string | null;
+  answerNote?: string | null;
 }
 
 const OptionButton = ({
@@ -86,13 +91,16 @@ const UserChoiceBlock = ({
   answering = false,
   dismissing = false,
   error,
+  answer,
+  answerModel,
+  answerNote,
 }: UserChoiceBlockProps) => {
   const [selectedId, setSelectedId] = useState<string | undefined>(
     choice.recommendedOptionId ?? choice.options[0]?.id,
   );
   const busy = answering || dismissing;
 
-  const answer = (optionId: string | undefined) => {
+  const submitAnswer = (optionId: string | undefined) => {
     if (!optionId || busy) return;
     void onAnswer(optionId);
   };
@@ -116,6 +124,12 @@ const UserChoiceBlock = ({
           </Button>
         ) : null}
       </div>
+
+      <DecisionAnswerDetails
+        answer={answer}
+        model={answerModel}
+        note={answerNote}
+      />
 
       {choice.choiceType === "dropdown" ? (
         <div className="flex gap-2">
@@ -143,7 +157,7 @@ const UserChoiceBlock = ({
           <Button
             type="button"
             disabled={busy || !selectedId}
-            onClick={() => answer(selectedId)}
+            onClick={() => submitAnswer(selectedId)}
           >
             {answering ? <LoaderCircle className="animate-spin" /> : <Check />}
             {choice.acceptLabel}
@@ -157,7 +171,7 @@ const UserChoiceBlock = ({
               option={option}
               recommended={option.id === choice.recommendedOptionId}
               disabled={busy}
-              onClick={() => answer(option.id)}
+              onClick={() => submitAnswer(option.id)}
             />
           ))}
         </div>

@@ -11,7 +11,11 @@ import {
 import { db, fileEntries } from "@repo/db";
 import { getDecisionModelForUser, tryEmbedText } from "@repo/ai";
 import { mergeToolInput, readNumber, readString } from "../../../utils";
-import { ToolInputError, type ToolRunContext } from "../../../model";
+import {
+  ToolInputError,
+  ToolNoMatchError,
+  type ToolRunContext,
+} from "../../../model";
 import {
   getFileEntryById,
   getFileEntryByPath,
@@ -19,6 +23,12 @@ import {
 } from "./entry";
 import { normalizeRelativePath } from "./paths";
 import { selectFileEntryWithDecision } from "./selection";
+import {
+  DEFAULT_MINIMUM_CONFIDENCE,
+  DEFAULT_MINIMUM_SCORE,
+  passesMinimumScore,
+  readMinimumThreshold,
+} from "../../search-thresholds";
 import { toFileEntryRef, type FileEntryCandidate } from "./dto";
 
 export type FileEntryKind = "file" | "folder";
@@ -76,6 +86,16 @@ export async function findFileMatches(
     1,
     Math.floor(readNumber(input, "limit") ?? options.limit ?? 5),
   );
+  const minimumScore = readMinimumThreshold(
+    input,
+    "minimumScore",
+    DEFAULT_MINIMUM_SCORE,
+  );
+  const minimumConfidence = readMinimumThreshold(
+    input,
+    "minimumConfidence",
+    DEFAULT_MINIMUM_CONFIDENCE,
+  );
 
   const kindCondition =
     kind !== undefined ? eq(fileEntries.kind, kind) : undefined;
@@ -120,6 +140,10 @@ export async function findFileMatches(
         },
       ];
     });
+
+    candidates = candidates.filter((candidate) =>
+      passesMinimumScore(candidate.score, minimumScore),
+    );
   }
 
   if (candidates.length === 0) {
@@ -159,7 +183,7 @@ export async function findFileMatches(
       .where(and(kindCondition, live));
 
     if (rows.length === 0) {
-      throw new ToolInputError(`no matching ${label} found`);
+      throw new ToolNoMatchError(`no matching ${label} found`);
     }
 
     const selected = await selectFileEntryWithDecision(
@@ -167,6 +191,7 @@ export async function findFileMatches(
       queryText,
       model,
       kind,
+      minimumConfidence,
     );
 
     candidates = [
@@ -181,7 +206,7 @@ export async function findFileMatches(
 
   const best = candidates[0];
   if (!best) {
-    throw new ToolInputError(`no matching ${label} found`);
+    throw new ToolNoMatchError(`no matching ${label} found`);
   }
 
   return { entry: best, candidates };
@@ -266,12 +291,16 @@ function embeddedRecords(
   input: Record<string, unknown>,
   kind?: FileEntryKind,
 ): Record<string, unknown>[] {
+  // Singular per-entry records win over accumulative arrays. A foreach child
+  // appends its item as `{ entry }` while the run's uploaded attachment stays
+  // in toolState as `{ uploaded: true, files: [...] }`; reading `files` first
+  // would make every child resolve the first uploaded file.
   const keys =
     kind === "file"
-      ? ["file", "files", "entry", "entries"]
+      ? ["file", "entry", "files", "entries"]
       : kind === "folder"
-        ? ["folder", "folders", "entry", "entries"]
-        : ["file", "files", "folder", "folders", "entry", "entries"];
+        ? ["folder", "entry", "folders", "entries"]
+        : ["file", "folder", "entry", "files", "folders", "entries"];
 
   const records: Record<string, unknown>[] = [];
 

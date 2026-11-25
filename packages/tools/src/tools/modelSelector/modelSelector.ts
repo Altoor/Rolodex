@@ -11,6 +11,7 @@ const definition: ToolDefinition = {
   description:
     "Choose the generation or decision model that the next tool or task should use.",
   category: "ai",
+  usesModel: true,
   inputMode: "json",
   inputSchema: {
     type: "object",

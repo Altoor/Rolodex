@@ -10,6 +10,7 @@ import TaskCardHeader from "./components/taskCardHeader";
 import TaskModelFields from "./components/taskModelFields";
 import TaskResultsSection from "./components/taskResultsSection";
 import ToolTaskFields from "./components/toolTaskFields";
+import DecisionStateFields from "./components/decisionStateFields";
 
 const TaskCard = ({
   resultFields,
@@ -23,6 +24,8 @@ const TaskCard = ({
   onSaveResult,
   onDeleteResult,
   pathSuggestions,
+  onAssist,
+  assistOpen = false,
 }: TaskCardProps) => {
   const { control, setValue } = useFormContext<TaskFormValues>();
   const type = useWatch({ control, name: "type" });
@@ -32,6 +35,14 @@ const TaskCard = ({
     control,
     name: "forceUserDecideIfNoMatch",
   });
+  const canRunInParallel = useWatch({
+    control,
+    name: "canRunInParallel",
+  });
+  const prioritize = useWatch({
+    control,
+    name: "prioritize",
+  });
 
   const selectedTool = tools.find((tool) => tool.key === toolKey);
   const supportedOutputTypes = (selectedTool?.outputTypes ?? ["normal"]).filter(
@@ -40,10 +51,51 @@ const TaskCard = ({
 
   return (
     <Card className="w-full">
-      <TaskCardHeader save={save} saving={saving} />
+      <TaskCardHeader
+        save={save}
+        saving={saving}
+        tools={tools}
+        onAssist={onAssist}
+        assistOpen={assistOpen}
+      />
 
       <CardContent className="flex flex-col gap-5">
         <TaskModelFields models={models} />
+
+        <Field orientation="horizontal">
+          <Checkbox
+            checked={canRunInParallel}
+            onCheckedChange={(checked) =>
+              setValue("canRunInParallel", checked === true)
+            }
+          />
+          <div className="flex flex-col gap-0.5">
+            <FieldLabel>Can run in parallel</FieldLabel>
+            <p className="text-sm text-muted-foreground">
+              Parallel tasks run before exclusive ones and at the same time as
+              other parallel tasks, up to the limit on the Settings page. Tasks
+              that call Ollama, Whisper, vision/OCR, or embeddings should stay
+              off.
+            </p>
+          </div>
+        </Field>
+
+        <Field orientation="horizontal">
+          <Checkbox
+            checked={prioritize}
+            onCheckedChange={(checked) =>
+              setValue("prioritize", checked === true)
+            }
+          />
+          <div className="flex flex-col gap-0.5">
+            <FieldLabel>Prioritize</FieldLabel>
+            <p className="text-sm text-muted-foreground">
+              When queued, this task jumps to the top of the queue ahead of
+              other tasks. A prioritized exclusive task waits for running work
+              to finish, then runs before anything else.
+            </p>
+          </div>
+        </Field>
 
         {type === "tool" ? (
           <ToolTaskFields
@@ -76,6 +128,7 @@ const TaskCard = ({
                 </p>
               </div>
             </Field>
+            <DecisionStateFields suggestions={pathSuggestions} />
             <TaskResultsSection
               resultFields={resultFields}
               options={decision?.options ?? []}

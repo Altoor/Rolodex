@@ -8,6 +8,7 @@ export const ME = gql(/* GraphQL */ `
       name
       settings {
         defaultTaskId
+        autoImprovement
         defaultModelName
         defaultDecisionModelName
         defaultVisionModelName

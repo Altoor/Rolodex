@@ -36,11 +36,14 @@ import {
   toBranchTaskOptions,
   toModelNames,
 } from "./task-builder-service";
+import { buildTaskSnapshot } from "./build-task-snapshot";
 import TaskDecisionSection from "./components/taskDecisionSection";
+import TaskBuilderAssistant from "./components/taskBuilderAssistant";
 import UserDecisionSection from "./components/userDecisionSection";
 
 interface TaskBuilderProps {
   selectedTaskId: number | undefined;
+  onSelectTaskId: (taskId: number) => void;
 }
 
 const TaskBuilder = ({ selectedTaskId }: TaskBuilderProps) => {
@@ -60,6 +63,7 @@ const TaskBuilder = ({ selectedTaskId }: TaskBuilderProps) => {
   const [createdTaskId, setCreatedTaskId] = useState<number | undefined>(
     undefined,
   );
+  const [assistantOpen, setAssistantOpen] = useState(false);
   const taskId = selectedTaskId ?? createdTaskId;
 
   const { data: toolsData } = useQuery(TOOLS);
@@ -217,6 +221,20 @@ const TaskBuilder = ({ selectedTaskId }: TaskBuilderProps) => {
         {error ? (
           <ErrorState title="Task operation failed" error={error} />
         ) : null}
+        {assistantOpen ? (
+          <TaskBuilderAssistant
+            taskId={taskId}
+            getSnapshot={() =>
+              buildTaskSnapshot(getValues(), selectedDecisionId)
+            }
+            onStarted={(nextTaskId) => {
+              if (nextTaskId != null && taskId === undefined) {
+                setCreatedTaskId(nextTaskId);
+              }
+            }}
+            onClose={() => setAssistantOpen(false)}
+          />
+        ) : null}
         <TaskCard
           resultFields={fields}
           tools={tools}
@@ -229,6 +247,8 @@ const TaskBuilder = ({ selectedTaskId }: TaskBuilderProps) => {
           onSaveResult={saveTaskResult}
           onDeleteResult={deleteTaskResultAt}
           pathSuggestions={pathSuggestions}
+          onAssist={() => setAssistantOpen((open) => !open)}
+          assistOpen={assistantOpen}
         />
         <TaskDecisionSection
           type={type}

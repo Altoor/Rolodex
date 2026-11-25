@@ -35,9 +35,9 @@ builder.mutationType({
         },
         ctx,
       ) => {
-        requireUserId(ctx);
+        const userId = requireUserId(ctx);
 
-        return createTaskResult({
+        return createTaskResult(userId, {
           taskId,
           type,
           option,
@@ -76,9 +76,9 @@ builder.mutationType({
         },
         ctx,
       ) => {
-        requireUserId(ctx);
+        const userId = requireUserId(ctx);
 
-        return updateTaskResult({
+        return updateTaskResult(userId, {
           id,
           taskId,
           type,
@@ -97,8 +97,8 @@ builder.mutationType({
         id: t.arg.int({ required: true }),
       },
       resolve: async (_root, { id }, ctx) => {
-        requireUserId(ctx);
-        return deleteTaskResult(id);
+        const userId = requireUserId(ctx);
+        return deleteTaskResult(userId, id);
       },
     }),
   }),

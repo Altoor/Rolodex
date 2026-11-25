@@ -12,15 +12,20 @@ export const TASKS = gql(/* GraphQL */ `
       toolOutputType
       onTrueTaskId
       onFalseTaskId
+      joinTaskId
       model
       decisionModel
+      decisionStateConfig
       forceUserDecideIfNoMatch
       userDecisionType
       userDecisionConfig
+      canRunInParallel
+      prioritize
       tool {
         key
         name
         description
+        usesModel
         outputTypes
         foreachOutputDescription
       }
@@ -71,15 +76,20 @@ export const GET_TASK = gql(/* GraphQL */ `
       toolOutputType
       onTrueTaskId
       onFalseTaskId
+      joinTaskId
       model
       decisionModel
+      decisionStateConfig
       forceUserDecideIfNoMatch
       userDecisionType
       userDecisionConfig
+      canRunInParallel
+      prioritize
       tool {
         key
         name
         description
+        usesModel
         outputTypes
         foreachOutputDescription
       }
@@ -126,6 +136,9 @@ export const QUEUED_TASK = gql(/* GraphQL */ `
       state
       toolState
       parentQueuedTaskId
+      forkGroupId
+      forkIndex
+      isJoin
       depth
       status
       runId
@@ -140,6 +153,7 @@ export const QUEUED_TASK = gql(/* GraphQL */ `
         name
         type
         toolKey
+        toolConfig
       }
     }
   }
@@ -153,6 +167,9 @@ export const ACTIVE_QUEUED_TASKS = gql(/* GraphQL */ `
       state
       toolState
       parentQueuedTaskId
+      forkGroupId
+      forkIndex
+      isJoin
       depth
       status
       runId
@@ -167,6 +184,46 @@ export const ACTIVE_QUEUED_TASKS = gql(/* GraphQL */ `
         name
         type
         toolKey
+        toolConfig
+      }
+    }
+  }
+`);
+
+export const STANDARD_RUN_HISTORY = gql(/* GraphQL */ `
+  query StandardRunHistory($limit: Int, $offset: Int) {
+    standardRunHistory(limit: $limit, offset: $offset) {
+      id
+      status
+      state
+      startTaskId
+      createdAt
+      updatedAt
+      steps {
+        id
+        taskId
+        state
+        toolState
+        parentQueuedTaskId
+        forkGroupId
+        forkIndex
+        isJoin
+        depth
+        status
+        runId
+        queued_by
+        queued_at
+        result
+        pendingChoice
+        model
+        decisionModel
+        task {
+          id
+          name
+          type
+          toolKey
+          toolConfig
+        }
       }
     }
   }

@@ -8,6 +8,7 @@ import { UPDATE_USER_SETTINGS } from "@repo/queries/user/user-mutations";
 import { ME } from "@repo/queries/user/users-queries";
 import { ErrorState } from "#components/feedback/error-state";
 import { Button } from "#components/ui/button";
+import { Checkbox } from "#components/ui/checkbox";
 import {
   Card,
   CardContent,
@@ -31,6 +32,7 @@ const NONE = "__none__";
 
 interface UserSettingsFormProps {
   initialDefaultTaskId: number | null;
+  initialAutoImprovement: boolean;
   initialDefaultModelName: string | null;
   initialDefaultDecisionModelName: string | null;
   initialDefaultVisionModelName: string | null;
@@ -44,6 +46,7 @@ interface UserSettingsFormProps {
  */
 export function UserSettingsForm({
   initialDefaultTaskId,
+  initialAutoImprovement,
   initialDefaultModelName,
   initialDefaultDecisionModelName,
   initialDefaultVisionModelName,
@@ -68,6 +71,9 @@ export function UserSettingsForm({
   const [defaultTaskId, setDefaultTaskId] = useState(
     initialDefaultTaskId?.toString() ?? NONE,
   );
+  const [autoImprovement, setFlowAutoImprovement] = useState(
+    initialAutoImprovement,
+  );
   const [defaultModelName, setDefaultModelName] = useState(
     initialDefaultModelName ?? NONE,
   );
@@ -85,6 +91,7 @@ export function UserSettingsForm({
     const { error } = await updateSettings({
       variables: {
         defaultTaskId: defaultTaskId === NONE ? null : Number(defaultTaskId),
+        autoImprovement,
         defaultModelName: defaultModelName === NONE ? null : defaultModelName,
         defaultDecisionModelName:
           defaultDecisionModelName === NONE ? null : defaultDecisionModelName,
@@ -105,6 +112,25 @@ export function UserSettingsForm({
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-5">
+        <Field orientation="horizontal">
+          <Checkbox
+            checked={autoImprovement}
+            onCheckedChange={(checked) => {
+              setFlowAutoImprovement(checked === true);
+              onDirty?.();
+            }}
+            disabled={saving}
+          />
+          <div className="flex flex-col gap-0.5">
+            <FieldLabel>Assisted runs</FieldLabel>
+            <FieldDescription>
+              Start reviewed assisted runs from the landing page or task
+              builder. Each tool or decision step pauses so you can accept it,
+              repair it, or cancel before its effects are committed.
+            </FieldDescription>
+          </div>
+        </Field>
+
         <Field>
           <FieldLabel htmlFor="default-task">Starting task</FieldLabel>
           <Select

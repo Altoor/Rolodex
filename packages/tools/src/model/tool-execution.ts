@@ -50,4 +50,10 @@ export interface ToolExecution {
   nextModel?: string | null;
   /** If set, the next queued step inherits this decision model. */
   nextDecisionModel?: string | null;
+
+  /**
+   * Ends the run when the step completes, even if the task has a fallback
+   * task. Used by the `end_flow` tool.
+   */
+  endFlow?: boolean;
 }

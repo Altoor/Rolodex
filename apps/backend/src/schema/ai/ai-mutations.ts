@@ -4,8 +4,18 @@ import { builder, db } from "../builder";
 import { GraphQLError } from "graphql/error";
 import { DecisionType, SystemOnePrompt, SystemOneResponse } from "./ai";
 import { setupQuestions } from "./ai-service";
-import { getOllamaClient } from "@repo/ai";
+import { isValidDecisionPremise } from "./decision-premise";
+import { getOllamaClient, getOllamaKeepAlive } from "@repo/ai";
 import { requireUserId } from "../auth";
+
+function assertPremise(value: string): void {
+  if (!isValidDecisionPremise(value)) {
+    throw new GraphQLError(
+      "The decision premise must be one word, or at most two.",
+      { extensions: { code: "BAD_USER_INPUT" } },
+    );
+  }
+}
 
 builder.mutationType({
   fields: (t) => ({
@@ -33,6 +43,7 @@ builder.mutationType({
         ctx,
       ) => {
         const author_id = requireUserId(ctx);
+        assertPremise(decisionPremise);
 
         switch (type) {
           case "choice":
@@ -103,6 +114,7 @@ builder.mutationType({
         ctx,
       ) => {
         const authorId = requireUserId(ctx);
+        if (decisionPremise != null) assertPremise(decisionPremise);
         const decision = await db.query.decisions.findFirst({
           where: { id: id },
         });
@@ -181,10 +193,14 @@ builder.mutationType({
           },
         ]);
 
-        const response = await (await getOllamaClient()).systemone({
+        const keepAlive = await getOllamaKeepAlive();
+        const response = await (
+          await getOllamaClient()
+        ).systemone({
           model: "tev1:4b",
           state,
           questions,
+          ...(keepAlive !== undefined ? { keep_alive: keepAlive } : {}),
         });
         return response;
       },

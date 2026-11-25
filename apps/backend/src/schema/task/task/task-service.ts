@@ -1,182 +1,45 @@
-import { GraphQLError } from "graphql";
 import { eq } from "drizzle-orm";
 import { db, taskResults, tasks, userDecisionOptions } from "@repo/db";
-import { assertPulledModel } from "@repo/ai";
-import { getToolDefinition, validateSwitchConfig } from "@repo/tools";
+import {
+  assertValidTaskConfig,
+  defaultCanRunInParallel,
+  type CreateTaskInput,
+  type TaskOutputType,
+  type TaskType,
+  type UpdateTaskInput,
+  type UserDecisionType,
+} from "./task-config";
+import {
+  assertTasksVisible,
+  loadVisibleTask,
+  taskNotFound,
+} from "./task-visibility";
 
-export type TaskOutputType = "normal" | "foreach";
-export type TaskType = "decision" | "textPrompt" | "tool" | "userDecision";
-export type UserDecisionType = "yesNo" | "list" | "dropdown";
-export type UserDecisionOptionKind = "static" | "dynamic";
-
-export interface TaskConfigInput {
-  type: string;
-  toolKey: string | null;
-  toolConfig?: unknown;
-  toolOutputType: string;
-  onTrueTaskId?: number | null;
-  onFalseTaskId?: number | null;
-  model: string | null;
-  decisionModel: string | null;
-  forceUserDecideIfNoMatch?: boolean | null;
-  userDecisionType?: string | null;
-  userDecisionConfig?: unknown;
-}
-
-export interface CreateTaskInput {
-  name: string;
-  type: string;
-  decisionId?: number | null;
-  fallbackTaskId?: number | null;
-  toolKey?: string | null;
-  toolConfig?: unknown;
-  toolOutputType?: string | null;
-  onTrueTaskId?: number | null;
-  onFalseTaskId?: number | null;
-  model?: string | null;
-  decisionModel?: string | null;
-  forceUserDecideIfNoMatch?: boolean | null;
-  userDecisionType?: string | null;
-  userDecisionConfig?: unknown;
-}
-
-export interface UpdateTaskInput {
-  id: number;
-  name?: string | null;
-  type?: string | null;
-  decisionId?: number | null;
-  fallbackTaskId?: number | null;
-  toolKey?: string | null;
-  toolConfig?: unknown;
-  toolOutputType?: string | null;
-  onTrueTaskId?: number | null;
-  onFalseTaskId?: number | null;
-  model?: string | null;
-  decisionModel?: string | null;
-  forceUserDecideIfNoMatch?: boolean | null;
-  userDecisionType?: string | null;
-  userDecisionConfig?: unknown;
-}
-
+/** Returns the provided value when defined, otherwise the stored fallback. */
 function keepOrSet<T>(provided: T | undefined, fallback: T): T {
   return provided !== undefined ? provided : fallback;
 }
 
-export async function assertValidTaskConfig(
-  input: TaskConfigInput,
-): Promise<void> {
-  if (input.type === "tool") {
-    if (!input.toolKey) {
-      throw new GraphQLError("toolKey is required for tool tasks", {
-        extensions: { code: "BAD_USER_INPUT" },
-      });
-    }
+export {
+  assertValidTaskConfig,
+  defaultCanRunInParallel,
+  type CreateTaskInput,
+  type TaskConfigInput,
+  type TaskOutputType,
+  type TaskType,
+  type UpdateTaskInput,
+  type UserDecisionOptionKind,
+  type UserDecisionType,
+} from "./task-config";
 
-    const definition = getToolDefinition(input.toolKey);
-    if (!definition) {
-      throw new GraphQLError(`Unknown tool "${input.toolKey}"`, {
-        extensions: { code: "BAD_USER_INPUT" },
-      });
-    }
+export async function createTask(userId: number, input: CreateTaskInput) {
+  await assertTasksVisible(userId, [
+    input.fallbackTaskId,
+    input.onTrueTaskId,
+    input.onFalseTaskId,
+    input.joinTaskId,
+  ]);
 
-    const outputTypes = definition.outputTypes ?? ["normal"];
-    if (!outputTypes.includes(input.toolOutputType as TaskOutputType)) {
-      throw new GraphQLError(
-        `Tool "${input.toolKey}" does not support output type "${input.toolOutputType}"`,
-        { extensions: { code: "BAD_USER_INPUT" } },
-      );
-    }
-
-    if (input.toolKey === "if") {
-      for (const [label, id] of [
-        ["onTrueTaskId", input.onTrueTaskId],
-        ["onFalseTaskId", input.onFalseTaskId],
-      ] as const) {
-        if (id == null) continue;
-
-        const target = await db.query.tasks.findFirst({ where: { id } });
-        if (!target) {
-          throw new GraphQLError(`${label} ${id} does not reference a task`, {
-            extensions: { code: "BAD_USER_INPUT" },
-          });
-        }
-      }
-    }
-
-    if (input.toolKey === "switch") {
-      let config: ReturnType<typeof validateSwitchConfig>;
-      try {
-        config = validateSwitchConfig(input.toolConfig ?? {});
-      } catch (err) {
-        throw new GraphQLError(
-          err instanceof Error ? err.message : String(err),
-          { extensions: { code: "BAD_USER_INPUT" } },
-        );
-      }
-
-      const targetIds = new Set<number>();
-      for (const entry of config.cases) {
-        if (entry.nextTaskId != null) targetIds.add(entry.nextTaskId);
-      }
-      if (config.defaultTaskId != null) targetIds.add(config.defaultTaskId);
-
-      for (const id of targetIds) {
-        const target = await db.query.tasks.findFirst({ where: { id } });
-        if (!target) {
-          throw new GraphQLError(
-            `switch target ${id} does not reference a task`,
-            { extensions: { code: "BAD_USER_INPUT" } },
-          );
-        }
-      }
-    }
-  }
-
-  if (
-    input.toolConfig !== undefined &&
-    input.toolConfig !== null &&
-    (typeof input.toolConfig !== "object" || Array.isArray(input.toolConfig))
-  ) {
-    throw new GraphQLError("toolConfig must be a JSON object", {
-      extensions: { code: "BAD_USER_INPUT" },
-    });
-  }
-
-  if (
-    input.userDecisionConfig !== undefined &&
-    input.userDecisionConfig !== null &&
-    (typeof input.userDecisionConfig !== "object" ||
-      Array.isArray(input.userDecisionConfig))
-  ) {
-    throw new GraphQLError("userDecisionConfig must be a JSON object", {
-      extensions: { code: "BAD_USER_INPUT" },
-    });
-  }
-
-  if (
-    input.userDecisionType != null &&
-    !["yesNo", "list", "dropdown"].includes(input.userDecisionType)
-  ) {
-    throw new GraphQLError(
-      `Unknown userDecisionType "${input.userDecisionType}"`,
-      { extensions: { code: "BAD_USER_INPUT" } },
-    );
-  }
-
-  for (const model of [input.model, input.decisionModel]) {
-    if (!model) continue;
-
-    try {
-      await assertPulledModel(model);
-    } catch (err) {
-      throw new GraphQLError(err instanceof Error ? err.message : String(err), {
-        extensions: { code: "BAD_USER_INPUT" },
-      });
-    }
-  }
-}
-
-export async function createTask(input: CreateTaskInput) {
   const task = {
     name: input.name,
     type: input.type as TaskType,
@@ -187,11 +50,17 @@ export async function createTask(input: CreateTaskInput) {
     toolOutputType: (input.toolOutputType ?? "normal") as TaskOutputType,
     onTrueTaskId: input.onTrueTaskId ?? null,
     onFalseTaskId: input.onFalseTaskId ?? null,
+    joinTaskId: input.joinTaskId ?? null,
     model: input.model ?? null,
     decisionModel: input.decisionModel ?? null,
+    decisionStateConfig: input.decisionStateConfig ?? null,
     forceUserDecideIfNoMatch: input.forceUserDecideIfNoMatch ?? true,
     userDecisionType: (input.userDecisionType ?? "list") as UserDecisionType,
     userDecisionConfig: input.userDecisionConfig ?? null,
+    canRunInParallel:
+      input.canRunInParallel ??
+      defaultCanRunInParallel(input.type, input.toolKey),
+    prioritize: input.prioritize ?? false,
   };
 
   await assertValidTaskConfig({
@@ -201,25 +70,32 @@ export async function createTask(input: CreateTaskInput) {
     toolOutputType: task.toolOutputType,
     onTrueTaskId: task.onTrueTaskId,
     onFalseTaskId: task.onFalseTaskId,
+    joinTaskId: task.joinTaskId,
     model: task.model,
     decisionModel: task.decisionModel,
+    decisionStateConfig: task.decisionStateConfig,
     forceUserDecideIfNoMatch: task.forceUserDecideIfNoMatch,
     userDecisionType: task.userDecisionType,
     userDecisionConfig: task.userDecisionConfig,
-  });
+  }, userId);
 
   const [created] = await db.insert(tasks).values(task).returning();
   return created;
 }
 
-export async function updateTask(input: UpdateTaskInput) {
-  const task = await db.query.tasks.findFirst({ where: { id: input.id } });
+export async function updateTask(userId: number, input: UpdateTaskInput) {
+  const task = await loadVisibleTask(userId, input.id);
 
   if (!task) {
-    throw new GraphQLError("Task not found", {
-      extensions: { code: "BAD_USER_INPUT" },
-    });
+    throw taskNotFound();
   }
+
+  await assertTasksVisible(userId, [
+    input.fallbackTaskId,
+    input.onTrueTaskId,
+    input.onFalseTaskId,
+    input.joinTaskId,
+  ]);
 
   const nextType = (input.type ?? task.type) as TaskType;
   const nextToolKey = keepOrSet(input.toolKey, task.toolKey);
@@ -230,8 +106,13 @@ export async function updateTask(input: UpdateTaskInput) {
   ) as TaskOutputType;
   const nextOnTrueTaskId = keepOrSet(input.onTrueTaskId, task.onTrueTaskId);
   const nextOnFalseTaskId = keepOrSet(input.onFalseTaskId, task.onFalseTaskId);
+  const nextJoinTaskId = keepOrSet(input.joinTaskId, task.joinTaskId);
   const nextModel = keepOrSet(input.model, task.model);
   const nextDecisionModel = keepOrSet(input.decisionModel, task.decisionModel);
+  const nextDecisionStateConfig = keepOrSet(
+    input.decisionStateConfig,
+    task.decisionStateConfig,
+  );
   const nextForceUserDecideIfNoMatch =
     input.forceUserDecideIfNoMatch ?? task.forceUserDecideIfNoMatch;
   const nextUserDecisionType = keepOrSet(
@@ -242,6 +123,8 @@ export async function updateTask(input: UpdateTaskInput) {
     input.userDecisionConfig,
     task.userDecisionConfig,
   );
+  const nextCanRunInParallel = input.canRunInParallel ?? task.canRunInParallel;
+  const nextPrioritize = input.prioritize ?? task.prioritize;
 
   await assertValidTaskConfig({
     type: nextType,
@@ -250,12 +133,14 @@ export async function updateTask(input: UpdateTaskInput) {
     toolOutputType: nextToolOutputType,
     onTrueTaskId: nextOnTrueTaskId,
     onFalseTaskId: nextOnFalseTaskId,
+    joinTaskId: nextJoinTaskId,
     model: nextModel,
     decisionModel: nextDecisionModel,
+    decisionStateConfig: nextDecisionStateConfig,
     forceUserDecideIfNoMatch: nextForceUserDecideIfNoMatch,
     userDecisionType: nextUserDecisionType,
     userDecisionConfig: nextUserDecisionConfig,
-  });
+  }, userId);
 
   const taskDto = {
     name: input.name ?? task.name,
@@ -269,11 +154,15 @@ export async function updateTask(input: UpdateTaskInput) {
     toolOutputType: nextToolOutputType,
     onTrueTaskId: nextOnTrueTaskId,
     onFalseTaskId: nextOnFalseTaskId,
+    joinTaskId: nextJoinTaskId,
     model: nextModel,
     decisionModel: nextDecisionModel,
+    decisionStateConfig: nextDecisionStateConfig,
     forceUserDecideIfNoMatch: nextForceUserDecideIfNoMatch,
     userDecisionType: nextUserDecisionType,
     userDecisionConfig: nextUserDecisionConfig,
+    canRunInParallel: nextCanRunInParallel,
+    prioritize: nextPrioritize,
   };
 
   const [updated] = await db
@@ -284,13 +173,14 @@ export async function updateTask(input: UpdateTaskInput) {
   return updated;
 }
 
-export async function deleteTask(id: number): Promise<string> {
-  const task = await db.query.tasks.findFirst({ where: { id } });
+export async function deleteTask(
+  userId: number,
+  id: number,
+): Promise<string> {
+  const task = await loadVisibleTask(userId, id);
 
   if (!task) {
-    throw new GraphQLError("Task not found", {
-      extensions: { code: "BAD_USER_INPUT" },
-    });
+    throw taskNotFound();
   }
 
   await db.delete(taskResults).where(eq(taskResults.taskId, id));
@@ -310,6 +200,10 @@ export async function deleteTask(id: number): Promise<string> {
     .update(tasks)
     .set({ onFalseTaskId: null })
     .where(eq(tasks.onFalseTaskId, id));
+  await db
+    .update(tasks)
+    .set({ joinTaskId: null })
+    .where(eq(tasks.joinTaskId, id));
   await db
     .update(userDecisionOptions)
     .set({ resultTaskId: null })

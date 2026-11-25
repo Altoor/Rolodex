@@ -14,6 +14,7 @@ export const Tool = builder.objectRef<ToolDefinition>("Tool").implement({
       resolve: (parent) => parent.inputSchema,
     }),
     outputDescription: t.exposeString("outputDescription"),
+    usesModel: t.exposeBoolean("usesModel", { nullable: true }),
     outputTypes: t.field({
       type: ["String"],
       resolve: (parent) => parent.outputTypes ?? ["normal"],

@@ -1,5 +1,6 @@
 "use client";
 
+import { Controller } from "react-hook-form";
 import { Button } from "#components/ui/button";
 import {
   Card,
@@ -9,19 +10,16 @@ import {
   CardHeader,
   CardTitle,
 } from "#components/ui/card";
-import { Spinner } from "#components/ui/spinner";
 import { ErrorState } from "#components/feedback/error-state";
-import { Controller } from "react-hook-form";
+import { Field, FieldLabel } from "#components/ui/field";
+import { Spinner } from "#components/ui/spinner";
 import { StateComposer } from "./state-composer";
-import { LandingTaskSelect } from "./landing-task-select";
 import type { LandingComposerProps } from "./landing-model";
 
-/**
- * The landing page's main card: pick a task, describe the situation, attach
- * files, and submit. The run list is passed in as the card footer.
- */
+/** The landing-page run composer. A starting task is always explicit. */
 export function LandingComposer({
   tasks,
+  autoEnabled,
   control,
   submit,
   onKeyDown,
@@ -29,6 +27,7 @@ export function LandingComposer({
   recording,
   isSubmitting,
   attachError,
+  submitError,
   addFiles,
   removeAttachment,
   rejectDirectory,
@@ -40,16 +39,39 @@ export function LandingComposer({
       <CardHeader>
         <CardTitle>What do you want to do today?</CardTitle>
         <CardDescription>
-          Pick a starting task, describe the situation, and hit enter.
+          {autoEnabled
+            ? "Pick a starting task and describe the situation. Each step pauses for review."
+            : "Pick a starting task, describe the situation, and hit enter."}
         </CardDescription>
       </CardHeader>
       <CardContent className="min-h-32">
         <form onSubmit={submit} className="flex flex-col gap-3">
-          <LandingTaskSelect
-            control={control}
-            tasks={tasks}
-            disabled={isSubmitting}
-          />
+          <Field>
+            <FieldLabel htmlFor="landing-task">Starting task</FieldLabel>
+            <Controller
+              name="taskId"
+              control={control}
+              rules={{ required: "Choose a starting task" }}
+              render={({ field }) => (
+                <select
+                  id="landing-task"
+                  className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+                  value={field.value}
+                  disabled={isSubmitting || tasks.length === 0}
+                  onChange={(event) => field.onChange(event.target.value)}
+                >
+                  {tasks.length === 0 ? (
+                    <option value="">No tasks yet</option>
+                  ) : null}
+                  {tasks.map((task) => (
+                    <option key={task.id} value={String(task.id)}>
+                      {task.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            />
+          </Field>
           <Controller
             name="state"
             control={control}
@@ -77,7 +99,13 @@ export function LandingComposer({
           {attachError ? (
             <ErrorState title="Could not add files" error={attachError} />
           ) : null}
-          <Button type="submit" disabled={isSubmitting || recording}>
+          {submitError ? (
+            <ErrorState title="Could not start a run" error={submitError} />
+          ) : null}
+          <Button
+            type="submit"
+            disabled={isSubmitting || recording || tasks.length === 0}
+          >
             {isSubmitting ? <Spinner /> : "Submit"}
           </Button>
         </form>

@@ -67,8 +67,14 @@ export const Task = builder.drizzleObject("tasks", {
     }),
     onTrueTaskId: t.exposeInt("onTrueTaskId", { nullable: true }),
     onFalseTaskId: t.exposeInt("onFalseTaskId", { nullable: true }),
+    joinTaskId: t.exposeInt("joinTaskId", { nullable: true }),
     model: t.exposeString("model", { nullable: true }),
     decisionModel: t.exposeString("decisionModel", { nullable: true }),
+    decisionStateConfig: t.field({
+      type: "JSON",
+      nullable: true,
+      resolve: (parent) => parent.decisionStateConfig ?? null,
+    }),
     forceUserDecideIfNoMatch: t.exposeBoolean("forceUserDecideIfNoMatch"),
     userDecisionType: t.field({
       type: UserDecisionType,
@@ -79,6 +85,8 @@ export const Task = builder.drizzleObject("tasks", {
       nullable: true,
       resolve: (parent) => parent.userDecisionConfig ?? null,
     }),
+    canRunInParallel: t.exposeBoolean("canRunInParallel"),
+    prioritize: t.exposeBoolean("prioritize"),
     tool: t.field({
       type: Tool,
       nullable: true,

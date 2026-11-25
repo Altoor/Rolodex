@@ -1,8 +1,11 @@
 import type { ToolExecution, ToolStateEntry } from "@repo/tools";
-import { enqueueStep } from "../../step-store";
+import type { queuedTasks } from "@repo/db";
+import { inheritedForkFields } from "../../joins";
 import type { QueuedRow } from "../../types";
 
-export interface EnqueueNormalArgs {
+export type QueuedStepInsert = typeof queuedTasks.$inferInsert;
+
+export interface PlanNormalArgs {
   row: QueuedRow;
   execution: ToolExecution;
   nextTaskId: number;
@@ -10,15 +13,15 @@ export interface EnqueueNormalArgs {
   nextToolState: ToolStateEntry[];
 }
 
-/** Enqueues the single next step for a normal-output tool. */
-export async function enqueueNormalNext({
+/** Plans the single next step for a normal-output tool. */
+export function planNormalNext({
   row,
   execution,
   nextTaskId,
   nextState,
   nextToolState,
-}: EnqueueNormalArgs): Promise<void> {
-  await enqueueStep({
+}: PlanNormalArgs): QueuedStepInsert {
+  return {
     taskId: nextTaskId,
     state: nextState,
     toolState: nextToolState,
@@ -28,5 +31,6 @@ export async function enqueueNormalNext({
     queued_by: row.queued_by,
     model: execution.nextModel ?? row.model,
     decisionModel: execution.nextDecisionModel ?? row.decisionModel,
-  });
+    ...inheritedForkFields(row),
+  };
 }

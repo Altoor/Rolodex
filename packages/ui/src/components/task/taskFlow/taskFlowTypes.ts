@@ -19,6 +19,8 @@ export const FALLBACK_HANDLE_ID = "fallback";
 /** Handle ids used for the `if` tool's conditional outputs. */
 export const TRUE_HANDLE_ID = "true";
 export const FALSE_HANDLE_ID = "false";
+/** Handle id used for a foreach task's post-fan-out join barrier. */
+export const JOIN_HANDLE_ID = "join";
 /** Prefix for userDecision option handles, e.g. `udo:12`. */
 export const USER_DECISION_HANDLE_PREFIX = "udo:";
 
@@ -29,10 +31,14 @@ export type TaskFlowNodeData = {
   decisionType: string | null;
   toolKey: string | null;
   toolConfig: unknown;
+  toolOutputType: string | null;
   model: string | null;
   decisionModel: string | null;
   onTrueTaskId: number | null;
   onFalseTaskId: number | null;
+  joinTaskId: number | null;
+  /** True while the task sits between a foreach fan-out and its join. */
+  fannedOut: boolean;
   taskResults: FlowTaskResult[];
   forceUserDecideIfNoMatch: boolean;
   userDecisionType: string | null;
@@ -43,8 +49,9 @@ export type TaskFlowNodeData = {
 
 export type TaskFlowNode = Node<TaskFlowNodeData, "taskFlow">;
 
-/** Menu opened by right-clicking an edge or empty canvas space. */
+/** Menu opened by right-clicking a task, an edge, or empty canvas space. */
 export type FlowContextMenu =
+  | { kind: "nodes"; x: number; y: number; taskIds: number[] }
   | { kind: "edge"; x: number; y: number; edge: Edge }
   | { kind: "pane"; x: number; y: number; position: XYPosition };
 

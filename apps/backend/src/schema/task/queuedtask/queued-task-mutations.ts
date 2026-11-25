@@ -8,6 +8,7 @@ import {
   deleteCompletedQueuedTasksBefore,
   deleteQueuedTask,
   dismissQueuedTask,
+  retryQueuedTask,
 } from "./queued-task-service";
 
 builder.mutationType({
@@ -54,15 +55,15 @@ builder.mutationType({
         id: t.arg.int({ required: true }),
       },
       resolve: async (_query, _root, { id }, ctx) => {
-        requireUserId(ctx);
-        return completeQueuedTask(id);
+        const userId = requireUserId(ctx);
+        return completeQueuedTask(userId, id);
       },
     }),
 
     dismissQueuedTask: t.field({
       type: [QueuedTask],
       description:
-        "Dismisses a choice that is waiting for the user and ends its run.",
+        "Stops a queued, running, or waiting run and cancels its remaining steps.",
       args: {
         id: t.arg.int({ required: true }),
       },
@@ -72,14 +73,27 @@ builder.mutationType({
       },
     }),
 
+    retryQueuedTask: t.drizzleField({
+      type: QueuedTask,
+      description:
+        "Re-queues a failed step with its original task, state, and toolState.",
+      args: {
+        id: t.arg.int({ required: true }),
+      },
+      resolve: async (_query, _root, { id }, ctx) => {
+        const userId = requireUserId(ctx);
+        return retryQueuedTask(userId, id);
+      },
+    }),
+
     deleteCompletedQueuedTaskFromBefore: t.field({
       type: "String",
       args: {
         date: t.arg({ type: "DateTime", required: true }),
       },
       resolve: async (_root, { date }, ctx) => {
-        requireUserId(ctx);
-        return deleteCompletedQueuedTasksBefore(date);
+        const userId = requireUserId(ctx);
+        return deleteCompletedQueuedTasksBefore(userId, date);
       },
     }),
 
@@ -89,8 +103,8 @@ builder.mutationType({
         id: t.arg.int({ required: true }),
       },
       resolve: async (_root, { id }, ctx) => {
-        requireUserId(ctx);
-        return deleteQueuedTask(id);
+        const userId = requireUserId(ctx);
+        return deleteQueuedTask(userId, id);
       },
     }),
   }),

@@ -25,9 +25,14 @@ import {
 
 interface DecisionBuilderProps {
   selectedDecisionId: number | undefined;
+  /** Called with the new id when a decision is created, so a parent can select it. */
+  onCreated?: (decisionId: number) => void;
 }
 
-const DecisionBuilder = ({ selectedDecisionId }: DecisionBuilderProps) => {
+const DecisionBuilder = ({
+  selectedDecisionId,
+  onCreated,
+}: DecisionBuilderProps) => {
   const methods = useForm<DecisionFormValues>({
     defaultValues: emptyDecisionFormValues,
   });
@@ -62,6 +67,10 @@ const DecisionBuilder = ({ selectedDecisionId }: DecisionBuilderProps) => {
     toVariables: decisionFormValuesToVariables,
     create: (variables) => createDecision({ variables }),
     update: (variables) => updateDecision({ variables }),
+    onCreated: (data) => {
+      const createdId = data?.createDecision?.id;
+      if (createdId != null) onCreated?.(createdId);
+    },
   });
 
   if (selectedDecisionId !== undefined && loading) {

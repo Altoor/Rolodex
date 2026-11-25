@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useNodesState, type XYPosition } from "@xyflow/react";
 import type { FlowTask, TaskFlowNode } from "../taskFlowTypes";
 import { buildEdges } from "../services/edges";
+import { computeFannedOutTaskIds } from "../services/fan-out";
 import { computePositions } from "../services/layout";
 import { buildNodes } from "../services/nodes";
 
@@ -25,8 +26,14 @@ export function useTaskFlowGraph({
 }: UseTaskFlowGraphArgs) {
   const [nodes, setNodes, onNodesChange] = useNodesState<TaskFlowNode>([]);
   const laidOutRoot = useRef<number | "auto" | undefined>(undefined);
+  const lastSelectedTaskId = useRef<number | undefined>(undefined);
 
   useEffect(() => {
+    // An explicit builder selection replaces the canvas selection. Otherwise
+    // (task refetch, modifier-click, box selection) keep the current one.
+    const selectionFromBuilder = selectedTaskId !== lastSelectedTaskId.current;
+    lastSelectedTaskId.current = selectedTaskId;
+
     if (tasks.length === 0) {
       setNodes([]);
       return;
@@ -38,11 +45,19 @@ export function useTaskFlowGraph({
     laidOutRoot.current = rootTask ?? "auto";
 
     const positions = computePositions(tasks, effectiveRootId);
+    const fannedOutTaskIds = computeFannedOutTaskIds(tasks);
 
     setNodes((prev) => {
       const previousPositions = new Map(
         prev.map((node) => [Number(node.id), node.position]),
       );
+      const previousSelectedIds = selectionFromBuilder
+        ? undefined
+        : new Set(
+            prev
+              .filter((node) => node.selected)
+              .map((node) => Number(node.id)),
+          );
 
       return buildNodes({
         tasks,
@@ -50,6 +65,8 @@ export function useTaskFlowGraph({
         previousPositions,
         pendingPositions: pendingPositions.current,
         selectedTaskId,
+        selectedTaskIds: previousSelectedIds,
+        fannedOutTaskIds,
         keepPreviousPositions,
         onTaskDelete,
       });

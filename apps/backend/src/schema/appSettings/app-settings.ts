@@ -19,6 +19,10 @@ export const AppSettings = builder
       }),
       whisperApiUrl: t.exposeString("whisperApiUrl"),
       whisperModel: t.exposeString("whisperModel", { nullable: true }),
+      maxParallelTasks: t.exposeInt("maxParallelTasks"),
+      ollamaKeepAlive: t.exposeString("ollamaKeepAlive", { nullable: true }),
+      preloadModels: t.exposeBoolean("preloadModels"),
+      warmModelsOnStartup: t.exposeBoolean("warmModelsOnStartup"),
       updatedAt: t.field({
         type: "DateTime",
         nullable: true,

@@ -39,6 +39,47 @@ export const relations = defineRelations(schema, (r) => ({
     }),
   },
 
+  runs: {
+    user: r.one.users({
+      from: r.runs.userId,
+      to: r.users.id,
+    }),
+    startTask: r.one.tasks({
+      from: r.runs.startTaskId,
+      to: r.tasks.id,
+    }),
+    steps: r.many.queuedTasks(),
+    attempts: r.many.stepAttempts(),
+    traceEvents: r.many.traceEvents(),
+  },
+
+  apiEndpoints: {
+    user: r.one.users({
+      from: r.apiEndpoints.userId,
+      to: r.users.id,
+    }),
+    task: r.one.tasks({
+      from: r.apiEndpoints.taskId,
+      to: r.tasks.id,
+    }),
+    requests: r.many.apiRequests(),
+  },
+
+  apiRequests: {
+    endpoint: r.one.apiEndpoints({
+      from: r.apiRequests.endpointId,
+      to: r.apiEndpoints.id,
+    }),
+    user: r.one.users({
+      from: r.apiRequests.userId,
+      to: r.users.id,
+    }),
+    run: r.one.runs({
+      from: r.apiRequests.runId,
+      to: r.runs.id,
+    }),
+  },
+
   queuedTasks: {
     user: r.one.users({
       from: r.queuedTasks.queued_by,
@@ -48,6 +89,36 @@ export const relations = defineRelations(schema, (r) => ({
     task: r.one.tasks({
       from: r.queuedTasks.taskId,
       to: r.tasks.id,
+    }),
+
+    run: r.one.runs({
+      from: r.queuedTasks.runId,
+      to: r.runs.id,
+    }),
+
+    attempts: r.many.stepAttempts(),
+  },
+
+  stepAttempts: {
+    step: r.one.queuedTasks({
+      from: r.stepAttempts.queuedTaskId,
+      to: r.queuedTasks.id,
+    }),
+    run: r.one.runs({
+      from: r.stepAttempts.runId,
+      to: r.runs.id,
+    }),
+    traceEvents: r.many.traceEvents(),
+  },
+
+  traceEvents: {
+    run: r.one.runs({
+      from: r.traceEvents.runId,
+      to: r.runs.id,
+    }),
+    attempt: r.one.stepAttempts({
+      from: r.traceEvents.attemptId,
+      to: r.stepAttempts.id,
     }),
   },
 

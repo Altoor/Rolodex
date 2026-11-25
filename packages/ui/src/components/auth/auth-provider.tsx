@@ -10,6 +10,7 @@ export interface CurrentUser {
   email: string;
   settings: {
     defaultTaskId: number | null;
+    autoImprovement: boolean;
     defaultModelName: string | null;
     defaultDecisionModelName: string | null;
     defaultVisionModelName: string | null;

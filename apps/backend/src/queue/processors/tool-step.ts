@@ -1,26 +1,47 @@
 import { getDecisionModelForUser, getModelForUser } from "@repo/ai";
+import type { ToolStateEntry } from "@repo/tools";
 import { MAX_CHAIN_DEPTH } from "../constants";
-import { finishStep } from "../step-store";
+import { loadJoinBranches } from "../joins";
+import { enqueueSteps, finishStep } from "../step-store";
 import type { QueuedRow, TaskRow } from "../types";
 import { applyToolState } from "./tool-step/apply-tool-state";
 import { buildToolResult } from "./tool-step/build-tool-result";
-import { enqueueForeach } from "./tool-step/enqueue-foreach";
-import { enqueueNormalNext } from "./tool-step/enqueue-normal";
+import {
+  planForeach,
+  type QueuedStepInsert,
+} from "./tool-step/enqueue-foreach";
+import { planNormalNext } from "./tool-step/enqueue-normal";
 import { resolveToolBranch } from "./tool-step/resolve-tool-branch";
 import { validateToolStep } from "./tool-step/validate-tool";
 
-/** Executes a tool task and enqueues the resulting next step(s). */
-export async function processToolStep(
+export interface ToolAttemptOutcome {
+  result: Record<string, unknown>;
+  summary?: string;
+  nextState: string;
+  nextToolState: ToolStateEntry[];
+  nextSteps: QueuedStepInsert[];
+}
+
+export type ToolAttemptExecution =
+  | { ok: true; toolKey: string; outcome: ToolAttemptOutcome }
+  | { ok: false; toolKey: string | null; note: string };
+
+/**
+ * Executes a tool and plans its next steps without completing the step or
+ * inserting anything. Standard runs apply the plan immediately; assisted runs
+ * keep it until the user accepts the attempt.
+ */
+export async function executeToolAttempt(
   row: QueuedRow,
   task: TaskRow,
-): Promise<void> {
+): Promise<ToolAttemptExecution> {
   const validation = validateToolStep(task);
   if (!validation.ok) {
-    await finishStep(row.id, "failed", {
+    return {
+      ok: false,
       toolKey: validation.toolKey,
       note: validation.note,
-    });
-    return;
+    };
   }
 
   const { tool, toolKey, outputType, toolConfig } = validation;
@@ -33,6 +54,8 @@ export async function processToolStep(
       task.decisionModel ??
       (await getDecisionModelForUser(row.queued_by));
 
+    const fork = await loadJoinBranches(row);
+
     const execution = await tool.execute({
       userId: row.queued_by,
       runId: row.runId,
@@ -42,10 +65,9 @@ export async function processToolStep(
       toolState: row.toolState,
       outputType,
       config: toolConfig,
-      // Selector override > task model > user default, independently for each
-      // model role.
       model,
       decisionModel,
+      ...(fork ? { fork } : {}),
     });
 
     const nextToolState = applyToolState(
@@ -57,10 +79,14 @@ export async function processToolStep(
     const nextState = execution.nextState ?? row.state;
 
     const resolved = resolveToolBranch(task, execution);
-    let nextTaskId = resolved.nextTaskId;
-    let note = resolved.note;
-    let childQueuedTaskIds: number[] = [];
+    const endFlow = execution.endFlow === true;
+    let nextTaskId = endFlow ? null : resolved.nextTaskId;
+    let note = endFlow ? undefined : resolved.note;
+    let nextSteps: QueuedStepInsert[] = [];
+    const childQueuedTaskIds: number[] = [];
     let itemCount: number | undefined;
+    let forkGroupId: string | undefined;
+    let joinTaskId: number | undefined;
 
     if (outputType === "normal") {
       if (nextTaskId != null) {
@@ -68,34 +94,35 @@ export async function processToolStep(
           nextTaskId = null;
           note = `max chain depth (${MAX_CHAIN_DEPTH}) reached — run stopped`;
         } else {
-          await enqueueNormalNext({
-            row,
-            execution,
-            nextTaskId,
-            nextState,
-            nextToolState,
-          });
+          nextSteps = [
+            planNormalNext({
+              row,
+              execution,
+              nextTaskId,
+              nextState,
+              nextToolState,
+            }),
+          ];
         }
       }
     } else {
-      const foreach = await enqueueForeach({
+      const foreach = planForeach({
         row,
         execution,
         nextTaskId,
         nextState,
         nextToolState,
+        joinTaskId: task.joinTaskId,
       });
 
       itemCount = foreach.itemCount;
-      childQueuedTaskIds = foreach.childQueuedTaskIds;
+      nextSteps = foreach.nextSteps;
       nextTaskId = foreach.nextTaskId;
+      forkGroupId = foreach.forkGroupId;
+      joinTaskId = foreach.joinTaskId;
 
       if (foreach.failureNote) {
-        await finishStep(row.id, "failed", {
-          toolKey,
-          note: foreach.failureNote,
-        });
-        return;
+        return { ok: false, toolKey, note: foreach.failureNote };
       }
 
       if (foreach.note) note = foreach.note;
@@ -110,14 +137,52 @@ export async function processToolStep(
       itemCount,
       childQueuedTaskIds,
       note,
+      endFlow,
+      forkGroupId: forkGroupId ?? row.forkGroupId ?? undefined,
+      isJoin: row.isJoin,
+      joinTaskId,
     });
 
-    await finishStep(row.id, "completed", result, execution.summary ?? note);
+    return {
+      ok: true,
+      toolKey,
+      outcome: {
+        result,
+        summary: execution.summary ?? note,
+        nextState,
+        nextToolState,
+        nextSteps,
+      },
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    await finishStep(row.id, "failed", {
-      toolKey,
-      note: `tool error: ${message}`,
-    });
+    return { ok: false, toolKey, note: `tool error: ${message}` };
   }
+}
+
+/** Executes a tool task and enqueues the resulting next step(s). */
+export async function processToolStep(
+  row: QueuedRow,
+  task: TaskRow,
+): Promise<void> {
+  const execution = await executeToolAttempt(row, task);
+
+  if (!execution.ok) {
+    await finishStep(row.id, "failed", {
+      toolKey: execution.toolKey,
+      note: execution.note,
+    });
+    return;
+  }
+
+  const { result, summary, nextSteps } = execution.outcome;
+
+  if (nextSteps.length > 0) {
+    const ids = await enqueueSteps(nextSteps);
+    if (Array.isArray(result.childQueuedTaskIds)) {
+      result.childQueuedTaskIds = ids;
+    }
+  }
+
+  await finishStep(row.id, "completed", result, summary);
 }

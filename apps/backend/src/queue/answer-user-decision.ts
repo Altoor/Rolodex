@@ -1,7 +1,9 @@
 import { GraphQLError } from "graphql";
-import { and, eq } from "drizzle-orm";
-import { db, queuedTasks } from "@repo/db";
+import { and, desc, eq } from "drizzle-orm";
+import { db, queuedTasks, stepAttempts } from "@repo/db";
 import { MAX_CHAIN_DEPTH } from "./constants";
+import { inheritedForkFields } from "./joins";
+import { completeRunIfIdle, getRun, setRunStatus, settleStandardRunIfIdle } from "./run-store";
 import { enqueueStep, publish } from "./step-store";
 import type { QueuedRow } from "./types";
 import type { PendingChoice, PendingChoiceOption } from "./user-choice";
@@ -53,6 +55,14 @@ export async function answerUserDecision(
   }
 
   const pending = readPendingChoice(queued.pendingChoice);
+
+  if (pending.kind === "nextStep") {
+    throw new GraphQLError(
+      "This step needs next-step confirmation, not a choice answer",
+      { extensions: { code: "BAD_USER_INPUT" } },
+    );
+  }
+
   const option: PendingChoiceOption | undefined = pending.options.find(
     (candidate) => candidate.id === optionId,
   );
@@ -146,7 +156,50 @@ export async function answerUserDecision(
       queued_by: queued.queued_by,
       model: queued.model,
       decisionModel: queued.decisionModel,
+      ...inheritedForkFields(queued),
     });
+  }
+
+  // Assisted runs park with a run status that describes why; answering the
+  // choice resumes the run (or ends it when no next step was enqueued).
+  const run = await getRun(queued.runId);
+  if (run?.mode === "assisted") {
+    const [attempt] = await db
+      .select()
+      .from(stepAttempts)
+      .where(eq(stepAttempts.queuedTaskId, queuedTaskId))
+      .orderBy(desc(stepAttempts.attemptNumber))
+      .limit(1);
+
+    if (attempt) {
+      const previous =
+        typeof attempt.result === "object" && attempt.result !== null
+          ? (attempt.result as Record<string, unknown>)
+          : {};
+      await db
+        .update(stepAttempts)
+        .set({
+          status: "committed",
+          committedAt: new Date(),
+          result: { ...previous, ...result },
+          review: {
+            accepted: true,
+            selectedOptionId: option.id,
+            reviewedAt: new Date().toISOString(),
+            reviewedBy: userId,
+          },
+        })
+        .where(eq(stepAttempts.id, attempt.id));
+    }
+
+    if (enqueueNext && nextTaskId != null) {
+      await setRunStatus(queued.runId, "running");
+    } else {
+      await completeRunIfIdle(queued.runId);
+    }
+  } else if (run?.mode === "standard") {
+    // The next step (if any) will settle the run when it finishes.
+    await settleStandardRunIfIdle(queued.runId);
   }
 
   triggerQueue();

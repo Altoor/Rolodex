@@ -4,6 +4,7 @@ import { useMutation, useQuery, useSubscription } from "@apollo/client/react";
 import {
   ANSWER_USER_DECISION,
   DISMISS_QUEUED_TASK,
+  RETRY_QUEUED_TASK,
 } from "@repo/queries/tasks/task-mutations";
 import { ACTIVE_QUEUED_TASKS } from "@repo/queries/tasks/task-queries";
 import { QUEUED_TASK_EVENT } from "@repo/queries/tasks/task-subscriptions";
@@ -27,20 +28,21 @@ interface LiveRunState {
 }
 
 /**
- * Owns the live run stream: active steps from the backend, subscription
- * updates, and the user-choice mutations. Steps are grouped into runs for the
- * landing page.
+ * Owns the standard run stream: active steps from the backend, subscription
+ * updates, and the user-choice mutations.
  */
 export function useLandingRuns({ userId, loggedIn }: UseLandingRunsArgs) {
   const [answerUserDecision, { error: answerError }] =
     useMutation(ANSWER_USER_DECISION);
   const [dismissQueuedTask, { error: dismissError }] =
     useMutation(DISMISS_QUEUED_TASK);
+  const [retryQueuedTask, { error: retryError }] =
+    useMutation(RETRY_QUEUED_TASK);
   const [answeringStepId, setAnsweringStepId] = useState<number | null>(null);
   const [dismissingStepId, setDismissingStepId] = useState<number | null>(null);
+  const [retryingStepId, setRetryingStepId] = useState<number | null>(null);
+  const [retryErrorStepId, setRetryErrorStepId] = useState<number | null>(null);
 
-  // Completed steps of an active run stay here so each chain-of-thought keeps
-  // its history.
   const [liveRunState, setLiveRunState] = useState<LiveRunState>({
     userId: null,
     steps: [],
@@ -51,7 +53,6 @@ export function useLandingRuns({ userId, loggedIn }: UseLandingRunsArgs) {
     (step: QueuedTaskStep) => {
       setLiveRunState((previous) => ({
         userId,
-        // Never mix steps from a previous session/user.
         steps: upsertStep(
           previous.userId === userId ? previous.steps : [],
           step,
@@ -61,12 +62,10 @@ export function useLandingRuns({ userId, loggedIn }: UseLandingRunsArgs) {
     [userId],
   );
 
-  // Active runs may already exist when the page loads (another tab, a refresh,
-  // or a run queued before this page mounted). Seed them from the backend;
-  // live updates arrive through the subscription below.
   const { data: activeData } = useQuery(ACTIVE_QUEUED_TASKS, {
     skip: !loggedIn,
     fetchPolicy: "network-only",
+    pollInterval: 1500,
   });
 
   useSubscription(QUEUED_TASK_EVENT, {
@@ -74,7 +73,6 @@ export function useLandingRuns({ userId, loggedIn }: UseLandingRunsArgs) {
     onData: ({ data }) => {
       const event = data.data?.queuedTaskEvent?.queuedTask;
       if (!event) return;
-      // The backend already filters per user; keep the guard for safety.
       if (event.queued_by != null && event.queued_by !== userId) return;
 
       const step = toStep(event);
@@ -90,7 +88,6 @@ export function useLandingRuns({ userId, loggedIn }: UseLandingRunsArgs) {
       if (step) byId.set(step.id, step);
     }
 
-    // Live events are always fresher than the query snapshot.
     if (liveRunState.userId === userId) {
       for (const step of liveRunState.steps) byId.set(step.id, step);
     }
@@ -115,8 +112,6 @@ export function useLandingRuns({ userId, loggedIn }: UseLandingRunsArgs) {
     }
   };
 
-  // Dismissing a choice ends its whole run; the mutation returns every step it
-  // completed so the prompts disappear immediately.
   const dismissRun = async (stepId: number) => {
     setDismissingStepId(stepId);
     try {
@@ -127,6 +122,20 @@ export function useLandingRuns({ userId, loggedIn }: UseLandingRunsArgs) {
       }
     } finally {
       setDismissingStepId(null);
+    }
+  };
+
+  const retryStep = async (stepId: number) => {
+    setRetryingStepId(stepId);
+    setRetryErrorStepId(null);
+    try {
+      const { data } = await retryQueuedTask({ variables: { id: stepId } });
+      const step = data?.retryQueuedTask ? toStep(data.retryQueuedTask) : null;
+      if (step) trackStep(step);
+    } catch {
+      setRetryErrorStepId(stepId);
+    } finally {
+      setRetryingStepId(null);
     }
   };
 
@@ -144,11 +153,15 @@ export function useLandingRuns({ userId, loggedIn }: UseLandingRunsArgs) {
     openRuns,
     answeringStepId,
     dismissingStepId,
+    retryingStepId,
+    retryErrorStepId,
     answerError: answerError?.message ?? null,
     dismissError: dismissError?.message ?? null,
+    retryError: retryError?.message ?? null,
     setRunOpen,
     answerChoice,
     dismissRun,
+    retryStep,
   };
 
   return { state, trackStep, openRun };

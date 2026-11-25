@@ -2,6 +2,7 @@ import { Handle, Position } from "@xyflow/react";
 import {
   FALLBACK_HANDLE_ID,
   FALSE_HANDLE_ID,
+  JOIN_HANDLE_ID,
   TRUE_HANDLE_ID,
   USER_DECISION_HANDLE_PREFIX,
   type TaskFlowNodeData,
@@ -81,11 +82,7 @@ const TaskFlowNodeHandles = ({ data }: TaskFlowNodeHandlesProps) => {
               />
             </div>
           </>
-        ) : (
-          <p className="text-xs text-muted-foreground/60">
-            Chains through the next/fallback edge.
-          </p>
-        )
+        ) : null
       ) : isUserDecision ? (
         data.userDecisionOptions.length > 0 ? (
           data.userDecisionOptions.map((option, index) => (
@@ -139,12 +136,25 @@ const TaskFlowNodeHandles = ({ data }: TaskFlowNodeHandlesProps) => {
       {/* Forced decision tasks hide the fallback: the user chooses an output. */}
       {showFallback ? (
         <div className="relative flex items-center justify-between gap-2 rounded border px-2 py-1 text-xs text-muted-foreground">
-          <span>{data.type === "tool" ? "Next / fallback" : "Fallback"}</span>
+          <span>
+            {data.toolOutputType === "foreach"
+              ? "Per item"
+              : data.type === "tool"
+                ? "Next / fallback"
+                : "Fallback"}
+          </span>
           <Handle
             type="source"
             position={Position.Right}
             id={FALLBACK_HANDLE_ID}
           />
+        </div>
+      ) : null}
+
+      {data.toolOutputType === "foreach" ? (
+        <div className="relative flex items-center justify-between gap-2 rounded border border-primary/50 border-dashed px-2 py-1 text-xs text-muted-foreground">
+          <span>After all items</span>
+          <Handle type="source" position={Position.Right} id={JOIN_HANDLE_ID} />
         </div>
       ) : null}
     </div>

@@ -9,6 +9,7 @@ import {
   SelectValue,
 } from "#components/ui/select";
 import type { FlowTask } from "../taskFlowTypes";
+import TaskTransfer from "./taskTransfer";
 
 interface TaskFlowToolbarProps {
   tasks: FlowTask[];
@@ -23,7 +24,7 @@ const TaskFlowToolbar = ({
   onRootChange,
   onCreateTask,
 }: TaskFlowToolbarProps) => (
-  <div className="flex items-center gap-2">
+  <div className="flex flex-wrap items-center gap-2">
     <span className="text-sm text-muted-foreground">First task</span>
     <Select
       value={effectiveRootId != null ? String(effectiveRootId) : ""}
@@ -45,6 +46,9 @@ const TaskFlowToolbar = ({
     <Button onClick={onCreateTask}>
       New Task <Plus />
     </Button>
+    <div className="ml-auto">
+      <TaskTransfer />
+    </div>
   </div>
 );
 

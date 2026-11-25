@@ -7,6 +7,7 @@ import {
 } from "../../../utils";
 import { ToolInputError, type Tool, type ToolExecution } from "../../../model";
 import { promptDefinition } from "./definition";
+import { withCurrentTime } from "./current-time";
 import { readFields } from "./fields";
 import { readFormat, readInvalidBehavior } from "./input";
 import { runPrompt } from "./runPrompt";
@@ -42,6 +43,9 @@ export const promptTool: Tool = {
     }
 
     const system = readString(input, "system");
+    const includeCurrentTime =
+      readBoolean(input, "includeCurrentTime") ?? false;
+    const timeZone = readString(input, "timeZone");
     const format = readFormat(input);
     const fields = readFields(input);
     const onInvalid = readInvalidBehavior(input);
@@ -53,7 +57,12 @@ export const promptTool: Tool = {
     }
 
     const schema = fields ? buildResponseSchema(fields) : format;
-    const result = await runPrompt({ prompt, system, model, format: schema });
+    const result = await runPrompt({
+      prompt,
+      system: includeCurrentTime ? withCurrentTime(system, timeZone) : system,
+      model,
+      format: schema,
+    });
 
     const baseOutput = {
       text: result.text,

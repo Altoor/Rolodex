@@ -2,6 +2,7 @@ import { MarkerType, type Edge } from "@xyflow/react";
 import {
   FALLBACK_HANDLE_ID,
   FALSE_HANDLE_ID,
+  JOIN_HANDLE_ID,
   TRUE_HANDLE_ID,
   USER_DECISION_HANDLE_PREFIX,
   type FlowTask,
@@ -88,6 +89,26 @@ export function buildEdges(tasks: FlowTask[]): Edge[] {
             // A lighter grey than the default edge colour.
             stroke: "var(--color-edge-muted)",
             strokeDasharray: "5 5",
+          },
+        ),
+      );
+    }
+
+    if (
+      task.toolOutputType === "foreach" &&
+      task.joinTaskId != null &&
+      task.joinTaskId !== task.id &&
+      taskIds.has(String(task.joinTaskId))
+    ) {
+      result.push(
+        outputEdge(
+          `e-join-${task.id}`,
+          String(task.id),
+          JOIN_HANDLE_ID,
+          String(task.joinTaskId),
+          {
+            stroke: "var(--color-primary)",
+            strokeDasharray: "2 4",
           },
         ),
       );

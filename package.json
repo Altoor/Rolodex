@@ -8,15 +8,20 @@
     "api": "turbo run api --summarize",
     "lint": "turbo run lint",
     "check-types": "turbo run check-types",
+    "test": "vitest run",
+    "test:unit": "vitest run apps/backend/src/assisted/domain",
+    "test:watch": "vitest",
     "files:index": "pnpm --filter backend files:index",
     "files:backfill-embeddings": "pnpm --filter backend files:backfill-embeddings",
     "format": "prettier --write \"**/*.{ts,tsx,md}\""
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^5.1.1",
     "pnpm": "12.6.0",
     "prettier": "3.9.9",
     "prettier-plugin-tailwindcss": "0.8.1",
-    "turbo": "^2.11.8"
+    "turbo": "^2.11.8",
+    "vitest": "^5.1.1"
   },
   "packageManager": "pnpm@12.6.0",
   "engines": {

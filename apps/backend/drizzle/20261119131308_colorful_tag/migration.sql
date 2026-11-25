@@ -1,0 +1,3 @@
+-- No-op: this migration originally added queuedTasks.nextStepApproved, a
+-- feature that was abandoned before release. Squashed to keep the chain free
+-- of dead DDL.

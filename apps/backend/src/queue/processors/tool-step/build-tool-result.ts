@@ -9,6 +9,10 @@ export interface BuildToolResultArgs {
   itemCount?: number;
   childQueuedTaskIds: number[];
   note?: string;
+  endFlow?: boolean;
+  forkGroupId?: string;
+  isJoin?: boolean;
+  joinTaskId?: number;
 }
 
 /** Builds the JSON payload stored on `queuedTasks.result`. */
@@ -21,6 +25,10 @@ export function buildToolResult({
   itemCount,
   childQueuedTaskIds,
   note,
+  endFlow,
+  forkGroupId,
+  isJoin,
+  joinTaskId,
 }: BuildToolResultArgs): Record<string, unknown> {
   return {
     toolKey,
@@ -29,6 +37,10 @@ export function buildToolResult({
     outputType,
     branch,
     nextTaskId,
+    ...(endFlow ? { endFlow: true } : {}),
+    ...(forkGroupId ? { forkGroupId } : {}),
+    ...(isJoin ? { isJoin: true } : {}),
+    ...(joinTaskId != null ? { joinTaskId } : {}),
     ...(execution.branchLabel
       ? { branchLabel: execution.branchLabel }
       : {}),

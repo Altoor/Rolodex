@@ -26,8 +26,8 @@ builder.mutationType({
         sortOrder: t.arg.int(),
       },
       resolve: async (_query, _root, args, ctx) => {
-        requireUserId(ctx);
-        return createUserDecisionOption(args);
+        const userId = requireUserId(ctx);
+        return createUserDecisionOption(userId, args);
       },
     }),
 
@@ -48,8 +48,8 @@ builder.mutationType({
         sortOrder: t.arg.int(),
       },
       resolve: async (_query, _root, args, ctx) => {
-        requireUserId(ctx);
-        return updateUserDecisionOption(args);
+        const userId = requireUserId(ctx);
+        return updateUserDecisionOption(userId, args);
       },
     }),
 
@@ -59,8 +59,8 @@ builder.mutationType({
         id: t.arg.int({ required: true }),
       },
       resolve: async (_root, { id }, ctx) => {
-        requireUserId(ctx);
-        return deleteUserDecisionOption(id);
+        const userId = requireUserId(ctx);
+        return deleteUserDecisionOption(userId, id);
       },
     }),
   }),

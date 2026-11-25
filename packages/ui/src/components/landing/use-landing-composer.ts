@@ -7,9 +7,11 @@ import {
   useState,
   type FormEvent,
   type KeyboardEventHandler,
+  type MutableRefObject,
 } from "react";
 import { useForm, type SubmitHandler } from "react-hook-form";
 import { FileUploadError, uploadFilesToServer } from "../files/file-actions";
+import { START_ASSISTED_RUN } from "../assisted";
 import {
   stateFromAttachments,
   toStep,
@@ -24,25 +26,33 @@ interface UseLandingComposerArgs {
   tasks: LandingTask[];
   tasksLoading: boolean;
   defaultTaskId: number | null;
+  autoImprovement: boolean;
+  resetRef: MutableRefObject<() => void>;
   onTrackedStep: (step: QueuedTaskStep) => void;
   onOpenRun: (runId: string) => void;
+  onAssistedStarted: (runId: string) => void;
 }
 
 /**
  * Owns the landing composer form, attachments, and upload-on-submit flow.
- * Queued steps are handed back to the caller so the run stream stays in one
+ * Submitted runs are handed back to the caller so the run stream stays in one
  * place.
  */
 export function useLandingComposer({
   tasks,
   tasksLoading,
   defaultTaskId,
+  autoImprovement,
+  resetRef,
   onTrackedStep,
   onOpenRun,
+  onAssistedStarted,
 }: UseLandingComposerArgs) {
   const [createQueuedTask] = useMutation(CREATE_QUEUED_TASK);
+  const [startAssistedRun] = useMutation(START_ASSISTED_RUN);
   const [attachments, setAttachments] = useState<File[]>([]);
   const [attachError, setAttachError] = useState<unknown>(null);
+  const [submitError, setSubmitError] = useState<unknown>(null);
 
   const {
     control,
@@ -81,23 +91,48 @@ export function useLandingComposer({
   // Select the user's default task once the task list arrives, unless the
   // current selection is still valid.
   useEffect(() => {
-    if (tasksLoading || tasks.length === 0) return;
+    if (tasksLoading) return;
 
     const currentTaskId = getValues("taskId");
-    if (tasks.some((task) => String(task.id) === currentTaskId)) return;
+    const currentIsValid = tasks.some(
+      (task) => String(task.id) === currentTaskId,
+    );
+    if (currentIsValid) return;
+
+    if (tasks.length === 0) {
+      reset({ ...getValues(), taskId: "" });
+      return;
+    }
 
     const preferredTaskId =
       defaultTaskId != null && tasks.some((task) => task.id === defaultTaskId)
         ? defaultTaskId
-        : tasks[0]?.id;
+        : null;
 
-    if (preferredTaskId != null) {
-      reset({ ...getValues(), taskId: String(preferredTaskId) });
-    }
+    reset({
+      ...getValues(),
+      taskId: String(preferredTaskId ?? tasks[0]?.id),
+    });
   }, [tasksLoading, tasks, defaultTaskId, getValues, reset]);
+
+  useEffect(() => {
+    resetRef.current = () => {
+      setAttachments([]);
+      setAttachError(null);
+      setSubmitError(null);
+      reset({ state: "", taskId: getValues("taskId") });
+    };
+  }, [resetRef, reset, getValues]);
 
   const onSubmit: SubmitHandler<LandingFormInputs> = async (inputs) => {
     setAttachError(null);
+    setSubmitError(null);
+
+    const taskId = parseInt(inputs.taskId, 10);
+    if (!Number.isFinite(taskId)) {
+      setSubmitError(new Error("Choose a starting task."));
+      return;
+    }
 
     try {
       const uploaded =
@@ -106,13 +141,22 @@ export function useLandingComposer({
           : [];
 
       const state = inputs.state.trim() || stateFromAttachments(attachments);
+      const fileIds = uploaded.map((entry) => entry.id);
+
+      if (autoImprovement) {
+        const { data } = await startAssistedRun({
+          variables: { input: { taskId, state, fileIds } },
+        });
+        const runId = (data as { startAssistedRun?: { id?: string } } | undefined)
+          ?.startAssistedRun?.id;
+        if (runId) onAssistedStarted(runId);
+        setAttachments([]);
+        reset({ state: "", taskId: inputs.taskId });
+        return;
+      }
 
       const { data } = await createQueuedTask({
-        variables: {
-          taskId: parseInt(inputs.taskId, 10),
-          state,
-          fileIds: uploaded.map((entry) => entry.id),
-        },
+        variables: { taskId, state, fileIds },
       });
 
       const step = data?.createQueuedTask
@@ -127,7 +171,7 @@ export function useLandingComposer({
       setAttachments([]);
       reset({ state: "", taskId: inputs.taskId });
     } catch (error) {
-      setAttachError(
+      setSubmitError(
         error instanceof FileUploadError && error.uploaded.length > 0
           ? new Error(
               `${error.message} The files that finished uploading are in your files page.`,
@@ -158,6 +202,7 @@ export function useLandingComposer({
     recording,
     isSubmitting,
     attachError,
+    submitError,
     addFiles,
     removeAttachment,
     rejectDirectory,

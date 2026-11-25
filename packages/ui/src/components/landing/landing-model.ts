@@ -22,33 +22,65 @@ export interface StepResult {
   outputType?: "normal" | "foreach";
   itemCount?: number;
   childQueuedTaskIds?: number[];
+  answer?: unknown;
+  effectiveAnswer?: unknown;
+  model?: string | null;
+  /** Set when the failed step was replaced by a retry. */
+  retried?: boolean;
+  retriedAt?: string;
 }
 
 export interface QueuedTaskStep {
   id: number;
   taskId: number | null;
-  status: "queued" | "running" | "awaiting_input" | "completed" | "failed";
+  status:
+    | "queued"
+    | "running"
+    | "awaiting_input"
+    | "waiting"
+    | "completed"
+    | "failed";
   runId: string;
+  depth: number;
   result: StepResult | null;
   pendingChoice: PendingChoice | null;
   model: string | null;
   decisionModel: string | null;
   state: string | null;
-  task: { id: number | null; name: string | null; type: string | null } | null;
+  task: {
+    id: number | null;
+    name: string | null;
+    type: string | null;
+    toolKey?: string | null;
+    toolConfig?: unknown;
+  } | null;
 }
 
 export interface QueuedTaskRow {
   id: number | null;
   taskId: number | null;
   status:
-    "queued" | "running" | "awaiting_input" | "completed" | "failed" | null;
+    | "queued"
+    | "running"
+    | "awaiting_input"
+    | "waiting"
+    | "completed"
+    | "failed"
+    | null;
   runId: string | null;
+  depth?: number | null;
   result: unknown;
   pendingChoice?: unknown;
   model: string | null;
   decisionModel: string | null;
   state: string | null;
-  task: { id: number | null; name: string | null; type: string | null } | null;
+  task: {
+    id: number | null;
+    name: string | null;
+    type: string | null;
+    toolKey?: string | null;
+    toolConfig?: unknown;
+  } | null;
 }
 
 export interface LandingTask {
@@ -64,6 +96,7 @@ export interface LandingRun {
   pending: boolean;
   awaitingInput: boolean;
   failed: boolean;
+  cancelled?: boolean;
 }
 
 export interface LandingFormInputs {
@@ -79,6 +112,7 @@ export interface LandingComposerState {
   recording: boolean;
   isSubmitting: boolean;
   attachError: unknown;
+  submitError: unknown;
   addFiles: (files: File[]) => void;
   removeAttachment: (index: number) => void;
   rejectDirectory: () => void;
@@ -90,15 +124,20 @@ export interface LandingRunsState {
   openRuns: Record<string, boolean>;
   answeringStepId: number | null;
   dismissingStepId: number | null;
+  retryingStepId: number | null;
+  retryErrorStepId: number | null;
   answerError: string | null;
   dismissError: string | null;
+  retryError: string | null;
   setRunOpen: (runId: string, open: boolean) => void;
   answerChoice: (stepId: number, optionId: string) => Promise<void>;
   dismissRun: (stepId: number) => Promise<void>;
+  retryStep: (stepId: number) => Promise<void>;
 }
 
 export interface LandingComposerProps extends LandingComposerState {
   tasks: LandingTask[];
+  autoEnabled: boolean;
   children: ReactNode;
 }
 
@@ -114,6 +153,7 @@ export function toStep(row: QueuedTaskRow): QueuedTaskStep | null {
     taskId: row.taskId ?? null,
     status: row.status ?? "queued",
     runId: row.runId,
+    depth: row.depth ?? 0,
     result: (row.result as StepResult | null) ?? null,
     pendingChoice: (row.pendingChoice as PendingChoice | null) ?? null,
     model: row.model ?? null,
@@ -154,20 +194,25 @@ export function groupRuns(steps: QueuedTaskStep[]): LandingRun[] {
   return [...byRun.entries()]
     .map(([runId, runSteps]) => {
       const ordered = [...runSteps].sort((a, b) => a.id - b.id);
+      const root = ordered.find((step) => step.depth === 0) ?? ordered[0];
 
       return {
         runId,
-        state: ordered[0]?.state ?? null,
+        state: root?.state ?? null,
         steps: ordered,
-        startTaskId: ordered[0]?.taskId ?? null,
+        startTaskId: root?.taskId ?? null,
         pending: ordered.some(
           (step) =>
             step.status === "queued" ||
             step.status === "running" ||
             step.status === "awaiting_input",
         ),
-        awaitingInput: ordered.some((step) => step.status === "awaiting_input"),
-        failed: ordered.some((step) => step.status === "failed"),
+        awaitingInput: ordered.some(
+          (step) => step.status === "awaiting_input",
+        ),
+        failed: ordered.some(
+          (step) => step.status === "failed" && step.result?.retried !== true,
+        ),
       };
     })
     .sort((a, b) => (a.steps[0]?.id ?? 0) - (b.steps[0]?.id ?? 0));
@@ -192,6 +237,7 @@ export function runHeaderStatus(
 export function runTitle(run: LandingRun, startName: string | null): string {
   const suffix = startName ? ` — ${startName}` : "";
 
+  if (run.cancelled) return `Run stopped${suffix}`;
   if (run.failed) return `Run failed${suffix}`;
   if (run.awaitingInput) return `Waiting for your choice${suffix}`;
   if (run.pending) return `Working${startName ? ` on ${startName}` : ""}`;
@@ -207,7 +253,7 @@ export function stepStatus(step: QueuedTaskStep): StepStatus {
   if (step.status === "running" || step.status === "awaiting_input") {
     return "active";
   }
-  if (step.status === "queued") return "pending";
+  if (step.status === "queued" || step.status === "waiting") return "pending";
   if (step.status === "failed") return "error";
   return "complete";
 }
@@ -240,9 +286,7 @@ export function stepBranchLabel(
       return `fallback: ${target != null ? nameForTask(target) : null}`;
     case "tool":
       if (target != null) {
-        const prefix = result.branchLabel
-          ? `${result.branchLabel}: `
-          : "next: ";
+        const prefix = result.branchLabel ? `${result.branchLabel}: ` : "next: ";
         return `${prefix}${nameForTask(target)}`;
       }
       return result.branchLabel ?? "tool result";
@@ -257,12 +301,14 @@ export function stepBranchLabel(
 export function stepDetail(step: QueuedTaskStep): string | undefined {
   return (
     [
+      step.status === "waiting" ? "waiting for all foreach branches" : null,
       step.result?.summary,
       step.result?.note,
+      step.result?.retried ? "retried" : null,
       step.model ? `generation: ${step.model}` : null,
       step.decisionModel ? `decision: ${step.decisionModel}` : null,
     ]
-      .filter((part): part is string => !!part)
+      .filter((part): part is string => Boolean(part))
       .join(" — ") || undefined
   );
 }

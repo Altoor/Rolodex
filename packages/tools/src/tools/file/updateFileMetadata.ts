@@ -25,6 +25,8 @@ const definition: ToolDefinition = {
   description:
     "Rename or move a file/folder and/or edit its description. Renaming a file or folder renames the physical entry.",
   category: "file",
+  usesModel: true,
+  modelRoles: ["embedding"],
   inputMode: "json",
   inputSchema: {
     type: "object",

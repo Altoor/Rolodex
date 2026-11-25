@@ -12,15 +12,21 @@ import { useFormContext } from "react-hook-form";
 import { NO_BRANCH_TASK, type TaskFormValues } from "../../task-form";
 import type { TaskOption } from "../taskCard.types";
 
-type BranchFieldName = "onTrueTaskId" | "onFalseTaskId";
+type BranchFieldName = "onTrueTaskId" | "onFalseTaskId" | "joinTaskId";
 
 interface BranchTaskSelectProps {
   name: BranchFieldName;
   label: string;
   tasks: TaskOption[];
+  noneLabel?: string;
 }
 
-const BranchTaskSelect = ({ name, label, tasks }: BranchTaskSelectProps) => {
+const BranchTaskSelect = ({
+  name,
+  label,
+  tasks,
+  noneLabel,
+}: BranchTaskSelectProps) => {
   const { control } = useFormContext<TaskFormValues>();
 
   return (
@@ -41,7 +47,9 @@ const BranchTaskSelect = ({ name, label, tasks }: BranchTaskSelectProps) => {
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
-                <SelectItem value={NO_BRANCH_TASK}>Stop run</SelectItem>
+                <SelectItem value={NO_BRANCH_TASK}>
+                  {noneLabel ?? "Stop run"}
+                </SelectItem>
                 {tasks.map((task) => (
                   <SelectItem key={task.id} value={String(task.id)}>
                     {task.name}

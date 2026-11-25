@@ -31,6 +31,7 @@ const toStringRecord = (value: unknown): StringRecord => {
 export type SystemOneAnswer =
   | {
       type: "choice";
+      choice?: string;
       confidence: number;
       probabilities: NumberRecord;
     }
@@ -43,24 +44,20 @@ export type SystemOneAnswer =
     }
   | { type: "noul"; noul: number };
 
-/**
- * The GraphQL `answer` field is a JSON scalar keyed by the decision premise.
- * This adapter is the single place that narrows that unknown value.
- */
-export const readSystemOneAnswer = (
+/** Narrows one stored decision answer, such as a queued step's result. */
+export const readDecisionAnswer = (
   answer: unknown,
-  decisionPremise: string,
 ): SystemOneAnswer | undefined => {
-  if (!answer || typeof answer !== "object") return undefined;
+  if (!answer || typeof answer !== "object" || Array.isArray(answer)) {
+    return undefined;
+  }
 
-  const entry = (answer as Record<string, unknown>)[decisionPremise];
-  if (!entry || typeof entry !== "object") return undefined;
-
-  const record = entry as Record<string, unknown>;
+  const record = answer as Record<string, unknown>;
 
   if (typeof record.choice === "string") {
     return {
       type: "choice",
+      choice: record.choice,
       confidence: asNumber(record.confidence),
       probabilities: toNumberRecord(record.probabilities),
     };
@@ -81,4 +78,18 @@ export const readSystemOneAnswer = (
   }
 
   return undefined;
+};
+
+/**
+ * The GraphQL `answer` field is a JSON scalar keyed by the decision premise.
+ * This adapter is the single place that narrows that unknown value.
+ */
+export const readSystemOneAnswer = (
+  answer: unknown,
+  decisionPremise: string,
+): SystemOneAnswer | undefined => {
+  if (!answer || typeof answer !== "object") return undefined;
+
+  const entry = (answer as Record<string, unknown>)[decisionPremise];
+  return readDecisionAnswer(entry);
 };

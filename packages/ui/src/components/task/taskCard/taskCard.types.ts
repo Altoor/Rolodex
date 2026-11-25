@@ -28,4 +28,6 @@ export interface TaskCardProps {
   onSaveResult: (index: number) => void;
   onDeleteResult: (index: number) => void;
   pathSuggestions: ToolStatePathSuggestion[];
+  onAssist?: () => void;
+  assistOpen?: boolean;
 }

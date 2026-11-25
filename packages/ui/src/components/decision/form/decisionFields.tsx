@@ -1,4 +1,9 @@
-import { Field, FieldGroup, FieldLabel } from "#components/ui/field";
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "#components/ui/field";
 import { Input } from "#components/ui/input";
 import { useFormContext } from "react-hook-form";
 import type { DecisionFormValues } from "../decision-form";
@@ -28,8 +33,21 @@ const DecisionFields = ({ idPrefix }: DecisionFieldsProps) => {
         </FieldLabel>
         <Input
           id={`${idPrefix}-premise`}
-          {...register("decisionPremise", { required: true })}
+          {...register("decisionPremise", {
+            required: true,
+            validate: (value) => {
+              const words = value.trim().split(/\s+/).filter(Boolean);
+              return (
+                (words.length > 0 && words.length <= 2) ||
+                "Use one word, or at most two."
+              );
+            },
+          })}
         />
+        <FieldDescription>
+          One word, or at most two. This is the answer key the model replies
+          under, not a question.
+        </FieldDescription>
       </Field>
     </FieldGroup>
   );

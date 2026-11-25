@@ -17,11 +17,15 @@ builder.mutationType({
         toolOutputType: t.arg({ type: ToolOutputType }),
         onTrueTaskId: t.arg.int(),
         onFalseTaskId: t.arg.int(),
+        joinTaskId: t.arg.int(),
         model: t.arg.string(),
         decisionModel: t.arg.string(),
+        decisionStateConfig: t.arg({ type: "JSON" }),
         forceUserDecideIfNoMatch: t.arg.boolean(),
         userDecisionType: t.arg({ type: UserDecisionType }),
         userDecisionConfig: t.arg({ type: "JSON" }),
+        canRunInParallel: t.arg.boolean(),
+        prioritize: t.arg.boolean(),
       },
       resolve: async (
         _query,
@@ -36,17 +40,21 @@ builder.mutationType({
           toolOutputType,
           onTrueTaskId,
           onFalseTaskId,
+          joinTaskId,
           model,
           decisionModel,
+          decisionStateConfig,
           forceUserDecideIfNoMatch,
           userDecisionType,
           userDecisionConfig,
+          canRunInParallel,
+          prioritize,
         },
         ctx,
       ) => {
-        requireUserId(ctx);
+        const userId = requireUserId(ctx);
 
-        return createTask({
+        return createTask(userId, {
           name,
           type,
           decisionId,
@@ -56,11 +64,15 @@ builder.mutationType({
           toolOutputType,
           onTrueTaskId,
           onFalseTaskId,
+          joinTaskId,
           model,
           decisionModel,
+          decisionStateConfig,
           forceUserDecideIfNoMatch,
           userDecisionType,
           userDecisionConfig,
+          canRunInParallel,
+          prioritize,
         });
       },
     }),
@@ -78,11 +90,15 @@ builder.mutationType({
         toolOutputType: t.arg({ type: ToolOutputType }),
         onTrueTaskId: t.arg.int(),
         onFalseTaskId: t.arg.int(),
+        joinTaskId: t.arg.int(),
         model: t.arg.string(),
         decisionModel: t.arg.string(),
+        decisionStateConfig: t.arg({ type: "JSON" }),
         forceUserDecideIfNoMatch: t.arg.boolean(),
         userDecisionType: t.arg({ type: UserDecisionType }),
         userDecisionConfig: t.arg({ type: "JSON" }),
+        canRunInParallel: t.arg.boolean(),
+        prioritize: t.arg.boolean(),
       },
       resolve: async (
         _query,
@@ -98,17 +114,21 @@ builder.mutationType({
           toolOutputType,
           onTrueTaskId,
           onFalseTaskId,
+          joinTaskId,
           model,
           decisionModel,
+          decisionStateConfig,
           forceUserDecideIfNoMatch,
           userDecisionType,
           userDecisionConfig,
+          canRunInParallel,
+          prioritize,
         },
         ctx,
       ) => {
-        requireUserId(ctx);
+        const userId = requireUserId(ctx);
 
-        return updateTask({
+        return updateTask(userId, {
           id,
           name,
           type,
@@ -119,11 +139,15 @@ builder.mutationType({
           toolOutputType,
           onTrueTaskId,
           onFalseTaskId,
+          joinTaskId,
           model,
           decisionModel,
+          decisionStateConfig,
           forceUserDecideIfNoMatch,
           userDecisionType,
           userDecisionConfig,
+          canRunInParallel,
+          prioritize,
         });
       },
     }),
@@ -134,8 +158,8 @@ builder.mutationType({
         id: t.arg.int({ required: true }),
       },
       resolve: async (_root, { id }, ctx) => {
-        requireUserId(ctx);
-        return deleteTask(id);
+        const userId = requireUserId(ctx);
+        return deleteTask(userId, id);
       },
     }),
   }),

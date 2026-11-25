@@ -11,6 +11,9 @@ const TaskFlowNode = ({ data, selected }: NodeProps<TaskFlowNode>) => {
     <div
       className={cn(
         "relative min-w-52 rounded-lg border bg-card p-3 text-card-foreground shadow-sm",
+        // Tasks between a foreach fan-out and its join barrier are marked so
+        // the fan-in boundary is visible at a glance.
+        data.fannedOut && "border-blue-300 dark:border-blue-300",
         selected && "border-primary ring-2 ring-primary/30",
       )}
     >

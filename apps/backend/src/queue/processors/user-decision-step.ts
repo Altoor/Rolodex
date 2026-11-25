@@ -198,14 +198,21 @@ function buildDynamicOptions(
   return result;
 }
 
-/** Creates a persisted user choice and parks the step until it is answered. */
-export async function processUserDecisionStep(
-  row: QueuedRow,
+/** Builds the current option list for a user-decision task and tool state. */
+export async function buildUserDecisionPendingOptions(
   task: TaskRow,
-): Promise<void> {
-  const options = await db.query.userDecisionOptions.findMany({
-    where: { taskId: task.id },
-  });
+  toolState: ToolStateEntry[],
+  overrideOptions?: UserDecisionOptionRow[],
+): Promise<{
+  choiceType: PendingChoiceType;
+  config: Record<string, unknown>;
+  options: PendingChoiceOption[];
+}> {
+  const options =
+    overrideOptions ??
+    (await db.query.userDecisionOptions.findMany({
+      where: { taskId: task.id },
+    }));
   options.sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
 
   const config = asRecord(task.userDecisionConfig) ?? {};
@@ -216,17 +223,26 @@ export async function processUserDecisionStep(
       ? buildYesNoOptions(options, config)
       : [
           ...buildStaticOptions(options),
-          ...buildDynamicOptions(options, row.toolState),
+          ...buildDynamicOptions(options, toolState),
         ];
 
-  if (pendingOptions.length === 0) {
-    await finishStep(row.id, "failed", {
-      note: "user decision has no options for this run",
-    });
-    return;
-  }
+  return { choiceType, config, options: pendingOptions };
+}
 
-  const pendingChoice: PendingChoice = {
+export async function buildUserDecisionPendingChoice(
+  task: TaskRow,
+  toolState: ToolStateEntry[],
+  overrideOptions?: UserDecisionOptionRow[],
+): Promise<PendingChoice | null> {
+  const {
+    choiceType,
+    config,
+    options: pendingOptions,
+  } = await buildUserDecisionPendingOptions(task, toolState, overrideOptions);
+
+  if (pendingOptions.length === 0) return null;
+
+  return {
     kind: "userDecision",
     taskId: task.id,
     prompt: asString(config.prompt) ?? `Choose an option for ${task.name}`,
@@ -235,6 +251,33 @@ export async function processUserDecisionStep(
     options: pendingOptions,
     createdAt: new Date().toISOString(),
   };
+}
+
+export interface ParkedUserDecision {
+  pendingChoice: PendingChoice;
+  result: Record<string, unknown>;
+}
+
+/** Creates a persisted user choice and parks the step until it is answered. */
+export async function processUserDecisionStep(
+  row: QueuedRow,
+  task: TaskRow,
+  overrideOptions?: UserDecisionOptionRow[],
+): Promise<ParkedUserDecision | null> {
+  const pendingChoice = await buildUserDecisionPendingChoice(
+    task,
+    row.toolState,
+    overrideOptions,
+  );
+
+  if (!pendingChoice) {
+    await finishStep(row.id, "failed", {
+      note: "user decision has no options for this run",
+    });
+    return null;
+  }
+
+  const pendingOptions = pendingChoice.options;
 
   const result = {
     branch: "awaiting_user",
@@ -245,4 +288,5 @@ export async function processUserDecisionStep(
   };
 
   await awaitStep(row.id, pendingChoice, result, result.summary);
+  return { pendingChoice, result };
 }

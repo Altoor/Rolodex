@@ -41,6 +41,9 @@ const ToolSelectField = ({ tools }: ToolSelectFieldProps) => {
               setValue("toolOutputType", "normal");
               setValue("onTrueTaskId", NO_BRANCH_TASK);
               setValue("onFalseTaskId", NO_BRANCH_TASK);
+
+              const tool = tools.find((candidate) => candidate.key === next);
+              setValue("canRunInParallel", !tool?.usesModel);
             }}
           >
             <SelectTrigger className="w-full">
@@ -49,7 +52,10 @@ const ToolSelectField = ({ tools }: ToolSelectFieldProps) => {
             <SelectContent>
               <SelectGroup>
                 {tools.map((tool) => (
-                  <SelectItem key={tool.key ?? tool.name} value={tool.key ?? ""}>
+                  <SelectItem
+                    key={tool.key ?? tool.name}
+                    value={tool.key ?? ""}
+                  >
                     {tool.name ?? tool.key}
                   </SelectItem>
                 ))}

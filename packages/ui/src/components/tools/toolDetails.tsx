@@ -18,6 +18,7 @@ export interface ToolDetailsData {
   description?: string | null;
   inputMode?: string | null;
   outputDescription?: string | null;
+  usesModel?: boolean | null;
   outputTypes?: Array<string | null> | null;
   foreachOutputDescription?: string | null;
   inputSchema?: unknown;
@@ -57,6 +58,12 @@ export function ToolDetails({
           <p>
             <span className="font-medium">Output:</span>{" "}
             {tool.outputDescription}
+          </p>
+        ) : null}
+        {tool.usesModel ? (
+          <p>
+            <span className="font-medium">Model:</span> uses a local model
+            service, so tasks default to exclusive queue execution.
           </p>
         ) : null}
         {tool.outputTypes && tool.outputTypes.length > 0 ? (

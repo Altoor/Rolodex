@@ -1,6 +1,10 @@
 import type { SystemOneChoiceQuestion } from "ollama";
-import { getOllamaClient } from "@repo/ai";
-import { ToolInputError } from "../../../model";
+import { getOllamaClient, getOllamaKeepAlive } from "@repo/ai";
+import { ToolInputError, ToolNoMatchError } from "../../../model";
+import {
+  assertMinimumConfidence,
+  DEFAULT_MINIMUM_CONFIDENCE,
+} from "../../search-thresholds";
 
 interface SelectableFileEntry {
   id: number;
@@ -25,6 +29,7 @@ export async function selectFileEntryWithDecision<
   request: string,
   model: string | null | undefined,
   kindLabel?: "file" | "folder",
+  minimumConfidence = DEFAULT_MINIMUM_CONFIDENCE,
 ): Promise<T> {
   const label = kindLabel ?? "file or folder";
 
@@ -58,10 +63,14 @@ export async function selectFileEntryWithDecision<
     questions: { [premise]: question },
   });
 
-  const response = await (await getOllamaClient()).systemone({
+  const keepAlive = await getOllamaKeepAlive();
+  const response = await (
+    await getOllamaClient()
+  ).systemone({
     model,
     state: request,
     questions: { [premise]: question },
+    ...(keepAlive !== undefined ? { keep_alive: keepAlive } : {}),
   });
 
   const answer = response.answers[premise];
@@ -72,8 +81,10 @@ export async function selectFileEntryWithDecision<
   console.log("answer:", answer);
 
   if (answer.choice === NONE_OPTION) {
-    throw new ToolInputError(`no matching ${label} found`);
+    throw new ToolNoMatchError(`no matching ${label} found`);
   }
+
+  assertMinimumConfidence(answer, minimumConfidence, label);
 
   const id = Number(
     answer.choice.startsWith(ENTRY_OPTION_PREFIX)

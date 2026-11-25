@@ -45,6 +45,8 @@ export async function transcribeAudioFile(
     language?: string;
     model?: string;
     maxBytes?: number;
+    /** Optional context to bias spelling and vocabulary. */
+    prompt?: string;
   } = {},
 ): Promise<TranscriptionResult> {
   const settings = await getAppSettings();
@@ -75,6 +77,13 @@ export async function transcribeAudioFile(
   }
 
   if (options.language) form.append("language", options.language);
+
+  // OpenAI-compatible servers accept `prompt`; the `whisper_cpp` /asr shape
+  // names the same hint `initial_prompt`.
+  const prompt = options.prompt?.trim();
+  if (prompt) {
+    form.append(backend === "whisper_cpp" ? "initial_prompt" : "prompt", prompt);
+  }
 
   const endpoint =
     backend === "whisper_cpp"

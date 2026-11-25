@@ -11,6 +11,7 @@ const definition: ToolDefinition = {
   description:
     "Detect a file's semantic type and MIME type from its extension and leading bytes, then persist the result.",
   category: "file",
+  usesModel: true,
   inputMode: "json",
   inputSchema: {
     type: "object",

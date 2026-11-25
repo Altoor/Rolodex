@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { AsyncLocalStorage } from "node:async_hooks";
 
 /**
  * Filesystem workspace configuration and path safety.
@@ -21,6 +22,22 @@ const REPO_ROOT = path.resolve(HERE, "../../../../../../");
 export const FILES_ROOT: string = path.resolve(
   process.env.FILES_ROOT ?? path.join(REPO_ROOT, "files"),
 );
+
+/**
+ * Assisted attempts redirect the file workspace to a trial directory. The
+ * production root stays untouched until the attempt is accepted.
+ */
+const filesRootScope = new AsyncLocalStorage<string>();
+
+/** Root used by the current async context (trial when scoped). */
+export function currentFilesRoot(): string {
+  return filesRootScope.getStore() ?? FILES_ROOT;
+}
+
+/** Runs `fn` with all file operations rooted at `root`. */
+export function runWithFilesRoot<T>(root: string, fn: () => Promise<T>) {
+  return filesRootScope.run(path.resolve(root), fn);
+}
 
 /** Name of the upload staging directory inside the root. */
 export const TEMP_DIR_NAME = ".tmp";
@@ -63,28 +80,30 @@ export function stripControlCharacters(value: string): string {
 
 /** Creates the shared root (and its `.gitkeep`) if it does not exist yet. */
 export async function ensureFilesRoot(): Promise<string> {
-  await fs.mkdir(FILES_ROOT, { recursive: true });
+  const root = currentFilesRoot();
+  await fs.mkdir(root, { recursive: true });
 
-  const gitkeep = path.join(FILES_ROOT, ".gitkeep");
+  const gitkeep = path.join(root, ".gitkeep");
   try {
     await fs.access(gitkeep);
   } catch {
     await fs.writeFile(gitkeep, "", { flag: "wx" }).catch(() => undefined);
   }
 
-  return FILES_ROOT;
+  return root;
 }
 
 /** Synchronous variant used during backend startup. */
 export function ensureFilesRootSync(): string {
-  mkdirSync(FILES_ROOT, { recursive: true });
+  const root = currentFilesRoot();
+  mkdirSync(root, { recursive: true });
 
-  const gitkeep = path.join(FILES_ROOT, ".gitkeep");
+  const gitkeep = path.join(root, ".gitkeep");
   if (!existsSync(gitkeep)) {
     writeFileSync(gitkeep, "", { flag: "wx" });
   }
 
-  return FILES_ROOT;
+  return root;
 }
 
 /**
@@ -139,22 +158,24 @@ export function normalizeRelativePath(
 /** Resolves a validated relative path to an absolute path inside the root. */
 export function resolveFilesPath(relativePath: string): string {
   const normalized = normalizeRelativePath(relativePath, { allowRoot: true });
-  const resolved = path.resolve(FILES_ROOT, normalized);
-  assertInsideRoot(resolved);
+  const root = currentFilesRoot();
+  const resolved = path.resolve(root, normalized);
+  assertInsideRoot(root, resolved);
   return resolved;
 }
 
 /** Converts an absolute path inside the root back to a POSIX relative path. */
 export function toRelativePath(absolutePath: string): string {
+  const root = currentFilesRoot();
   const resolved = path.resolve(absolutePath);
-  assertInsideRoot(resolved);
+  assertInsideRoot(root, resolved);
 
-  const relative = path.relative(FILES_ROOT, resolved);
+  const relative = path.relative(root, resolved);
   return relative.split(path.sep).join("/");
 }
 
-function assertInsideRoot(resolved: string): void {
-  if (resolved !== FILES_ROOT && !resolved.startsWith(FILES_ROOT + path.sep)) {
+function assertInsideRoot(root: string, resolved: string): void {
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
     throw new FilesystemError("path escapes FILES_ROOT");
   }
 }
@@ -167,7 +188,8 @@ function assertInsideRoot(resolved: string): void {
 export async function assertRealPathInsideRoot(
   absolutePath: string,
 ): Promise<void> {
-  const realRoot = await fs.realpath(FILES_ROOT);
+  const root = currentFilesRoot();
+  const realRoot = await fs.realpath(root);
   let current = path.resolve(absolutePath);
 
   for (;;) {
