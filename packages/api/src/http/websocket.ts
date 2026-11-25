@@ -120,6 +120,7 @@ export function createSubscribeUpgradeRoute(runtime: ApiRuntime): ApiUpgradeRout
         context.req,
         context.url,
         context.params.slug!,
+        { allowQueryKey: true },
       );
       const request = await getApiRequest(
         endpoint.id,
@@ -144,6 +145,7 @@ export function createInvokeUpgradeRoute(runtime: ApiRuntime): ApiUpgradeRoute {
         context.req,
         context.url,
         context.params.slug!,
+        { allowQueryKey: true },
       );
 
       return upgrade(context, (ws) => {
@@ -174,12 +176,20 @@ export function createInvokeUpgradeRoute(runtime: ApiRuntime): ApiUpgradeRoute {
                 taskId: endpoint.taskId,
                 state,
               });
-              const request = await createApiRequest({
-                endpointId: endpoint.id,
-                userId: endpoint.userId,
-                runId: queued.runId,
-                state,
-              });
+              let request;
+              try {
+                request = await createApiRequest({
+                  endpointId: endpoint.id,
+                  userId: endpoint.userId,
+                  runId: queued.runId,
+                  state,
+                });
+              } catch (err) {
+                if (runtime.cancelFlow) {
+                  await runtime.cancelFlow(queued.runId).catch(() => undefined);
+                }
+                throw err;
+              }
 
               const origin = requestOrigin(context.req);
               const statusUrl = `${origin}/api/hooks/${endpoint.slug}/requests/${request.id}`;

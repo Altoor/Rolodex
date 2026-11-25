@@ -19,6 +19,7 @@ import {
   createTrialSchemas,
   dropTrialSchemas,
   listTrialSchemas,
+  TRIAL_TABLES,
   trialSchemaName,
   workspaceKeyFor,
 } from "./schema";
@@ -38,6 +39,9 @@ function scopedDatabase(
   const pool = new Pool({
     connectionString: databaseUrl,
     max: 4,
+    // Reads fall back to public; writes are additionally guarded by the
+    // writable-table allowlist in `runInTrial`, so a stray write cannot reach
+    // production even though public is on the search path.
     options: `-c search_path=${schema},public`,
   });
   return {
@@ -60,6 +64,10 @@ async function copyFilesToTrial(
     return;
   }
 
+  // The whole tree is copied so tools see production files exactly as they are
+  // and can diff against the trial. This is O(workspace size) per attempt and
+  // is the accepted trade-off for full isolation; a reflink/hardlink fast path
+  // would need copy-on-write support from the filesystem.
   for (const entry of entries) {
     if (entry.name === ".trials" || entry.name === ".tmp") continue;
     await fs.cp(
@@ -176,8 +184,10 @@ export function createTrialWorkspaceManager(
     workspace: TrialWorkspace,
     fn: () => Promise<T>,
   ): Promise<T> {
-    return runInDatabaseScope(workspace.database, () =>
-      runWithFilesRoot(workspace.filesRoot, fn),
+    return runInDatabaseScope(
+      workspace.database,
+      () => runWithFilesRoot(workspace.filesRoot, fn),
+      { writableTables: TRIAL_TABLES },
     );
   }
 
@@ -188,6 +198,12 @@ export function createTrialWorkspaceManager(
     );
     const production = scopedDatabase(options.databaseUrl, "public");
 
+    // The database commit and the file commit are separate stores. A crash
+    // between them can leave rows committed but files not (or vice versa).
+    // Both sides are written idempotently: `commitDatabase` treats rows already
+    // matching the trial as applied, and `commitFiles` diffs against the
+    // manifest, so re-running the accept after a crash finishes the job. A
+    // genuinely concurrent external change still surfaces as a conflict.
     try {
       await commitDatabase({
         trial: workspace.database,

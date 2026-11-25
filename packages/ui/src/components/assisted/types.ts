@@ -77,6 +77,13 @@ export interface AssistedPendingChoice {
   }[];
 }
 
+/** A task that can be wired as a decision option's next step. */
+export interface TargetTaskOption {
+  id: number;
+  name: string;
+  type: string;
+}
+
 /** A model-drafted tool task for a decision option that has no target yet. */
 export interface NextTaskDraft {
   name: string;

@@ -23,12 +23,21 @@ export function createInvokeRoute(runtime: ApiRuntime): ApiRoute {
         state: input.state,
         fileIds: uploaded.map((file) => file.id),
       });
-      const request = await createApiRequest({
-        endpointId: endpoint.id,
-        userId: endpoint.userId,
-        runId: queued.runId,
-        state: input.state,
-      });
+      let request;
+      try {
+        request = await createApiRequest({
+          endpointId: endpoint.id,
+          userId: endpoint.userId,
+          runId: queued.runId,
+          state: input.state,
+        });
+      } catch (err) {
+        // The run must not execute without a status row the caller can poll.
+        if (runtime.cancelFlow) {
+          await runtime.cancelFlow(queued.runId).catch(() => undefined);
+        }
+        throw err;
+      }
 
       const origin = requestOrigin(req);
       const statusUrl = `${origin}/api/hooks/${endpoint.slug}/requests/${request.id}`;

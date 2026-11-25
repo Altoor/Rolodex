@@ -1,5 +1,5 @@
 import { db } from "@repo/db";
-import { MAX_CHAIN_DEPTH } from "../../queue/constants";
+import { MAX_CHAIN_DEPTH } from "../queue/constants";
 
 export class RevisionGraphError extends Error {
   constructor(message: string) {

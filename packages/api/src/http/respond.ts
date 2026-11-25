@@ -10,20 +10,36 @@ export class HttpError extends Error {
   }
 }
 
+/** Parsed CORS allowlist. `*` allows any origin explicitly. */
+function corsAllowlist(): string[] {
+  return (process.env.API_CORS_ORIGINS ?? "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+}
+
 export function setCorsHeaders(
   req: IncomingMessage,
   res: ServerResponse,
 ): void {
-  res.setHeader("Access-Control-Allow-Origin", req.headers.origin ?? "*");
+  // Never reflect arbitrary origins: reflect only configured ones. With no
+  // allowlist the outward API stays same-origin, which is safe by default.
   res.setHeader("Vary", "Origin");
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET, POST, PATCH, DELETE, OPTIONS",
-  );
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Authorization, Content-Type, X-API-Key",
-  );
+  const origin = req.headers.origin;
+  if (!origin) return;
+
+  const allowlist = corsAllowlist();
+  if (allowlist.includes("*") || allowlist.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader(
+      "Access-Control-Allow-Methods",
+      "GET, POST, PATCH, DELETE, OPTIONS",
+    );
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Authorization, Content-Type, X-API-Key",
+    );
+  }
 }
 
 export function respondJson(
@@ -41,7 +57,14 @@ export function respondJson(
   res.end(JSON.stringify(body));
 }
 
+/**
+ * The public base URL used in `statusUrl` / `websocketUrl`. Prefer an explicit
+ * `API_PUBLIC_ORIGIN` so a spoofed `Host` header cannot influence responses.
+ */
 export function requestOrigin(req: IncomingMessage): string {
+  const configured = process.env.API_PUBLIC_ORIGIN?.trim();
+  if (configured) return configured.replace(/\/+$/, "");
+
   const forwardedProto = req.headers["x-forwarded-proto"];
   const proto =
     typeof forwardedProto === "string"
@@ -51,11 +74,22 @@ export function requestOrigin(req: IncomingMessage): string {
         : "http";
   const host = req.headers.host ?? "localhost:4000";
 
-  return `${proto}://${host}`;
+  // Even in the local fallback, only accept a host-shaped value.
+  const safeHost = /^[a-zA-Z0-9.\-:[\]]+$/.test(host) ? host : "localhost:4000";
+  return `${proto}://${safeHost}`;
 }
 
-/** Reads a key from the standard header or the WebSocket-friendly query. */
-export function readApiKey(req: IncomingMessage, url: URL): string | null {
+export interface ReadApiKeyOptions {
+  /** WebSocket upgrades have no headers, so they may pass `?key=`. */
+  allowQuery?: boolean;
+}
+
+/** Reads a key from the standard header or, when allowed, the query string. */
+export function readApiKey(
+  req: IncomingMessage,
+  url: URL,
+  options: ReadApiKeyOptions = {},
+): string | null {
   const headerKey = req.headers["x-api-key"];
   if (typeof headerKey === "string" && headerKey.trim()) {
     return headerKey.trim();
@@ -67,6 +101,7 @@ export function readApiKey(req: IncomingMessage, url: URL): string | null {
     if (scheme?.toLowerCase() === "bearer" && token) return token;
   }
 
+  if (!options.allowQuery) return null;
   const queryKey = url.searchParams.get("key");
   return queryKey?.trim() || null;
 }

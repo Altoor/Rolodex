@@ -318,6 +318,15 @@ as the web app. When the web app is served on port 80 or 443, it instead uses
 its own origin, which suits a reverse proxy in front of both apps. Server
 rendering falls back to `http://localhost:4000`.
 
+The outward REST API has its own settings:
+
+- `API_PUBLIC_ORIGIN` sets the base URL returned in `statusUrl` and
+  `websocketUrl`, so a spoofed `Host` cannot change those links.
+- `API_CORS_ORIGINS` is a comma-separated allowlist of browser origins. `*`
+  explicitly allows any origin; without it the outward API stays same-origin.
+
+See `packages/api/README.md` for authentication, limits and operational notes.
+
 ## Docker Compose
 
 Four standalone compose files are available. All of them include PostgreSQL,

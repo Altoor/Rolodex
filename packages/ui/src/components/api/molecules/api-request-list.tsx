@@ -1,11 +1,9 @@
 "use client";
 
-import { useQuery } from "@apollo/client/react";
-import { API_REQUESTS } from "@repo/queries/api/api-queries";
 import { Badge } from "#components/ui/badge";
 import { Button } from "#components/ui/button";
 import { Spinner } from "#components/ui/spinner";
-import { formatApiDate, type ApiRequest } from "./api-utils";
+import { formatApiDate, type ApiRequest } from "../lib/api-utils";
 
 function statusVariant(
   status: ApiRequest["status"],
@@ -16,27 +14,25 @@ function statusVariant(
   return "outline";
 }
 
-export function ApiRequestList({ endpointId }: { endpointId: string }) {
-  const { data, loading, refetch } = useQuery(API_REQUESTS, {
-    variables: { endpointId, limit: 10 },
-    fetchPolicy: "network-only",
-  });
-  const requests = (data?.apiRequests ?? []).filter(
-    (request): request is ApiRequest => Boolean(request),
-  );
+interface ApiRequestListProps {
+  requests: ApiRequest[];
+  loading: boolean;
+  onRefresh: () => void;
+}
 
+/** Recent invocations for one endpoint. */
+export function ApiRequestList({
+  requests,
+  loading,
+  onRefresh,
+}: ApiRequestListProps) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <p className="text-xs font-medium text-muted-foreground">
           Recent requests
         </p>
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          onClick={() => void refetch()}
-        >
+        <Button type="button" size="sm" variant="ghost" onClick={onRefresh}>
           Refresh
         </Button>
       </div>

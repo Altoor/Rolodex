@@ -40,6 +40,9 @@ export async function createTrialSchemas(
   await admin.query(`CREATE SCHEMA ${quoteIdent(baseline)}`);
 
   for (const table of TRIAL_TABLES) {
+    // Each attempt copies every row of the trial tables. That is O(workspace
+    // size) per tool step; it is deliberate (full isolation, simple diffing)
+    // and is documented as the accepted cost of trials.
     // The trial copy keeps identity/defaults/indexes so tools behave normally.
     await admin.query(
       `CREATE TABLE ${quoteIdent(schema)}.${quoteIdent(table)}

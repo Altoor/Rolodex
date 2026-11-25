@@ -5,6 +5,8 @@ import type { ApiEndpointRow } from "./types";
 const MAX_BODY_BYTES = 5 * 1024 * 1024;
 const MAX_FILES = 20;
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
+/** Request-wide multipart cap; per-file limits alone allow ~500 MB. */
+const MAX_MULTIPART_BYTES = 50 * 1024 * 1024;
 
 export class RequestInputError extends Error {
   constructor(
@@ -142,8 +144,19 @@ function parseMultipart(
     const fields: Record<string, unknown> = {};
     const files: Promise<File>[] = [];
     let failure: RequestInputError | null = null;
-
+    let totalBytes = 0;
+    let settled = false;
     let busboy: Busboy.Busboy;
+
+    const fail = (error: RequestInputError) => {
+      if (settled) return;
+      settled = true;
+      failure = error;
+      req.unpipe(busboy);
+      req.destroy();
+      reject(error);
+    };
+
     try {
       busboy = Busboy({
         headers: req.headers,
@@ -169,13 +182,37 @@ function parseMultipart(
 
       stream.on("data", (chunk: Buffer) => {
         size += chunk.length;
+        totalBytes += chunk.length;
+
+        if (size > MAX_FILE_BYTES) {
+          fail(
+            new RequestInputError(
+              `File "${info.filename}" exceeds ${MAX_FILE_BYTES} bytes`,
+              413,
+            ),
+          );
+          return;
+        }
+
+        if (totalBytes > MAX_MULTIPART_BYTES) {
+          fail(
+            new RequestInputError(
+              `Request body exceeds ${MAX_MULTIPART_BYTES} bytes`,
+              413,
+            ),
+          );
+          return;
+        }
+
         chunks.push(chunk);
       });
 
       stream.on("limit", () => {
-        failure = new RequestInputError(
-          `File "${info.filename}" exceeds ${MAX_FILE_BYTES} bytes`,
-          413,
+        fail(
+          new RequestInputError(
+            `File "${info.filename}" exceeds ${MAX_FILE_BYTES} bytes`,
+            413,
+          ),
         );
       });
 
@@ -194,27 +231,25 @@ function parseMultipart(
           });
         }),
       );
-
-      if (size > MAX_FILE_BYTES) {
-        failure = new RequestInputError(
-          `File "${info.filename}" exceeds ${MAX_FILE_BYTES} bytes`,
-          413,
-        );
-      }
     });
 
     busboy.on("filesLimit", () => {
-      failure = new RequestInputError(
-        `Too many files; the limit is ${MAX_FILES}`,
-        413,
+      fail(
+        new RequestInputError(
+          `Too many files; the limit is ${MAX_FILES}`,
+          413,
+        ),
       );
     });
 
     busboy.on("error", () => {
+      if (settled) return;
+      settled = true;
       reject(new RequestInputError("Invalid multipart request", 400));
     });
 
     busboy.on("close", () => {
+      if (settled) return;
       void (async () => {
         try {
           const resolved = await Promise.all(files);
@@ -223,6 +258,7 @@ function parseMultipart(
             return;
           }
 
+          settled = true;
           resolve({
             state: stateFromFields(fields, endpoint),
             files: resolved,

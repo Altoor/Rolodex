@@ -1,10 +1,6 @@
 "use client";
 
-import { useMutation, useQuery } from "@apollo/client/react";
-import {
-  ROTATE_STANDARD_API_KEY,
-  STANDARD_API_KEY,
-} from "@repo/queries/api/api-queries";
+import type { StandardApiKeyQuery } from "@repo/queries/__generated__/graphql";
 import { ErrorState } from "#components/feedback/error-state";
 import {
   Accordion,
@@ -15,7 +11,7 @@ import {
 import { Button } from "#components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "#components/ui/card";
 import { Spinner } from "#components/ui/spinner";
-import { formatApiDate, standardApiUrl } from "./api-utils";
+import { formatApiDate, standardApiUrl } from "../lib/api-utils";
 
 const listExample = `curl '${standardApiUrl("/todos")}?done=false&limit=25' \\
   -H 'Authorization: Bearer <api-key>'`;
@@ -62,29 +58,26 @@ const updateResponse = `{
   }
 }`;
 
+type StandardKey = StandardApiKeyQuery["standardApiKey"];
+
 interface ApiStandardSectionProps {
-  onKey: (input: { apiKey: string; endpointName: string }) => void;
+  standardKey: StandardKey;
+  loading: boolean;
+  error: unknown;
+  busy: boolean;
+  onRotate: () => void;
+  onRetry: () => void;
 }
 
-export function ApiStandardSection({ onKey }: ApiStandardSectionProps) {
-  const keyQuery = useQuery(STANDARD_API_KEY, {
-    fetchPolicy: "cache-and-network",
-  });
-  const [rotate, rotateState] = useMutation(ROTATE_STANDARD_API_KEY, {
-    refetchQueries: [STANDARD_API_KEY],
-  });
-
-  const standardKey = keyQuery.data?.standardApiKey;
-  const busy = rotateState.loading;
-
-  const rotateKey = async () => {
-    const result = await rotate();
-    const payload = result.data?.rotateStandardApiKey;
-    if (payload?.apiKey) {
-      onKey({ apiKey: payload.apiKey, endpointName: "Standard API key" });
-    }
-  };
-
+/** Documentation and key controls for the standard, account-scoped API. */
+export function ApiStandardSection({
+  standardKey,
+  loading,
+  error,
+  busy,
+  onRotate,
+  onRetry,
+}: ApiStandardSectionProps) {
   return (
     <Card>
       <CardHeader>
@@ -94,7 +87,7 @@ export function ApiStandardSection({ onKey }: ApiStandardSectionProps) {
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2 text-xs">
           <div className="flex min-w-0 flex-col gap-0.5">
             <span className="font-medium text-foreground">Standard key</span>
-            {keyQuery.loading && !keyQuery.data ? (
+            {loading && !standardKey ? (
               <span className="text-muted-foreground">Loading key…</span>
             ) : standardKey ? (
               <span className="text-muted-foreground">
@@ -105,7 +98,7 @@ export function ApiStandardSection({ onKey }: ApiStandardSectionProps) {
               </span>
             ) : (
               <span className="text-muted-foreground">
-                No dedicated key yet. Endpoint keys also work.
+                No dedicated key yet. Create one to use these routes.
               </span>
             )}
           </div>
@@ -114,27 +107,27 @@ export function ApiStandardSection({ onKey }: ApiStandardSectionProps) {
             size="sm"
             variant="outline"
             disabled={busy}
-            onClick={() => void rotateKey()}
+            onClick={onRotate}
           >
             {busy ? <Spinner /> : null}
             {standardKey ? "Rotate key" : "Create key"}
           </Button>
         </div>
 
-        {keyQuery.error || rotateState.error ? (
+        {error ? (
           <ErrorState
             title="Standard key action failed"
-            error={keyQuery.error ?? rotateState.error}
-            onRetry={() => void keyQuery.refetch()}
+            error={error}
+            onRetry={onRetry}
           />
         ) : null}
 
         <p className="text-xs text-muted-foreground">
-          These routes act on your own data. Use the standard key above or any
-          enabled endpoint key from the links; the key&apos;s owner scopes every
-          response. Send it as{" "}
+          These routes act on your own data. Use the standard key above; endpoint
+          keys are scoped to their single hook and are rejected here. Send it as{" "}
           <code className="font-mono">Authorization: Bearer …</code> or{" "}
-          <code className="font-mono">X-API-Key</code>.
+          <code className="font-mono">X-API-Key</code>. Query-string keys are
+          accepted only for WebSocket upgrades.
         </p>
 
         <Accordion>

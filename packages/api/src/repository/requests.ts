@@ -1,6 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { apiRequests, db } from "@repo/db";
 import type { ApiRequestRow } from "../domain/types";
+import { isUuid } from "../domain/uuid";
 
 export interface CreateApiRequestInput {
   endpointId: string;
@@ -30,6 +31,8 @@ export async function getApiRequest(
   endpointId: string,
   requestId: string,
 ): Promise<ApiRequestRow | null> {
+  if (!isUuid(endpointId) || !isUuid(requestId)) return null;
+
   const [row] = await db
     .select()
     .from(apiRequests)

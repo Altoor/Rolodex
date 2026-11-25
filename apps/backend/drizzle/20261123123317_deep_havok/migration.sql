@@ -48,14 +48,10 @@ CREATE TABLE "traceEvents" (
 	"createdAt" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-DROP TABLE "decisionBiases";--> statement-breakpoint
-DROP TABLE "decisionFeedback";--> statement-breakpoint
-ALTER TABLE "userSettings" RENAME COLUMN "flowAutoImprovement" TO "autoImprovement";--> statement-breakpoint
 ALTER TABLE "tasks" ADD COLUMN "isDraft" bool DEFAULT false NOT NULL;--> statement-breakpoint
 ALTER TABLE "tasks" ADD COLUMN "draftOwnerId" integer;--> statement-breakpoint
--- These columns came from an abandoned migration that was never part of this
--- chain, so a fresh database may not have all of them.
-ALTER TABLE "queuedTasks" DROP COLUMN IF EXISTS "nextStepApproved";--> statement-breakpoint
+-- Legacy columns from deployments that predate this migration chain. They were
+-- never created by a migration in this repo, so these drops stay guarded.
 ALTER TABLE "queuedTasks" DROP COLUMN IF EXISTS "autoPlanned";--> statement-breakpoint
 ALTER TABLE "queuedTasks" DROP COLUMN IF EXISTS "flowGoal";--> statement-breakpoint
 ALTER TABLE "queuedTasks" DROP COLUMN IF EXISTS "runReview";--> statement-breakpoint

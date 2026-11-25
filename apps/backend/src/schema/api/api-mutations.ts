@@ -8,6 +8,7 @@ import {
   InvalidEndpointSlugError,
   rotateApiEndpointKey,
   rotateStandardApiKey as rotateStandardKey,
+  TaskNotVisibleError,
   updateApiEndpoint,
 } from "@repo/api";
 import {
@@ -20,7 +21,8 @@ import {
 function asApiInputError(err: unknown): never {
   if (
     err instanceof InvalidEndpointSlugError ||
-    err instanceof EndpointSlugConflictError
+    err instanceof EndpointSlugConflictError ||
+    err instanceof TaskNotVisibleError
   ) {
     throw new GraphQLError(err.message, {
       extensions: { code: "BAD_USER_INPUT" },

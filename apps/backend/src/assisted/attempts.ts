@@ -1,11 +1,10 @@
-import { and, eq, ne, notInArray, sql } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 // `sql` is used by the attempt-number aggregate below.
 import {
   db,
   decisions,
   stepAttempts,
   taskResults,
-  tasks,
   userDecisionOptions,
 } from "@repo/db";
 import type { QueuedRow, TaskRow } from "../queue/types";
@@ -116,15 +115,23 @@ export async function finishAttempt(
 
 export async function markAttemptCommitted(
   attemptId: number,
-): Promise<void> {
-  await db
+): Promise<boolean> {
+  const rows = await db
     .update(stepAttempts)
     .set({
       status: "committed",
       committedAt: new Date(),
       review: { accepted: true, reviewedAt: new Date().toISOString() },
     })
-    .where(eq(stepAttempts.id, attemptId));
+    .where(
+      and(
+        eq(stepAttempts.id, attemptId),
+        ne(stepAttempts.status, "committed"),
+      ),
+    )
+    .returning({ id: stepAttempts.id });
+
+  return rows.length > 0;
 }
 
 export async function getAttempt(
@@ -182,164 +189,4 @@ export async function loadTaskRow(taskId: number): Promise<TaskRow | undefined> 
   return db.query.tasks.findFirst({ where: { id: taskId } });
 }
 
-/**
- * Persists an accepted snapshot. This is the only place assisted steps change
- * task/decision definitions; rejected attempts never call it.
- */
-export async function persistSnapshot(
-  snapshot: TaskSnapshot,
-  userId: number,
-): Promise<{ resultIdMap: Map<number, number> }> {
-  const task = snapshot.task;
-  // Snapshot-only rows use negative ids; callers need the persisted ids to
-  // refer to the rows they just selected.
-  const resultIdMap = new Map<number, number>();
-
-  let decisionId = task.decisionId;
-  if (snapshot.decision && snapshot.decision.id < 0) {
-    const decision = snapshot.decision;
-    const [created] = await db
-      .insert(decisions)
-      .values({
-        name: decision.name,
-        type: decision.type,
-        decisionPremise: decision.decisionPremise,
-        instruction: decision.instruction,
-        options: decision.options,
-        optionDescriptions: decision.optionDescriptions,
-        authorId: userId,
-      })
-      .returning({ id: decisions.id });
-    if (!created) throw new Error("failed to persist decision");
-    decisionId = created.id;
-  }
-
-  await db
-    .update(tasks)
-    .set({
-      name: task.name,
-      type: task.type,
-      decisionId,
-      fallbackTaskId: task.fallbackTaskId,
-      toolKey: task.toolKey,
-      toolConfig: task.toolConfig,
-      toolOutputType: task.toolOutputType,
-      onTrueTaskId: task.onTrueTaskId,
-      onFalseTaskId: task.onFalseTaskId,
-      joinTaskId: task.joinTaskId,
-      model: task.model,
-      decisionModel: task.decisionModel,
-      decisionStateConfig: task.decisionStateConfig,
-      forceUserDecideIfNoMatch: task.forceUserDecideIfNoMatch,
-      userDecisionType: task.userDecisionType,
-      userDecisionConfig: task.userDecisionConfig,
-      canRunInParallel: task.canRunInParallel,
-      prioritize: task.prioritize,
-      isDraft: false,
-      draftOwnerId: null,
-    })
-    .where(eq(tasks.id, task.id));
-
-  if (snapshot.decision && snapshot.decision.id >= 0) {
-    const decision = snapshot.decision;
-    await db
-      .update(decisions)
-      .set({
-        name: decision.name,
-        type: decision.type,
-        decisionPremise: decision.decisionPremise,
-        instruction: decision.instruction,
-        options: decision.options,
-        optionDescriptions: decision.optionDescriptions,
-      })
-      .where(eq(decisions.id, decision.id));
-  }
-
-  const keptResultIds: number[] = [];
-  for (const row of snapshot.results) {
-    const values: typeof taskResults.$inferInsert = {
-      taskId: task.id,
-      type: row.type,
-      option: row.option,
-      scoreThreshold: row.scoreThreshold,
-      probabilityThreshold: row.probabilityThreshold,
-      confidenceThreshold: row.confidenceThreshold,
-      resultTaskId: row.resultTaskId,
-      appendState: row.appendState,
-    };
-    if (row.id > 0) {
-      await db
-        .update(taskResults)
-        .set(values)
-        .where(eq(taskResults.id, row.id));
-      keptResultIds.push(row.id);
-    } else {
-      const [created] = await db
-        .insert(taskResults)
-        .values(values)
-        .returning({ id: taskResults.id });
-      if (created) {
-        keptResultIds.push(created.id);
-        resultIdMap.set(row.id, created.id);
-      }
-    }
-  }
-  await db
-    .delete(taskResults)
-    .where(
-      keptResultIds.length > 0
-        ? and(
-            eq(taskResults.taskId, task.id),
-            notInArray(taskResults.id, keptResultIds),
-          )
-        : eq(taskResults.taskId, task.id),
-    );
-
-  const keptOptionIds: number[] = [];
-  for (const row of snapshot.userDecisionOptions) {
-    const values: typeof userDecisionOptions.$inferInsert = {
-      taskId: task.id,
-      kind: row.kind,
-      label: row.label,
-      description: row.description,
-      value: row.value,
-      selector: row.selector,
-      labelPath: row.labelPath,
-      descriptionPath: row.descriptionPath,
-      valuePath: row.valuePath,
-      resultTaskId: row.resultTaskId,
-      appendState: row.appendState,
-      sortOrder: row.sortOrder,
-    };
-    if (row.id > 0) {
-      await db
-        .update(userDecisionOptions)
-        .set(values)
-        .where(eq(userDecisionOptions.id, row.id));
-      keptOptionIds.push(row.id);
-    } else {
-      const [created] = await db
-        .insert(userDecisionOptions)
-        .values(values)
-        .returning({ id: userDecisionOptions.id });
-      if (created) keptOptionIds.push(created.id);
-    }
-  }
-  await db
-    .delete(userDecisionOptions)
-    .where(
-      keptOptionIds.length > 0
-        ? and(
-            eq(userDecisionOptions.taskId, task.id),
-            notInArray(userDecisionOptions.id, keptOptionIds),
-          )
-        : eq(userDecisionOptions.taskId, task.id),
-    );
-
-  // The draft owner is only used for visibility while the run is pending.
-  void userId;
-
-  return { resultIdMap };
-}
-
-export { tasks };
+export { persistSnapshot } from "./persist-snapshot";

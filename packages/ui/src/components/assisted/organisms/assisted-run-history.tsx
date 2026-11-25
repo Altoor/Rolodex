@@ -2,7 +2,6 @@
 
 import { FieldDescription } from "#components/ui/field";
 import { Spinner } from "#components/ui/spinner";
-import { useAssistedRunHistory } from "../hooks/use-assisted-runs";
 import { AssistedRunTimeline } from "./assisted-run-timeline";
 import type { AssistedRun } from "../types";
 
@@ -42,10 +41,13 @@ function HistoryRun({ run }: { run: AssistedRun }) {
   );
 }
 
-/** Finished/cancelled/failed assisted runs, collapsed by default. */
-export function AssistedRunHistory() {
-  const { runs, loading } = useAssistedRunHistory(true);
+interface AssistedRunHistoryProps {
+  runs: AssistedRun[];
+  loading: boolean;
+}
 
+/** Finished/cancelled/failed assisted runs, collapsed by default. */
+export function AssistedRunHistory({ runs, loading }: AssistedRunHistoryProps) {
   if (loading && runs.length === 0) {
     return (
       <FieldDescription className="flex items-center gap-2 text-xs">

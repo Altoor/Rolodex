@@ -9,13 +9,14 @@ export async function authenticateEndpoint(
   req: IncomingMessage,
   url: URL,
   slug: string,
+  options: { allowQueryKey?: boolean } = {},
 ): Promise<ApiEndpointRow> {
   const endpoint = await findApiEndpointBySlug(slug);
   if (!endpoint || !endpoint.enabled) {
     throw new HttpError("Unknown API endpoint", 404);
   }
 
-  const key = readApiKey(req, url);
+  const key = readApiKey(req, url, { allowQuery: options.allowQueryKey });
   if (!key || !apiKeyMatches(key, endpoint.keyHash)) {
     throw new HttpError("Invalid API key", 401);
   }

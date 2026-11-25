@@ -1,14 +1,12 @@
-import { GraphQLError } from "graphql";
-import { eq, or } from "drizzle-orm";
 import { tasks } from "@repo/db";
 import { builder, db } from "../../builder";
-import { requireUser, requireUserId } from "../../auth";
+import { requireUserId } from "../../auth";
 import { Task } from "./task";
-
-/** Visible tasks: normal tasks plus the current user's assisted drafts. */
-function visibleTasks(userId: number) {
-  return or(eq(tasks.isDraft, false), eq(tasks.draftOwnerId, userId));
-}
+import {
+  loadVisibleTask,
+  taskNotFound,
+  visibleTaskCondition,
+} from "./task-visibility";
 
 builder.queryType({
   fields: (t) => ({
@@ -16,7 +14,7 @@ builder.queryType({
       type: [Task],
       resolve: async (_root, _args, ctx) => {
         const userId = requireUserId(ctx);
-        return db.select().from(tasks).where(visibleTasks(userId));
+        return db.select().from(tasks).where(visibleTaskCondition(userId));
       },
     }),
 
@@ -26,16 +24,9 @@ builder.queryType({
         id: t.arg.int({ required: true }),
       },
       resolve: async (_root, { id }, ctx) => {
-        requireUser(ctx, "BAD_USER_INPUT");
-
-        const task = await db.query.tasks.findFirst({ where: { id } });
-
-        if (!task) {
-          throw new GraphQLError("Task not found", {
-            extensions: { code: "BAD_USER_INPUT" },
-          });
-        }
-
+        const userId = requireUserId(ctx);
+        const task = await loadVisibleTask(userId, id);
+        if (!task) throw taskNotFound();
         return task;
       },
     }),

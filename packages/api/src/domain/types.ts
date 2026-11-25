@@ -109,4 +109,6 @@ export interface ApiRuntime {
   uploadFiles(files: File[]): Promise<Array<{ id: number }>>;
   /** Calls the listener whenever a step of the run changes. */
   onRunEvent(runId: string, listener: () => void): () => void;
+  /** Best-effort cleanup when a run was queued but its request row failed. */
+  cancelFlow?(runId: string): Promise<void>;
 }

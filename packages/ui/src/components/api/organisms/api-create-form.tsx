@@ -1,11 +1,7 @@
 "use client";
 
-import { useMutation } from "@apollo/client/react";
 import { useState } from "react";
-import {
-  CREATE_API_ENDPOINT,
-  API_ENDPOINTS,
-} from "@repo/queries/api/api-queries";
+import { ErrorState } from "#components/feedback/error-state";
 import { Button } from "#components/ui/button";
 import {
   Card,
@@ -17,51 +13,48 @@ import {
 import { Field, FieldLabel } from "#components/ui/field";
 import { Input } from "#components/ui/input";
 import { Spinner } from "#components/ui/spinner";
-import { ErrorState } from "#components/feedback/error-state";
-import { invokeUrl } from "./api-utils";
+import { invokeUrl, type TaskOption } from "../lib/api-utils";
 
-interface TaskOption {
-  id: number | null;
-  name: string | null;
+export interface ApiCreateValues {
+  name: string;
+  slug: string | null;
+  taskId: number;
+  description: string | null;
+  stateField: string | null;
 }
 
 interface ApiCreateFormProps {
   tasks: TaskOption[];
-  onCreated: (input: { apiKey: string; endpointName: string }) => void;
+  busy: boolean;
+  error: unknown;
+  onSubmit: (values: ApiCreateValues) => Promise<boolean>;
 }
 
-export function ApiCreateForm({ tasks, onCreated }: ApiCreateFormProps) {
+/** Create form for a new API link. Resets itself after a successful submit. */
+export function ApiCreateForm({
+  tasks,
+  busy,
+  error,
+  onSubmit,
+}: ApiCreateFormProps) {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [taskId, setTaskId] = useState("");
   const [description, setDescription] = useState("");
   const [stateField, setStateField] = useState("");
 
-  const [create, { loading, error }] = useMutation(CREATE_API_ENDPOINT, {
-    refetchQueries: [API_ENDPOINTS],
-  });
-
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
 
-    const result = await create({
-      variables: {
-        name: name.trim(),
-        taskId: Number(taskId),
-        description: description.trim() || null,
-        stateField: stateField.trim() || null,
-        slug: slug.trim() || null,
-      },
+    const created = await onSubmit({
+      name: name.trim(),
+      taskId: Number(taskId),
+      description: description.trim() || null,
+      stateField: stateField.trim() || null,
+      slug: slug.trim() || null,
     });
+    if (!created) return;
 
-    const payload = result.data?.createApiEndpoint;
-    const endpoint = payload?.endpoint;
-    if (!payload || !endpoint) return;
-
-    onCreated({
-      apiKey: payload.apiKey ?? "",
-      endpointName: endpoint.name ?? "API endpoint",
-    });
     setName("");
     setSlug("");
     setTaskId("");
@@ -158,9 +151,9 @@ export function ApiCreateForm({ tasks, onCreated }: ApiCreateFormProps) {
 
           <Button
             type="submit"
-            disabled={loading || !name.trim() || !taskId}
+            disabled={busy || !name.trim() || !taskId}
           >
-            {loading ? <Spinner /> : null}
+            {busy ? <Spinner /> : null}
             Create API link
           </Button>
         </form>

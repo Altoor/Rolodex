@@ -12,6 +12,16 @@ export type ApiRequest = NonNullable<
   NonNullable<ApiRequestsQuery["apiRequests"]>[number]
 >;
 
+export interface TaskOption {
+  id: number | null;
+  name: string | null;
+}
+
+export interface RevealedKey {
+  apiKey: string;
+  endpointName: string;
+}
+
 export function invokeUrl(slug: string | null): string {
   return `${API_ORIGIN}/api/hooks/${slug ?? "<slug>"}`;
 }

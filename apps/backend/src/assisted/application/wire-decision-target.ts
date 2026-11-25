@@ -1,14 +1,20 @@
 import { GraphQLError } from "graphql";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db, stepAttempts, tasks } from "@repo/db";
 import { inheritedForkFields } from "../../queue/joins";
-import { completeReviewedStep, enqueueSteps } from "../../queue/step-store";
+import {
+  claimReviewedStep,
+  enqueueSteps,
+  finishStep,
+  releaseReviewedStepClaim,
+} from "../../queue/step-store";
 import { setRunStatus } from "../../queue/run-store";
 import {
   assertValidTaskConfig,
   defaultCanRunInParallel,
 } from "../../schema/task/task/task-service";
 import { persistSnapshot, type TaskSnapshot } from "../attempts";
+import { loadVisibleTask } from "../../schema/task/task/task-visibility";
 import { NextTaskDraftError, parseNextTaskDraft, type NextTaskDraft } from "../domain/next-task";
 import { recordTrace } from "../infrastructure/trace";
 import { loadDecisionTargetContext } from "./target-context";
@@ -72,9 +78,7 @@ async function wireTarget(
     targetTaskId = createdTaskId;
     targetName = target.draft.name;
   } else {
-    const row = await db.query.tasks.findFirst({
-      where: { id: target.taskId },
-    });
+    const row = await loadVisibleTask(userId, target.taskId);
     if (!row) {
       throw new GraphQLError("Target task not found", {
         extensions: { code: "BAD_USER_INPUT" },
@@ -138,33 +142,51 @@ async function wireTarget(
       ]
     : context.step.toolState;
 
-  await db
-    .update(stepAttempts)
-    .set({
-      status: "committed",
-      committedAt: new Date(),
-      review: {
-        accepted: true,
-        wiredResultId: context.resultId,
-        targetTaskId,
-        reviewedAt: new Date().toISOString(),
-        reviewedBy: userId,
-      },
-      taskSnapshot: updatedSnapshot as unknown as Record<string, unknown>,
-      result: updatedResult,
-    })
-    .where(eq(stepAttempts.id, context.attempt.id));
-
-  await persistSnapshot(updatedSnapshot, userId);
-
-  if (createdTaskId != null) {
-    await db
-      .update(tasks)
-      .set({ isDraft: false, draftOwnerId: null })
-      .where(eq(tasks.id, createdTaskId));
+  const claimed = await claimReviewedStep(context.step.id);
+  if (!claimed) {
+    throw new GraphQLError("This attempt is not waiting for review", {
+      extensions: { code: "BAD_USER_INPUT" },
+    });
   }
 
-  await completeReviewedStep(context.step.id, updatedResult, summary);
+  try {
+    await db
+      .update(stepAttempts)
+      .set({
+        status: "committed",
+        committedAt: new Date(),
+        review: {
+          accepted: true,
+          wiredResultId: context.resultId,
+          targetTaskId,
+          reviewedAt: new Date().toISOString(),
+          reviewedBy: userId,
+        },
+        taskSnapshot: updatedSnapshot as unknown as Record<string, unknown>,
+        result: updatedResult,
+      })
+      .where(eq(stepAttempts.id, context.attempt.id));
+
+    await persistSnapshot(updatedSnapshot, userId);
+
+    if (createdTaskId != null) {
+      await db
+        .update(tasks)
+        .set({ isDraft: false, draftOwnerId: null })
+        .where(eq(tasks.id, createdTaskId));
+    }
+
+    await finishStep(context.step.id, "completed", updatedResult, summary);
+  } catch (err) {
+    await releaseReviewedStepClaim(context.step.id);
+    // A draft created for this wiring must not leak if the snapshot fails.
+    if (createdTaskId != null) {
+      await db
+        .delete(tasks)
+        .where(and(eq(tasks.id, createdTaskId), eq(tasks.isDraft, true)));
+    }
+    throw err;
+  }
 
   const ids = await enqueueSteps([
     {

@@ -1,4 +1,4 @@
-export { AssistedRuns } from "./templates/assisted-runs";
+export { AssistedRuns } from "./containers/assisted-runs";
 export { useStartedAssistedRuns } from "./hooks/use-assisted-runs";
 export {
   START_ASSISTED_RUN,

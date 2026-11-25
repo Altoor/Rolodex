@@ -6,12 +6,14 @@ import {
   isUniqueViolation,
   normalizeCustomEndpointSlug,
 } from "../domain/slug";
+import { isUuid } from "../domain/uuid";
 import type {
   ApiEndpointInput,
   ApiEndpointRow,
   ApiEndpointUpdate,
   CreatedApiEndpoint,
 } from "../domain/types";
+import { assertTaskVisibleToUser } from "./task-visibility";
 
 export async function listApiEndpoints(
   userId: number,
@@ -27,6 +29,8 @@ export async function getApiEndpoint(
   userId: number,
   id: string,
 ): Promise<ApiEndpointRow | null> {
+  if (!isUuid(id)) return null;
+
   const [row] = await db
     .select()
     .from(apiEndpoints)
@@ -70,6 +74,8 @@ export async function createApiEndpoint(
   userId: number,
   input: ApiEndpointInput,
 ): Promise<CreatedApiEndpoint> {
+  await assertTaskVisibleToUser(userId, input.taskId);
+
   const key = generateApiKey();
   const requestedSlug = input.slug?.trim();
   const slug = requestedSlug
@@ -110,6 +116,11 @@ export async function updateApiEndpoint(
   id: string,
   update: ApiEndpointUpdate,
 ): Promise<ApiEndpointRow | null> {
+  if (update.taskId !== undefined) {
+    await assertTaskVisibleToUser(userId, update.taskId);
+  }
+  if (!isUuid(id)) return null;
+
   const values: Partial<typeof apiEndpoints.$inferInsert> = {
     updatedAt: new Date(),
   };
@@ -147,6 +158,8 @@ export async function rotateApiEndpointKey(
   userId: number,
   id: string,
 ): Promise<CreatedApiEndpoint | null> {
+  if (!isUuid(id)) return null;
+
   const key = generateApiKey();
   const [row] = await db
     .update(apiEndpoints)
@@ -166,6 +179,8 @@ export async function deleteApiEndpoint(
   userId: number,
   id: string,
 ): Promise<boolean> {
+  if (!isUuid(id)) return false;
+
   const rows = await db
     .delete(apiEndpoints)
     .where(and(eq(apiEndpoints.id, id), eq(apiEndpoints.userId, userId)))

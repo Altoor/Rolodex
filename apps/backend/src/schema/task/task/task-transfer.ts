@@ -10,8 +10,8 @@ builder.queryType({
         taskIds: t.arg.intList({ required: false }),
       },
       resolve: async (_root, { taskIds }, ctx) => {
-        requireUserId(ctx);
-        return exportTasksFile(taskIds ?? undefined);
+        const userId = requireUserId(ctx);
+        return exportTasksFile(userId, taskIds ?? undefined);
       },
     }),
   }),

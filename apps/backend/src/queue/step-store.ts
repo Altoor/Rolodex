@@ -1,5 +1,5 @@
 import { and, asc, desc, eq, inArray, notInArray, or, sql } from "drizzle-orm";
-import { db, queuedTasks, runs, tasks } from "@repo/db";
+import { db, queuedTasks, runs, stepAttempts, tasks } from "@repo/db";
 import { publishQueuedTaskEvent } from "./pubsub";
 import { warmQueuedRows } from "./model-warmup";
 import type { QueuedRow } from "./types";
@@ -99,6 +99,32 @@ export async function resetRunningSteps(): Promise<number> {
     .set({ status: "queued" })
     .where(eq(queuedTasks.status, "running"))
     .returning();
+
+  // Attempts that were in flight when the process died would otherwise stay
+  // "running" in history forever, even though their step was requeued.
+  if (stale.length > 0) {
+    await db
+      .update(stepAttempts)
+      .set({
+        status: "failed",
+        finishedAt: new Date(),
+        review: {
+          superseded: true,
+          reason: "server restarted while the step was running",
+          reviewedAt: new Date().toISOString(),
+        },
+      })
+      .where(
+        and(
+          inArray(
+            stepAttempts.queuedTaskId,
+            stale.map((step) => step.id),
+          ),
+          eq(stepAttempts.status, "running"),
+        ),
+      );
+  }
+
   return stale.length;
 }
 
@@ -166,23 +192,32 @@ export async function finishStep(
     publish(updated, message ?? (result as { note?: string })?.note ?? status);
 }
 
-/** Completes a step that was parked for assisted review. */
-export async function completeReviewedStep(
+/**
+ * Claims a parked step for acceptance. Only one caller can win the transition
+ * from `awaiting_input` to `running`; the winner performs the commit and marks
+ * the step completed. A loser must not enqueue continuations.
+ */
+export async function claimReviewedStep(
   id: number,
-  result: unknown,
-  message?: string,
 ): Promise<QueuedRow | undefined> {
   const [updated] = await db
     .update(queuedTasks)
-    .set({ status: "completed", result, pendingChoice: null })
+    .set({ status: "running", pendingChoice: null })
     .where(
       and(eq(queuedTasks.id, id), eq(queuedTasks.status, "awaiting_input")),
     )
     .returning();
 
-  if (updated)
-    publish(updated, message ?? (result as { summary?: string })?.summary ?? "step accepted");
+  if (updated) publish(updated, "review accepted");
   return updated;
+}
+
+/** Returns a claimed step to review after the accepted transition failed. */
+export async function releaseReviewedStepClaim(id: number): Promise<void> {
+  await db
+    .update(queuedTasks)
+    .set({ status: "awaiting_input" })
+    .where(and(eq(queuedTasks.id, id), eq(queuedTasks.status, "running")));
 }
 
 /**

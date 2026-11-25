@@ -74,13 +74,21 @@ builder.queryType({
         runId: t.arg.string(),
       },
       resolve: async (_root, { runId }, ctx) => {
-        requireUser(ctx, "BAD_USER_INPUT");
+        const userId = requireUserId(ctx);
 
-        return db
-          .select()
+        const rows = await db
+          .select({ row: queuedTasks })
           .from(queuedTasks)
-          .where(runId ? eq(queuedTasks.runId, runId) : undefined)
+          .innerJoin(runs, eq(queuedTasks.runId, runs.id))
+          .where(
+            and(
+              eq(runs.userId, userId),
+              runId ? eq(queuedTasks.runId, runId) : undefined,
+            ),
+          )
           .orderBy(asc(queuedTasks.queued_at), asc(queuedTasks.id));
+
+        return rows.map(({ row }) => row);
       },
     }),
 

@@ -31,7 +31,13 @@ X-API-Key: ak_…
 ```
 
 WebSocket clients may use `?key=ak_…` instead, because browsers cannot set
-headers on a WebSocket handshake. Use TLS when exposing the API.
+headers on a WebSocket handshake. Query-string keys are accepted **only** on
+WebSocket upgrades; HTTP routes such as invoke and status reject `?key=` and
+require a header. Use TLS when exposing the API.
+
+`/api/v1` is stricter: it accepts only the dedicated standard key (see below),
+not endpoint keys. Endpoint keys can invoke one hook but cannot read account
+resources.
 
 ## Invoke
 
@@ -75,7 +81,8 @@ Body handling:
 | `text/plain`          | Raw text                                                                                          |
 | `multipart/form-data` | `stateField`, then `state`/`message`/`prompt`/`text`, then all fields as JSON; files are attached |
 
-Limits: 5 MiB for JSON/text, 20 files, 25 MiB per file.
+Limits: 5 MiB for JSON/text, 20 files, 25 MiB per file, and 50 MiB for the whole
+multipart request. A request that exceeds any limit is rejected with `413`.
 
 ## Status
 
@@ -164,9 +171,11 @@ selection is rendered as a block in the landing run view.
 ## Standard API
 
 `/api/v1` exposes user-scoped REST resources. Create or rotate a dedicated
-standard key from the Standard API card on `/api`; any enabled endpoint key also
-works. The key's owning user scopes every response. Send it with
-`Authorization: Bearer ak_…` or `X-API-Key: ak_…`.
+standard key from the Standard API card on `/api`. Endpoint keys are intentionally
+rejected here: they are scoped to a single hook and must not grant account-wide
+access. The key's owning user scopes every response. Send it with
+`Authorization: Bearer ak_…` or `X-API-Key: ak_…` (query-string keys are not
+accepted on HTTP routes).
 
 ### List todos
 
@@ -227,6 +236,22 @@ curl -X PATCH 'http://localhost:4000/api/v1/todos/42' \
 ```json
 { "todo": { "id": 42, "name": "File invoices", "done": true, "…": "…" } }
 ```
+
+## Configuration
+
+| Variable            | Effect                                                                                                   |
+| ------------------- | -------------------------------------------------------------------------------------------------------- |
+| `API_PUBLIC_ORIGIN` | Base URL used in `statusUrl` / `websocketUrl`. Set this in production so a spoofed `Host` cannot change returned links. Without it the request's protocol/host is used as a local fallback. |
+| `API_CORS_ORIGINS`  | Comma-separated browser origins allowed to call the API. `*` explicitly allows any origin. With no allowlist the API stays same-origin. |
+
+## Operational notes
+
+- `apiRequests` rows are written per invocation and currently have **no automatic
+  retention or cleanup**. Add a scheduled delete (for example, keep 90 days) before
+  running a high-volume deployment.
+- There is no built-in rate limiting or idempotency key. A retry of the same
+  invoke request queues another run. Put rate limiting in front of the API and use
+  `requestId` to correlate responses until an idempotency mechanism lands.
 
 ## Extending the API
 
