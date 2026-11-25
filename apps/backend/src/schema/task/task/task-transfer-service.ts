@@ -77,6 +77,7 @@ interface ExportTask {
   toolOutputType: OutputType;
   onTrueTaskId: number | null;
   onFalseTaskId: number | null;
+  joinTaskId: number | null;
   model: string | null;
   decisionModel: string | null;
   decisionStateConfig: unknown;
@@ -249,6 +250,7 @@ export async function exportTasksFile(
       toolOutputType: task.toolOutputType,
       onTrueTaskId: task.onTrueTaskId,
       onFalseTaskId: task.onFalseTaskId,
+      joinTaskId: task.joinTaskId,
       model: task.model,
       decisionModel: task.decisionModel,
       decisionStateConfig: task.decisionStateConfig,
@@ -364,6 +366,7 @@ function parseTask(value: unknown, index: number): ExportTask {
     toolOutputType: asEnum(record.toolOutputType, OUTPUT_TYPES, "normal"),
     onTrueTaskId: asNumber(record.onTrueTaskId),
     onFalseTaskId: asNumber(record.onFalseTaskId),
+    joinTaskId: asNumber(record.joinTaskId),
     model: asString(record.model),
     decisionModel: asString(record.decisionModel),
     decisionStateConfig: record.decisionStateConfig ?? null,
@@ -570,6 +573,7 @@ export async function importTasksFile(
           toolOutputType: task.toolOutputType,
           onTrueTaskId: null,
           onFalseTaskId: null,
+          joinTaskId: null,
           model: task.model,
           decisionModel: task.decisionModel,
           decisionStateConfig: task.decisionStateConfig,
@@ -624,6 +628,7 @@ export async function importTasksFile(
             task.name,
             "false task",
           ),
+          joinTaskId: mapTaskRef(task.joinTaskId, task.name, "join task"),
           ...(task.toolKey === "switch"
             ? {
                 toolConfig: remapSwitchConfig(task.toolConfig, (oldId) =>

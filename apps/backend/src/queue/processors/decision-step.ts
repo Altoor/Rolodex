@@ -12,6 +12,7 @@ import {
   normalizedConfidence,
 } from "../../assisted/domain/decision";
 import { MAX_CHAIN_DEPTH } from "../constants";
+import { inheritedForkFields } from "../joins";
 import { findMatchingResult, summarizeAnswer } from "../result-matcher";
 import { awaitStep, enqueueSteps, finishStep } from "../step-store";
 import type { QueuedRow, TaskRow } from "../types";
@@ -229,8 +230,10 @@ export async function executeDecisionAttempt(
           state: row.state,
           toolState: nextToolState,
           depth: row.depth + 1,
+          parentQueuedTaskId: row.id,
           runId: row.runId,
           queued_by: row.queued_by,
+          ...inheritedForkFields(row),
         },
       ];
     }
@@ -361,8 +364,10 @@ export async function executeDecisionAttempt(
           state: row.state,
           toolState: row.toolState,
           depth: row.depth + 1,
+          parentQueuedTaskId: row.id,
           runId: row.runId,
           queued_by: row.queued_by,
+          ...inheritedForkFields(row),
         },
       ];
     }

@@ -169,7 +169,7 @@ export async function cancelAssistedRun(
     .from(queuedTasks)
     .where(eq(queuedTasks.runId, runId));
   const active = steps.filter((step) =>
-    ["queued", "running", "awaiting_input"].includes(step.status),
+    ["queued", "running", "awaiting_input", "waiting"].includes(step.status),
   );
 
   for (const step of active) {

@@ -1,6 +1,26 @@
 import type { ToolConfig, ToolOutputType } from "./tool";
 import type { ToolStateEntry } from "./tool-state";
 
+/** The terminal outcome of one foreach branch, exposed to a join task. */
+export interface ToolBranchResult {
+  /** Per-item ordinal, used for deterministic ordering. */
+  index: number;
+  queuedTaskId: number;
+  taskId: number;
+  taskName: string | null;
+  status: "completed" | "failed";
+  /** The branch's last step result. */
+  result: unknown;
+  toolState: ToolStateEntry[];
+  state: string;
+}
+
+/** Present when a tool executes as a foreach join barrier. */
+export interface ToolForkContext {
+  groupId: string;
+  branches: ToolBranchResult[];
+}
+
 export interface ToolRunContext {
   userId: number;
   runId: string;
@@ -26,4 +46,6 @@ export interface ToolRunContext {
    * decision model when this is null.
    */
   decisionModel: string | null;
+  /** Set when this step is the join barrier of a foreach fan-out. */
+  fork?: ToolForkContext;
 }

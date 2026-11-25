@@ -102,6 +102,7 @@ builder.queryType({
                 "queued",
                 "running",
                 "awaiting_input",
+                "waiting",
               ]),
             ),
           );

@@ -2,6 +2,7 @@ import type { Connection, Edge } from "@xyflow/react";
 import {
   FALLBACK_HANDLE_ID,
   FALSE_HANDLE_ID,
+  JOIN_HANDLE_ID,
   TRUE_HANDLE_ID,
   USER_DECISION_HANDLE_PREFIX,
 } from "../taskFlowTypes";
@@ -10,7 +11,11 @@ import {
   parseSwitchHandle,
 } from "./switch-config";
 
-export type TaskLinkField = "fallbackTaskId" | "onTrueTaskId" | "onFalseTaskId";
+export type TaskLinkField =
+  | "fallbackTaskId"
+  | "onTrueTaskId"
+  | "onFalseTaskId"
+  | "joinTaskId";
 
 export type SourceHandle =
   | { kind: "taskField"; field: TaskLinkField }
@@ -38,6 +43,9 @@ export function parseSourceHandle(
   }
   if (sourceHandle === FALSE_HANDLE_ID) {
     return { kind: "taskField", field: "onFalseTaskId" };
+  }
+  if (sourceHandle === JOIN_HANDLE_ID) {
+    return { kind: "taskField", field: "joinTaskId" };
   }
 
   if (sourceHandle?.startsWith(USER_DECISION_HANDLE_PREFIX)) {
@@ -72,6 +80,13 @@ export function parseEdgeId(edgeId: string): ParsedEdge {
     const taskId = Number(edgeId.slice("e-fallback-".length));
     return Number.isFinite(taskId)
       ? { kind: "taskField", taskId, field: "fallbackTaskId" }
+      : null;
+  }
+
+  if (edgeId.startsWith("e-join-")) {
+    const taskId = Number(edgeId.slice("e-join-".length));
+    return Number.isFinite(taskId)
+      ? { kind: "taskField", taskId, field: "joinTaskId" }
       : null;
   }
 

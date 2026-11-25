@@ -1,6 +1,7 @@
 import { GraphQLError } from "graphql";
 import { and, eq } from "drizzle-orm";
 import { db, queuedTasks, runs, stepAttempts } from "@repo/db";
+import { inheritedForkFields } from "../../queue/joins";
 import {
   completeReviewedStep,
   enqueueSteps,
@@ -196,8 +197,14 @@ export async function acceptAttempt(userId: number, attemptId: number) {
     await setRunStatus(run.id, "running");
     const { triggerQueue } = await import("../../queue/processor");
     triggerQueue();
-  } else {
-    await completeRunIfIdle(run.id);
+  }
+
+  // Releases a join barrier when this was the last branch, and settles the run
+  // when no queued step remains. A newly released join needs the queue loop.
+  const settled = await completeRunIfIdle(run.id);
+  if (!settled) {
+    const { triggerQueue } = await import("../../queue/processor");
+    triggerQueue();
   }
 
   return run.id;
@@ -409,6 +416,7 @@ export async function overrideDecision(
       queued_by: step.queued_by,
       model: step.model,
       decisionModel: step.decisionModel,
+      ...inheritedForkFields(step),
     },
   ];
 

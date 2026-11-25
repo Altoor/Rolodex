@@ -71,6 +71,8 @@ export function buildTaskVariables(
   selectedDecisionId: number | undefined,
 ) {
   const isIfTool = values.type === "tool" && values.toolKey === "if";
+  const isForeach =
+    values.type === "tool" && values.toolOutputType === "foreach";
 
   return {
     name: values.name,
@@ -84,6 +86,7 @@ export function buildTaskVariables(
       values.type === "tool" ? values.toolOutputType : ("normal" as const),
     onTrueTaskId: isIfTool ? parseBranchTaskId(values.onTrueTaskId) : null,
     onFalseTaskId: isIfTool ? parseBranchTaskId(values.onFalseTaskId) : null,
+    joinTaskId: isForeach ? parseBranchTaskId(values.joinTaskId) : null,
     model: values.model === USE_USER_DEFAULT_MODEL ? null : values.model,
     decisionModel:
       values.decisionModel === USE_USER_DEFAULT_MODEL

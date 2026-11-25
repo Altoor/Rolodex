@@ -8,7 +8,7 @@ status read model.
 
 Each API link stores:
 
-- a random `slug` used in the URL
+- a URL `slug` used in the URL (chosen by you or generated randomly)
 - an assigned `taskId`
 - a SHA-256 hashed API key (shown once when created or rotated)
 - an optional `stateField` used to pick the task state from a JSON/form body
@@ -42,6 +42,18 @@ curl -X POST 'http://localhost:4000/api/hooks/<slug>' \
   -d '{"state":"Summarise this support ticket"}'
 ```
 
+Attach one or more files with `multipart/form-data`. Each repeated `files`
+field is uploaded and seeded into the run's toolState as
+`{ uploaded: true, files: [...] }` before the first task:
+
+```sh
+curl -X POST 'http://localhost:4000/api/hooks/<slug>' \
+  -H 'Authorization: Bearer ak_…' \
+  -F 'state=Summarise these attachments' \
+  -F 'files=@./ticket.txt' \
+  -F 'files=@./screenshot.png'
+```
+
 Response (`202`):
 
 ```json
@@ -57,10 +69,10 @@ Response (`202`):
 
 Body handling:
 
-| Body | State |
-|---|---|
-| `application/json` | `stateField` value, a top-level `state` string, or the whole JSON body pretty-printed |
-| `text/plain` | Raw text |
+| Body                  | State                                                                                             |
+| --------------------- | ------------------------------------------------------------------------------------------------- |
+| `application/json`    | `stateField` value, a top-level `state` string, or the whole JSON body pretty-printed             |
+| `text/plain`          | Raw text                                                                                          |
 | `multipart/form-data` | `stateField`, then `state`/`message`/`prompt`/`text`, then all fields as JSON; files are attached |
 
 Limits: 5 MiB for JSON/text, 20 files, 25 MiB per file.
@@ -83,8 +95,16 @@ curl 'http://localhost:4000/api/hooks/<slug>/requests/<requestId>' \
   "result": { "done": true, "items": [] },
   "error": null,
   "steps": [
-    { "id": 1, "taskId": 2, "taskName": "…", "toolKey": "…",
-      "status": "completed", "summary": "…", "note": null, "queuedAt": "…" }
+    {
+      "id": 1,
+      "taskId": 2,
+      "taskName": "…",
+      "toolKey": "…",
+      "status": "completed",
+      "summary": "…",
+      "note": null,
+      "queuedAt": "…"
+    }
   ]
 }
 ```
@@ -140,6 +160,73 @@ Tasks can end a chain and publish a result with the `end_flow` tool:
 `includeToolState` adds the whole tool state. `endFlow` is stored on the step
 result, forces the chain to stop even when a fallback task exists, and the same
 selection is rendered as a block in the landing run view.
+
+## Standard API
+
+`/api/v1` exposes user-scoped REST resources. Create or rotate a dedicated
+standard key from the Standard API card on `/api`; any enabled endpoint key also
+works. The key's owning user scopes every response. Send it with
+`Authorization: Bearer ak_…` or `X-API-Key: ak_…`.
+
+### List todos
+
+`GET /api/v1/todos` returns the user's todos sorted by due date (undated last),
+then by id.
+
+| Query             | Default | Meaning                                                       |
+| ----------------- | ------- | ------------------------------------------------------------- |
+| `done`            | `all`   | `all`, `true`, or `false` (`notDone` is an alias for `false`) |
+| `limit`           | `50`    | Page size, 1–200                                              |
+| `offset`          | `0`     | Rows to skip                                                  |
+| `includeArchived` | `false` | Include archived todos                                        |
+
+```sh
+curl 'http://localhost:4000/api/v1/todos?done=false&limit=25' \
+  -H 'Authorization: Bearer ak_…'
+```
+
+```json
+{
+  "items": [
+    {
+      "id": 42,
+      "name": "File invoices",
+      "description": "Before the accountant calls",
+      "done": false,
+      "doByDate": "2026-11-30T09:00:00.000Z",
+      "createdAt": "2026-11-24T11:41:00.000Z",
+      "archivedAt": null,
+      "authorId": 1,
+      "actorId": 1
+    }
+  ],
+  "pagination": {
+    "limit": 25,
+    "offset": 0,
+    "total": 1,
+    "hasMore": false,
+    "nextOffset": null
+  }
+}
+```
+
+`nextOffset` is `null` on the last page; otherwise pass it back as `offset`.
+
+### Mark a todo done or not done
+
+`PATCH /api/v1/todos/:id` updates the `done` flag. A todo outside the key
+owner's scope returns `404`.
+
+```sh
+curl -X PATCH 'http://localhost:4000/api/v1/todos/42' \
+  -H 'Authorization: Bearer ak_…' \
+  -H 'Content-Type: application/json' \
+  -d '{"done":true}'
+```
+
+```json
+{ "todo": { "id": 42, "name": "File invoices", "done": true, "…": "…" } }
+```
 
 ## Extending the API
 

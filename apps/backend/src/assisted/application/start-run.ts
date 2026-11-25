@@ -98,6 +98,10 @@ function taskValues(
       source.onFalseTaskId === null
         ? null
         : asNumber(source.onFalseTaskId) ?? task?.onFalseTaskId ?? null,
+    joinTaskId:
+      source.joinTaskId === null
+        ? null
+        : asNumber(source.joinTaskId) ?? task?.joinTaskId ?? null,
     model:
       source.model === null ? null : asString(source.model) ?? task?.model ?? null,
     decisionModel:

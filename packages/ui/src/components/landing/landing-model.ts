@@ -33,7 +33,13 @@ export interface StepResult {
 export interface QueuedTaskStep {
   id: number;
   taskId: number | null;
-  status: "queued" | "running" | "awaiting_input" | "completed" | "failed";
+  status:
+    | "queued"
+    | "running"
+    | "awaiting_input"
+    | "waiting"
+    | "completed"
+    | "failed";
   runId: string;
   depth: number;
   result: StepResult | null;
@@ -57,6 +63,7 @@ export interface QueuedTaskRow {
     | "queued"
     | "running"
     | "awaiting_input"
+    | "waiting"
     | "completed"
     | "failed"
     | null;
@@ -246,7 +253,7 @@ export function stepStatus(step: QueuedTaskStep): StepStatus {
   if (step.status === "running" || step.status === "awaiting_input") {
     return "active";
   }
-  if (step.status === "queued") return "pending";
+  if (step.status === "queued" || step.status === "waiting") return "pending";
   if (step.status === "failed") return "error";
   return "complete";
 }
@@ -294,6 +301,7 @@ export function stepBranchLabel(
 export function stepDetail(step: QueuedTaskStep): string | undefined {
   return (
     [
+      step.status === "waiting" ? "waiting for all foreach branches" : null,
       step.result?.summary,
       step.result?.note,
       step.result?.retried ? "retried" : null,

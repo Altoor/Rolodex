@@ -5,13 +5,15 @@ import {
   db,
   queuedTasks,
   runs,
+  standardApiKeys,
 } from "@repo/db";
-import type { CreatedApiEndpoint } from "@repo/api";
+import type { CreatedApiEndpoint, CreatedStandardApiKey } from "@repo/api";
 import { builder } from "../builder";
 import { Task } from "../task/task/task";
 
 export type ApiEndpointRow = typeof apiEndpoints.$inferSelect;
 export type ApiRequestRow = typeof apiRequests.$inferSelect;
+export type StandardApiKeyRow = typeof standardApiKeys.$inferSelect;
 
 export const ApiRequestStatus = builder.enumType("ApiRequestStatus", {
   values: ["running", "awaiting_input", "completed", "failed", "cancelled"],
@@ -40,9 +42,10 @@ export const ApiEndpoint = builder
       }),
       task: t.field({
         type: Task,
-        resolve: (parent) => db.query.tasks.findFirst({
-          where: { id: parent.taskId },
-        }),
+        resolve: (parent) =>
+          db.query.tasks.findFirst({
+            where: { id: parent.taskId },
+          }),
       }),
     }),
   });
@@ -101,6 +104,35 @@ export const CreatedApiEndpointType = builder
       endpoint: t.field({
         type: ApiEndpoint,
         resolve: (parent) => parent.endpoint,
+      }),
+      apiKey: t.exposeString("apiKey"),
+    }),
+  });
+
+export const StandardApiKey = builder
+  .objectRef<StandardApiKeyRow>("StandardApiKey")
+  .implement({
+    fields: (t) => ({
+      keyPrefix: t.exposeString("keyPrefix"),
+      keyLastFour: t.exposeString("keyLastFour"),
+      createdAt: t.field({
+        type: "DateTime",
+        resolve: (parent) => parent.createdAt,
+      }),
+      updatedAt: t.field({
+        type: "DateTime",
+        resolve: (parent) => parent.updatedAt,
+      }),
+    }),
+  });
+
+export const CreatedStandardApiKeyType = builder
+  .objectRef<CreatedStandardApiKey>("CreatedStandardApiKey")
+  .implement({
+    fields: (t) => ({
+      standardApiKey: t.field({
+        type: StandardApiKey,
+        resolve: (parent) => parent.standardApiKey,
       }),
       apiKey: t.exposeString("apiKey"),
     }),

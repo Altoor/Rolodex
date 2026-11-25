@@ -24,6 +24,11 @@ export function websocketUrl(slug: string | null): string {
   return `${invokeUrl(slug).replace(/^http/, "ws")}/ws`;
 }
 
+/** Base URL for the standard, user-scoped API namespace. */
+export function standardApiUrl(path: string): string {
+  return `${API_ORIGIN}/api/v1${path}`;
+}
+
 export function formatApiDate(value: unknown): string {
   if (typeof value !== "string") return "";
   const date = new Date(value);

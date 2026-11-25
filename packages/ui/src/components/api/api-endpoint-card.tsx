@@ -10,12 +10,7 @@ import {
 } from "@repo/queries/api/api-queries";
 import { Badge } from "#components/ui/badge";
 import { Button } from "#components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "#components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "#components/ui/card";
 import { ErrorState } from "#components/feedback/error-state";
 import { Field, FieldLabel } from "#components/ui/field";
 import { Input } from "#components/ui/input";
@@ -72,6 +67,7 @@ export function ApiEndpointCard({
 }: ApiEndpointCardProps) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(endpoint.name ?? "");
+  const [slug, setSlug] = useState(endpoint.slug ?? "");
   const [taskId, setTaskId] = useState(String(endpoint.taskId ?? ""));
   const [description, setDescription] = useState(endpoint.description ?? "");
   const [stateField, setStateField] = useState(endpoint.stateField ?? "");
@@ -87,7 +83,8 @@ export function ApiEndpointCard({
     refetchQueries: [API_ENDPOINTS],
   });
 
-  const busy = updateState.loading || rotateState.loading || removeState.loading;
+  const busy =
+    updateState.loading || rotateState.loading || removeState.loading;
   const error = updateState.error ?? rotateState.error ?? removeState.error;
 
   const save = async (event: React.FormEvent) => {
@@ -101,6 +98,7 @@ export function ApiEndpointCard({
         description: description.trim(),
         taskId: taskId ? Number(taskId) : null,
         stateField: stateField.trim(),
+        slug: slug.trim(),
       },
     });
     setEditing(false);
@@ -151,10 +149,18 @@ export function ApiEndpointCard({
         </div>
 
         <pre className="overflow-x-auto rounded-md bg-muted p-3 font-mono text-[11px] leading-relaxed">
-{`curl -X POST '${invokeUrl(endpoint.slug)}' \\
+          {`# JSON body
+curl -X POST '${invokeUrl(endpoint.slug)}' \\
   -H 'Authorization: Bearer <api-key>' \\
   -H 'Content-Type: application/json' \\
-  -d '{"state":"Hello from the API"}'`}
+  -d '{"state":"Hello from the API"}'
+
+# Attach one or more files
+curl -X POST '${invokeUrl(endpoint.slug)}' \\
+  -H 'Authorization: Bearer <api-key>' \\
+  -F 'state=Hello from the API' \\
+  -F 'files=@./document.pdf' \\
+  -F 'files=@./photo.jpg'`}
         </pre>
 
         <ApiRequestList endpointId={endpoint.id ?? ""} />
@@ -169,6 +175,23 @@ export function ApiEndpointCard({
                 onChange={(event) => setName(event.target.value)}
                 required
               />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor={`api-slug-${endpoint.id}`}>
+                URL slug
+              </FieldLabel>
+              <Input
+                id={`api-slug-${endpoint.id}`}
+                value={slug}
+                onChange={(event) => setSlug(event.target.value)}
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                Changing this changes the URL clients call.
+              </p>
+              <p className="font-mono text-[11px] break-all text-muted-foreground">
+                {invokeUrl(slug.trim() || null)}
+              </p>
             </Field>
             <Field>
               <FieldLabel htmlFor={`api-task-${endpoint.id}`}>Task</FieldLabel>

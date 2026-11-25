@@ -1,9 +1,11 @@
 import { and, desc, eq } from "drizzle-orm";
 import { apiEndpoints, db } from "@repo/db";
+import { generateApiKey, generateEndpointSlug } from "../domain/keys";
 import {
-  generateApiKey,
-  generateEndpointSlug,
-} from "../domain/keys";
+  EndpointSlugConflictError,
+  isUniqueViolation,
+  normalizeCustomEndpointSlug,
+} from "../domain/slug";
 import type {
   ApiEndpointInput,
   ApiEndpointRow,
@@ -46,25 +48,58 @@ export async function findApiEndpointBySlug(
   return row ?? null;
 }
 
+/** Resolves the owner of an enabled key hash for the standard API surface. */
+export async function findApiKeyOwner(
+  keyHash: string,
+): Promise<{ endpointId: string; userId: number } | null> {
+  const [row] = await db
+    .select({
+      endpointId: apiEndpoints.id,
+      userId: apiEndpoints.userId,
+    })
+    .from(apiEndpoints)
+    .where(
+      and(eq(apiEndpoints.keyHash, keyHash), eq(apiEndpoints.enabled, true)),
+    )
+    .limit(1);
+
+  return row ?? null;
+}
+
 export async function createApiEndpoint(
   userId: number,
   input: ApiEndpointInput,
 ): Promise<CreatedApiEndpoint> {
   const key = generateApiKey();
-  const [row] = await db
-    .insert(apiEndpoints)
-    .values({
-      userId,
-      name: input.name,
-      description: input.description ?? "",
-      slug: generateEndpointSlug(),
-      taskId: input.taskId,
-      stateField: normalizeStateField(input.stateField),
-      keyHash: key.keyHash,
-      keyPrefix: key.keyPrefix,
-      keyLastFour: key.keyLastFour,
-    })
-    .returning();
+  const requestedSlug = input.slug?.trim();
+  const slug = requestedSlug
+    ? normalizeCustomEndpointSlug(requestedSlug)
+    : generateEndpointSlug();
+
+  if (requestedSlug) {
+    await assertSlugAvailable(slug);
+  }
+
+  let row: ApiEndpointRow | undefined;
+  try {
+    [row] = await db
+      .insert(apiEndpoints)
+      .values({
+        userId,
+        name: input.name,
+        description: input.description ?? "",
+        slug,
+        taskId: input.taskId,
+        stateField: normalizeStateField(input.stateField),
+        keyHash: key.keyHash,
+        keyPrefix: key.keyPrefix,
+        keyLastFour: key.keyLastFour,
+      })
+      .returning();
+  } catch (err) {
+    if (isUniqueViolation(err)) throw slugConflict(slug);
+    throw err;
+  }
 
   if (!row) throw new Error("failed to create API endpoint");
   return { endpoint: row, apiKey: key.apiKey };
@@ -83,17 +118,27 @@ export async function updateApiEndpoint(
   if (update.description !== undefined) {
     values.description = update.description;
   }
+  if (update.slug !== undefined) {
+    values.slug = normalizeCustomEndpointSlug(update.slug);
+    await assertSlugAvailable(values.slug, id);
+  }
   if (update.taskId !== undefined) values.taskId = update.taskId;
   if (update.stateField !== undefined) {
     values.stateField = normalizeStateField(update.stateField);
   }
   if (update.enabled !== undefined) values.enabled = update.enabled;
 
-  const [row] = await db
-    .update(apiEndpoints)
-    .set(values)
-    .where(and(eq(apiEndpoints.id, id), eq(apiEndpoints.userId, userId)))
-    .returning();
+  let row: ApiEndpointRow | undefined;
+  try {
+    [row] = await db
+      .update(apiEndpoints)
+      .set(values)
+      .where(and(eq(apiEndpoints.id, id), eq(apiEndpoints.userId, userId)))
+      .returning();
+  } catch (err) {
+    if (isUniqueViolation(err)) throw slugConflict(values.slug ?? "");
+    throw err;
+  }
 
   return row ?? null;
 }
@@ -129,9 +174,28 @@ export async function deleteApiEndpoint(
   return rows.length > 0;
 }
 
-function normalizeStateField(
-  value: string | null | undefined,
-): string | null {
+async function assertSlugAvailable(
+  slug: string,
+  excludeId?: string,
+): Promise<void> {
+  const [existing] = await db
+    .select({ id: apiEndpoints.id })
+    .from(apiEndpoints)
+    .where(eq(apiEndpoints.slug, slug))
+    .limit(1);
+
+  if (existing && existing.id !== excludeId) throw slugConflict(slug);
+}
+
+function slugConflict(slug: string): EndpointSlugConflictError {
+  return new EndpointSlugConflictError(
+    slug
+      ? `The URL "/api/hooks/${slug}" is already in use`
+      : "That endpoint URL is already in use",
+  );
+}
+
+function normalizeStateField(value: string | null | undefined): string | null {
   if (value === undefined || value === null) return null;
   const trimmed = value.trim();
   return trimmed ? trimmed : null;

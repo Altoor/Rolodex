@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useNodesState, type XYPosition } from "@xyflow/react";
 import type { FlowTask, TaskFlowNode } from "../taskFlowTypes";
 import { buildEdges } from "../services/edges";
+import { computeFannedOutTaskIds } from "../services/fan-out";
 import { computePositions } from "../services/layout";
 import { buildNodes } from "../services/nodes";
 
@@ -44,6 +45,7 @@ export function useTaskFlowGraph({
     laidOutRoot.current = rootTask ?? "auto";
 
     const positions = computePositions(tasks, effectiveRootId);
+    const fannedOutTaskIds = computeFannedOutTaskIds(tasks);
 
     setNodes((prev) => {
       const previousPositions = new Map(
@@ -64,6 +66,7 @@ export function useTaskFlowGraph({
         pendingPositions: pendingPositions.current,
         selectedTaskId,
         selectedTaskIds: previousSelectedIds,
+        fannedOutTaskIds,
         keepPreviousPositions,
         onTaskDelete,
       });

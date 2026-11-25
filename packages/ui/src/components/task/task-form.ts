@@ -62,6 +62,7 @@ export type TaskFormValues = {
   toolOutputType: ToolOutputType;
   onTrueTaskId: string;
   onFalseTaskId: string;
+  joinTaskId: string;
   model: string | null;
   decisionModel: string | null;
   decisionStateMode: DecisionStateMode;
@@ -87,6 +88,7 @@ export const emptyTaskFormValues: TaskFormValues = {
   toolOutputType: "normal",
   onTrueTaskId: NO_BRANCH_TASK,
   onFalseTaskId: NO_BRANCH_TASK,
+  joinTaskId: NO_BRANCH_TASK,
   model: null,
   decisionModel: null,
   decisionStateMode: "none",
@@ -164,6 +166,8 @@ export const taskToFormValues = (task: TaskRecord): TaskFormValues => {
       task.onTrueTaskId != null ? String(task.onTrueTaskId) : NO_BRANCH_TASK,
     onFalseTaskId:
       task.onFalseTaskId != null ? String(task.onFalseTaskId) : NO_BRANCH_TASK,
+    joinTaskId:
+      task.joinTaskId != null ? String(task.joinTaskId) : NO_BRANCH_TASK,
     model: task.model ?? null,
     decisionModel: task.decisionModel ?? null,
     decisionStateMode: decisionState.mode,

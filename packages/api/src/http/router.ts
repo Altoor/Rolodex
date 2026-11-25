@@ -5,6 +5,7 @@ import { RequestInputError } from "../domain/request-input";
 import { createInvokeRoute } from "./invoke-route";
 import { createStatusRoute } from "./status-route";
 import { createHealthRoute } from "./health-route";
+import { createStandardRoutes } from "./standard";
 import type {
   ApiRoute,
   ApiRouteContext,
@@ -57,6 +58,7 @@ export function createApiRouter({
     createHealthRoute(),
     createInvokeRoute(runtime),
     createStatusRoute(),
+    ...createStandardRoutes(),
     ...routes,
   ].map(compileHttpRoute);
 
@@ -72,7 +74,10 @@ export function createApiRouter({
       const isApiPath =
         url.pathname === "/api" || url.pathname.startsWith("/api/");
 
-      if (!isApiPath && !httpRoutes.some((route) => route.regexp.test(url.pathname))) {
+      if (
+        !isApiPath &&
+        !httpRoutes.some((route) => route.regexp.test(url.pathname))
+      ) {
         return false;
       }
 

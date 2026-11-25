@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "#components/ui/card";
 import { ApiCreateForm } from "./api-create-form";
 import { ApiEndpointCard } from "./api-endpoint-card";
 import { ApiKeyBanner } from "./api-key-banner";
+import { ApiStandardSection } from "./api-standard-section";
 import { type ApiEndpoint } from "./api-utils";
 
 interface RevealedKey {
@@ -90,6 +91,8 @@ export function ApiPageContent() {
               />
             ))
           )}
+
+          <ApiStandardSection onKey={setRevealedKey} />
         </div>
 
         <div className="flex flex-col gap-4">
@@ -104,8 +107,8 @@ export function ApiPageContent() {
             </CardHeader>
             <CardContent className="flex flex-col gap-2 text-xs text-muted-foreground">
               <p>
-                Every request queues the assigned task as a normal standard
-                run. The response is an acceptance receipt with a status URL.
+                Every request queues the assigned task as a normal standard run.
+                The response is an acceptance receipt with a status URL.
               </p>
               <p>
                 Send <code className="font-mono">Authorization: Bearer …</code>{" "}
@@ -116,6 +119,15 @@ export function ApiPageContent() {
                 Add an <code className="font-mono">end_flow</code> tool to the
                 task graph to publish a result. Its config chooses which part of
                 the tool state to return and display.
+              </p>
+              <p>
+                To attach files, send{" "}
+                <code className="font-mono">multipart/form-data</code> instead:
+                put the state in a form field and repeat{" "}
+                <code className="font-mono">&apos;files=@…&apos;</code> for each
+                file. Up to 20 files (25 MiB each) are uploaded and seeded into
+                the run&apos;s tool state as{" "}
+                <code className="font-mono">files</code>.
               </p>
             </CardContent>
           </Card>

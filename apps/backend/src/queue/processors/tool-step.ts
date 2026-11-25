@@ -1,6 +1,7 @@
 import { getDecisionModelForUser, getModelForUser } from "@repo/ai";
 import type { ToolStateEntry } from "@repo/tools";
 import { MAX_CHAIN_DEPTH } from "../constants";
+import { loadJoinBranches } from "../joins";
 import { enqueueSteps, finishStep } from "../step-store";
 import type { QueuedRow, TaskRow } from "../types";
 import { applyToolState } from "./tool-step/apply-tool-state";
@@ -53,6 +54,8 @@ export async function executeToolAttempt(
       task.decisionModel ??
       (await getDecisionModelForUser(row.queued_by));
 
+    const fork = await loadJoinBranches(row);
+
     const execution = await tool.execute({
       userId: row.queued_by,
       runId: row.runId,
@@ -64,6 +67,7 @@ export async function executeToolAttempt(
       config: toolConfig,
       model,
       decisionModel,
+      ...(fork ? { fork } : {}),
     });
 
     const nextToolState = applyToolState(
@@ -81,6 +85,8 @@ export async function executeToolAttempt(
     let nextSteps: QueuedStepInsert[] = [];
     const childQueuedTaskIds: number[] = [];
     let itemCount: number | undefined;
+    let forkGroupId: string | undefined;
+    let joinTaskId: number | undefined;
 
     if (outputType === "normal") {
       if (nextTaskId != null) {
@@ -106,11 +112,14 @@ export async function executeToolAttempt(
         nextTaskId,
         nextState,
         nextToolState,
+        joinTaskId: task.joinTaskId,
       });
 
       itemCount = foreach.itemCount;
       nextSteps = foreach.nextSteps;
       nextTaskId = foreach.nextTaskId;
+      forkGroupId = foreach.forkGroupId;
+      joinTaskId = foreach.joinTaskId;
 
       if (foreach.failureNote) {
         return { ok: false, toolKey, note: foreach.failureNote };
@@ -129,6 +138,9 @@ export async function executeToolAttempt(
       childQueuedTaskIds,
       note,
       endFlow,
+      forkGroupId: forkGroupId ?? row.forkGroupId ?? undefined,
+      isJoin: row.isJoin,
+      joinTaskId,
     });
 
     return {

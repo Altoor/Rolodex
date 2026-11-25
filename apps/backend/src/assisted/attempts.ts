@@ -226,6 +226,7 @@ export async function persistSnapshot(
       toolOutputType: task.toolOutputType,
       onTrueTaskId: task.onTrueTaskId,
       onFalseTaskId: task.onFalseTaskId,
+      joinTaskId: task.joinTaskId,
       model: task.model,
       decisionModel: task.decisionModel,
       decisionStateConfig: task.decisionStateConfig,

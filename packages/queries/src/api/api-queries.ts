@@ -40,12 +40,14 @@ export const CREATE_API_ENDPOINT = gql(/* GraphQL */ `
     $taskId: Int!
     $description: String
     $stateField: String
+    $slug: String
   ) {
     createApiEndpoint(
       name: $name
       taskId: $taskId
       description: $description
       stateField: $stateField
+      slug: $slug
     ) {
       endpoint {
         id
@@ -77,6 +79,7 @@ export const UPDATE_API_ENDPOINT = gql(/* GraphQL */ `
     $taskId: Int
     $stateField: String
     $enabled: Boolean
+    $slug: String
   ) {
     updateApiEndpoint(
       id: $id
@@ -85,6 +88,7 @@ export const UPDATE_API_ENDPOINT = gql(/* GraphQL */ `
       taskId: $taskId
       stateField: $stateField
       enabled: $enabled
+      slug: $slug
     ) {
       id
       name
@@ -133,5 +137,30 @@ export const ROTATE_API_ENDPOINT_KEY = gql(/* GraphQL */ `
 export const DELETE_API_ENDPOINT = gql(/* GraphQL */ `
   mutation DeleteApiEndpoint($id: ID!) {
     deleteApiEndpoint(id: $id)
+  }
+`);
+
+export const STANDARD_API_KEY = gql(/* GraphQL */ `
+  query StandardApiKey {
+    standardApiKey {
+      keyPrefix
+      keyLastFour
+      createdAt
+      updatedAt
+    }
+  }
+`);
+
+export const ROTATE_STANDARD_API_KEY = gql(/* GraphQL */ `
+  mutation RotateStandardApiKey {
+    rotateStandardApiKey {
+      standardApiKey {
+        keyPrefix
+        keyLastFour
+        createdAt
+        updatedAt
+      }
+      apiKey
+    }
   }
 `);

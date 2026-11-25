@@ -1,6 +1,7 @@
 import { GraphQLError } from "graphql";
 import { eq } from "drizzle-orm";
 import { db, stepAttempts, tasks } from "@repo/db";
+import { inheritedForkFields } from "../../queue/joins";
 import { completeReviewedStep, enqueueSteps } from "../../queue/step-store";
 import { setRunStatus } from "../../queue/run-store";
 import {
@@ -176,6 +177,7 @@ async function wireTarget(
       queued_by: context.step.queued_by,
       model: context.step.model,
       decisionModel: context.step.decisionModel,
+      ...inheritedForkFields(context.step),
     },
   ]);
 

@@ -25,6 +25,8 @@ export function buildTaskSnapshot(
   selectedDecisionId?: number,
 ): BuilderTaskSnapshot {
   const isIfTool = values.type === "tool" && values.toolKey === "if";
+  const isForeach =
+    values.type === "tool" && values.toolOutputType === "foreach";
 
   return {
     task: {
@@ -40,6 +42,7 @@ export function buildTaskSnapshot(
         values.type === "tool" ? values.toolOutputType : "normal",
       onTrueTaskId: isIfTool ? parseBranchTaskId(values.onTrueTaskId) : null,
       onFalseTaskId: isIfTool ? parseBranchTaskId(values.onFalseTaskId) : null,
+      joinTaskId: isForeach ? parseBranchTaskId(values.joinTaskId) : null,
       model: values.model === USE_USER_DEFAULT_MODEL ? null : values.model,
       decisionModel:
         values.decisionModel === USE_USER_DEFAULT_MODEL

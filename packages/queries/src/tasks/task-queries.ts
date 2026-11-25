@@ -12,6 +12,7 @@ export const TASKS = gql(/* GraphQL */ `
       toolOutputType
       onTrueTaskId
       onFalseTaskId
+      joinTaskId
       model
       decisionModel
       decisionStateConfig
@@ -75,6 +76,7 @@ export const GET_TASK = gql(/* GraphQL */ `
       toolOutputType
       onTrueTaskId
       onFalseTaskId
+      joinTaskId
       model
       decisionModel
       decisionStateConfig
@@ -134,6 +136,9 @@ export const QUEUED_TASK = gql(/* GraphQL */ `
       state
       toolState
       parentQueuedTaskId
+      forkGroupId
+      forkIndex
+      isJoin
       depth
       status
       runId
@@ -162,6 +167,9 @@ export const ACTIVE_QUEUED_TASKS = gql(/* GraphQL */ `
       state
       toolState
       parentQueuedTaskId
+      forkGroupId
+      forkIndex
+      isJoin
       depth
       status
       runId
@@ -197,6 +205,9 @@ export const STANDARD_RUN_HISTORY = gql(/* GraphQL */ `
         state
         toolState
         parentQueuedTaskId
+        forkGroupId
+        forkIndex
+        isJoin
         depth
         status
         runId

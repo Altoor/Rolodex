@@ -167,7 +167,8 @@ export async function dismissQueuedTask(userId: number, queuedTaskId: number) {
   if (
     queuedTask.status !== "queued" &&
     queuedTask.status !== "running" &&
-    queuedTask.status !== "awaiting_input"
+    queuedTask.status !== "awaiting_input" &&
+    queuedTask.status !== "waiting"
   ) {
     throw new GraphQLError("This run is no longer active", {
       extensions: { code: "BAD_USER_INPUT" },
@@ -184,7 +185,12 @@ export async function dismissQueuedTask(userId: number, queuedTaskId: number) {
     .where(
       and(
         eq(queuedTasks.runId, queuedTask.runId),
-        inArray(queuedTasks.status, ["queued", "running", "awaiting_input"]),
+        inArray(queuedTasks.status, [
+          "queued",
+          "running",
+          "awaiting_input",
+          "waiting",
+        ]),
       ),
     );
 
@@ -304,6 +310,9 @@ export async function retryQueuedTask(userId: number, queuedTaskId: number) {
       state: queuedTask.state,
       toolState: queuedTask.toolState,
       parentQueuedTaskId: queuedTask.parentQueuedTaskId,
+      forkGroupId: queuedTask.forkGroupId,
+      forkIndex: queuedTask.forkIndex,
+      isJoin: queuedTask.isJoin,
       depth: queuedTask.depth,
       status: "queued",
       runId,

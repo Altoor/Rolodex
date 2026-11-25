@@ -17,6 +17,7 @@ export interface TaskConfigInput {
   toolOutputType: string;
   onTrueTaskId?: number | null;
   onFalseTaskId?: number | null;
+  joinTaskId?: number | null;
   model: string | null;
   decisionModel: string | null;
   decisionStateConfig?: unknown;
@@ -53,6 +54,7 @@ export interface CreateTaskInput {
   toolOutputType?: string | null;
   onTrueTaskId?: number | null;
   onFalseTaskId?: number | null;
+  joinTaskId?: number | null;
   model?: string | null;
   decisionModel?: string | null;
   decisionStateConfig?: unknown;
@@ -74,6 +76,7 @@ export interface UpdateTaskInput {
   toolOutputType?: string | null;
   onTrueTaskId?: number | null;
   onFalseTaskId?: number | null;
+  joinTaskId?: number | null;
   model?: string | null;
   decisionModel?: string | null;
   decisionStateConfig?: unknown;
@@ -156,6 +159,29 @@ export async function assertValidTaskConfig(
         }
       }
     }
+
+    if (input.joinTaskId != null) {
+      if (input.toolOutputType !== "foreach") {
+        throw new GraphQLError(
+          "joinTaskId is only valid for foreach output",
+          { extensions: { code: "BAD_USER_INPUT" } },
+        );
+      }
+
+      const target = await db.query.tasks.findFirst({
+        where: { id: input.joinTaskId },
+      });
+      if (!target) {
+        throw new GraphQLError(
+          `joinTaskId ${input.joinTaskId} does not reference a task`,
+          { extensions: { code: "BAD_USER_INPUT" } },
+        );
+      }
+    }
+  } else if (input.joinTaskId != null) {
+    throw new GraphQLError("joinTaskId is only valid for tool tasks", {
+      extensions: { code: "BAD_USER_INPUT" },
+    });
   }
 
   if (
@@ -223,6 +249,7 @@ export async function createTask(input: CreateTaskInput) {
     toolOutputType: (input.toolOutputType ?? "normal") as TaskOutputType,
     onTrueTaskId: input.onTrueTaskId ?? null,
     onFalseTaskId: input.onFalseTaskId ?? null,
+    joinTaskId: input.joinTaskId ?? null,
     model: input.model ?? null,
     decisionModel: input.decisionModel ?? null,
     decisionStateConfig: input.decisionStateConfig ?? null,
@@ -242,6 +269,7 @@ export async function createTask(input: CreateTaskInput) {
     toolOutputType: task.toolOutputType,
     onTrueTaskId: task.onTrueTaskId,
     onFalseTaskId: task.onFalseTaskId,
+    joinTaskId: task.joinTaskId,
     model: task.model,
     decisionModel: task.decisionModel,
     decisionStateConfig: task.decisionStateConfig,
@@ -272,6 +300,7 @@ export async function updateTask(input: UpdateTaskInput) {
   ) as TaskOutputType;
   const nextOnTrueTaskId = keepOrSet(input.onTrueTaskId, task.onTrueTaskId);
   const nextOnFalseTaskId = keepOrSet(input.onFalseTaskId, task.onFalseTaskId);
+  const nextJoinTaskId = keepOrSet(input.joinTaskId, task.joinTaskId);
   const nextModel = keepOrSet(input.model, task.model);
   const nextDecisionModel = keepOrSet(input.decisionModel, task.decisionModel);
   const nextDecisionStateConfig = keepOrSet(
@@ -298,6 +327,7 @@ export async function updateTask(input: UpdateTaskInput) {
     toolOutputType: nextToolOutputType,
     onTrueTaskId: nextOnTrueTaskId,
     onFalseTaskId: nextOnFalseTaskId,
+    joinTaskId: nextJoinTaskId,
     model: nextModel,
     decisionModel: nextDecisionModel,
     decisionStateConfig: nextDecisionStateConfig,
@@ -318,6 +348,7 @@ export async function updateTask(input: UpdateTaskInput) {
     toolOutputType: nextToolOutputType,
     onTrueTaskId: nextOnTrueTaskId,
     onFalseTaskId: nextOnFalseTaskId,
+    joinTaskId: nextJoinTaskId,
     model: nextModel,
     decisionModel: nextDecisionModel,
     decisionStateConfig: nextDecisionStateConfig,
@@ -362,6 +393,10 @@ export async function deleteTask(id: number): Promise<string> {
     .update(tasks)
     .set({ onFalseTaskId: null })
     .where(eq(tasks.onFalseTaskId, id));
+  await db
+    .update(tasks)
+    .set({ joinTaskId: null })
+    .where(eq(tasks.joinTaskId, id));
   await db
     .update(userDecisionOptions)
     .set({ resultTaskId: null })

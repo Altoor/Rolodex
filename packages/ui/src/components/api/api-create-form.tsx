@@ -18,6 +18,7 @@ import { Field, FieldLabel } from "#components/ui/field";
 import { Input } from "#components/ui/input";
 import { Spinner } from "#components/ui/spinner";
 import { ErrorState } from "#components/feedback/error-state";
+import { invokeUrl } from "./api-utils";
 
 interface TaskOption {
   id: number | null;
@@ -31,6 +32,7 @@ interface ApiCreateFormProps {
 
 export function ApiCreateForm({ tasks, onCreated }: ApiCreateFormProps) {
   const [name, setName] = useState("");
+  const [slug, setSlug] = useState("");
   const [taskId, setTaskId] = useState("");
   const [description, setDescription] = useState("");
   const [stateField, setStateField] = useState("");
@@ -48,6 +50,7 @@ export function ApiCreateForm({ tasks, onCreated }: ApiCreateFormProps) {
         taskId: Number(taskId),
         description: description.trim() || null,
         stateField: stateField.trim() || null,
+        slug: slug.trim() || null,
       },
     });
 
@@ -60,6 +63,7 @@ export function ApiCreateForm({ tasks, onCreated }: ApiCreateFormProps) {
       endpointName: endpoint.name ?? "API endpoint",
     });
     setName("");
+    setSlug("");
     setTaskId("");
     setDescription("");
     setStateField("");
@@ -85,6 +89,23 @@ export function ApiCreateForm({ tasks, onCreated }: ApiCreateFormProps) {
               placeholder="Recipe importer"
               required
             />
+          </Field>
+
+          <Field>
+            <FieldLabel htmlFor="api-slug">URL slug (optional)</FieldLabel>
+            <Input
+              id="api-slug"
+              value={slug}
+              onChange={(event) => setSlug(event.target.value)}
+              placeholder="test"
+            />
+            <p className="text-xs text-muted-foreground">
+              The last part of the URL. Use lowercase letters, numbers, dashes,
+              or underscores; leave empty for a random slug.
+            </p>
+            <p className="font-mono text-[11px] break-all text-muted-foreground">
+              {invokeUrl(slug.trim() || null)}
+            </p>
           </Field>
 
           <Field>

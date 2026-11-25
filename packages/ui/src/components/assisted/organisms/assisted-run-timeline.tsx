@@ -81,7 +81,7 @@ function stepStatus(step: AssistedStep): StepStatus {
   if (step.status === "running" || step.status === "awaiting_input") {
     return "active";
   }
-  if (step.status === "queued") return "pending";
+  if (step.status === "queued" || step.status === "waiting") return "pending";
   if (step.status === "failed") return "error";
   return "complete";
 }

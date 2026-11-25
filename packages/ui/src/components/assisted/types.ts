@@ -46,7 +46,13 @@ export interface AssistedStep {
   id: number;
   taskId: number;
   depth: number;
-  status: "queued" | "running" | "awaiting_input" | "completed" | "failed";
+  status:
+    | "queued"
+    | "running"
+    | "awaiting_input"
+    | "waiting"
+    | "completed"
+    | "failed";
   state: string;
   result: Record<string, unknown> | null;
   pendingChoice: AssistedPendingChoice | null;

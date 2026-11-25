@@ -11,6 +11,7 @@ export const CREATE_TASK = gql(/* GraphQL */ `
     $toolOutputType: ToolOutputType
     $onTrueTaskId: Int
     $onFalseTaskId: Int
+    $joinTaskId: Int
     $model: String
     $decisionModel: String
     $decisionStateConfig: JSON
@@ -30,6 +31,7 @@ export const CREATE_TASK = gql(/* GraphQL */ `
       toolOutputType: $toolOutputType
       onTrueTaskId: $onTrueTaskId
       onFalseTaskId: $onFalseTaskId
+      joinTaskId: $joinTaskId
       model: $model
       decisionModel: $decisionModel
       decisionStateConfig: $decisionStateConfig
@@ -47,6 +49,7 @@ export const CREATE_TASK = gql(/* GraphQL */ `
       toolOutputType
       onTrueTaskId
       onFalseTaskId
+      joinTaskId
       model
       decisionModel
       decisionStateConfig
@@ -99,6 +102,7 @@ export const UPDATE_TASK = gql(/* GraphQL */ `
     $toolOutputType: ToolOutputType
     $onTrueTaskId: Int
     $onFalseTaskId: Int
+    $joinTaskId: Int
     $model: String
     $decisionModel: String
     $decisionStateConfig: JSON
@@ -119,6 +123,7 @@ export const UPDATE_TASK = gql(/* GraphQL */ `
       toolOutputType: $toolOutputType
       onTrueTaskId: $onTrueTaskId
       onFalseTaskId: $onFalseTaskId
+      joinTaskId: $joinTaskId
       model: $model
       decisionModel: $decisionModel
       decisionStateConfig: $decisionStateConfig
@@ -136,6 +141,7 @@ export const UPDATE_TASK = gql(/* GraphQL */ `
       toolOutputType
       onTrueTaskId
       onFalseTaskId
+      joinTaskId
       model
       decisionModel
       decisionStateConfig

@@ -7,6 +7,7 @@ import {
   ToolConfigValidationError,
 } from "@repo/tools";
 import type { TaskRow } from "../../queue/types";
+import { inheritedForkFields } from "../../queue/joins";
 import { completeRunIfIdle, getRun, setRunStatus } from "../../queue/run-store";
 import {
   completeReviewedStep,
@@ -234,6 +235,7 @@ async function insertDraftTasks(
         fallbackTaskId: draft.fallbackTaskId ?? null,
         onTrueTaskId: draft.onTrueTaskId ?? null,
         onFalseTaskId: draft.onFalseTaskId ?? null,
+        joinTaskId: draft.joinTaskId ?? null,
         model: draft.model ?? null,
         decisionModel: draft.decisionModel ?? null,
         userDecisionType: draft.userDecisionType ?? "list",
@@ -442,14 +444,14 @@ export async function applyStepRevision(
         queued_by: step.queued_by,
         model: step.model,
         decisionModel: step.decisionModel,
+        ...inheritedForkFields(step),
       },
     ]);
     await setRunStatus(run.id, "running");
-    if (ids.length > 0) {
+    const settled = await completeRunIfIdle(run.id);
+    if (ids.length > 0 || !settled) {
       const { triggerQueue } = await import("../../queue/processor");
       triggerQueue();
-    } else {
-      await completeRunIfIdle(run.id);
     }
     return run.id;
   }
@@ -605,6 +607,7 @@ export async function applyStepRevision(
       queued_by: step.queued_by,
       model: step.model,
       decisionModel: step.decisionModel,
+      ...inheritedForkFields(step),
     },
   ]);
 

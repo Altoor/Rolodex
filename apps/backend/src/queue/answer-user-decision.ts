@@ -2,6 +2,7 @@ import { GraphQLError } from "graphql";
 import { and, desc, eq } from "drizzle-orm";
 import { db, queuedTasks, stepAttempts } from "@repo/db";
 import { MAX_CHAIN_DEPTH } from "./constants";
+import { inheritedForkFields } from "./joins";
 import { completeRunIfIdle, getRun, setRunStatus, settleStandardRunIfIdle } from "./run-store";
 import { enqueueStep, publish } from "./step-store";
 import type { QueuedRow } from "./types";
@@ -155,6 +156,7 @@ export async function answerUserDecision(
       queued_by: queued.queued_by,
       model: queued.model,
       decisionModel: queued.decisionModel,
+      ...inheritedForkFields(queued),
     });
   }
 

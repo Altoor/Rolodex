@@ -78,19 +78,24 @@ export async function getFlowSnapshot(
       summary: readString(result, "summary"),
       note: readString(result, "note"),
       queuedAt: row.step.queued_at.toISOString(),
+      forkIndex: row.step.forkIndex ?? null,
+      isJoin: row.step.isJoin,
     };
   });
 
   const status = flowStatus(run.status, steps);
-  const endFlow = rows
-    .filter((row) => {
-      const result = asRecord(row.step.result);
-      return (
-        row.step.status === "completed" &&
-        (row.toolKey === "end_flow" || result?.endFlow === true)
-      );
-    })
-    .at(-1);
+  const completedEndFlows = rows.filter((row) => {
+    const result = asRecord(row.step.result);
+    return (
+      row.step.status === "completed" &&
+      (row.toolKey === "end_flow" || result?.endFlow === true)
+    );
+  });
+  // Prefer an end_flow after the fan-in. A branch-local end_flow is only a
+  // fallback for flows that never leave their foreach region.
+  const endFlow =
+    completedEndFlows.filter((row) => row.step.forkGroupId == null).at(-1) ??
+    completedEndFlows.at(-1);
   const failed = rows.find((row) => row.step.status === "failed");
   const failedResult = asRecord(failed?.step.result ?? null);
 

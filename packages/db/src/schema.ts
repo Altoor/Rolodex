@@ -197,6 +197,8 @@ export const tasks = pgTable("tasks", {
   // Conditional tool branches (currently used by the `if` tool).
   onTrueTaskId: integer("onTrueTaskId"),
   onFalseTaskId: integer("onFalseTaskId"),
+  // For foreach tasks: runs once after every per-item branch is terminal.
+  joinTaskId: integer("joinTaskId"),
   // Generation model used by prompt-style tools.
   model: text("model"),
   // System One decision model used by decision tasks and todo selection.
@@ -245,7 +247,9 @@ export const runStatus = pgEnum("runStatus", [
 export const runs = pgTable(
   "runs",
   {
-    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
     userId: integer("userId")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -275,7 +279,9 @@ export const runs = pgTable(
 export const apiEndpoints = pgTable(
   "apiEndpoints",
   {
-    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
     userId: integer("userId")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -299,8 +305,31 @@ export const apiEndpoints = pgTable(
       .defaultNow()
       .notNull(),
   },
-  (table) => [index("api_endpoints_user_idx").on(table.userId)],
+  (table) => [
+    index("api_endpoints_user_idx").on(table.userId),
+    uniqueIndex("api_endpoints_key_hash_idx").on(table.keyHash),
+  ],
 );
+
+/**
+ * One optional per-user key for the standard `/api/v1` surface. Endpoint keys
+ * remain valid; this gives users a single key they can rotate independently.
+ */
+export const standardApiKeys = pgTable("standardApiKeys", {
+  userId: integer("userId")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  /** SHA-256 of the full API key. The key itself is never stored. */
+  keyHash: text("keyHash").notNull().unique(),
+  keyPrefix: text("keyPrefix").notNull(),
+  keyLastFour: text("keyLastFour").notNull(),
+  createdAt: timestamp("createdAt", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updatedAt", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
 
 /**
  * One accepted invocation of an API endpoint. It maps the public request id to
@@ -309,7 +338,9 @@ export const apiEndpoints = pgTable(
 export const apiRequests = pgTable(
   "apiRequests",
   {
-    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    id: uuid("id")
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
     endpointId: uuid("endpointId")
       .notNull()
       .references(() => apiEndpoints.id, { onDelete: "cascade" }),
@@ -425,41 +456,57 @@ export const queuedTaskStatus = pgEnum("queuedTaskStatus", [
   "queued",
   "running",
   "awaiting_input",
+  // A join row parked until every branch in its fork group is terminal.
+  "waiting",
   "completed",
   "failed",
 ]);
 
-export const queuedTasks = pgTable("queuedTasks", {
-  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
-  taskId: integer("taskId").notNull(),
-  state: text("state").notNull(),
-  /** Accumulated structured tool output, separate from the immutable state. */
-  toolState: json("toolState")
-    .$type<ToolStateEntry[]>()
-    .notNull()
-    .default(sql`'[]'::json`),
-  /** Set for foreach children. */
-  parentQueuedTaskId: integer("parentQueuedTaskId"),
-  /** Chain depth, used instead of a shared per-run step budget. */
-  depth: integer("depth").notNull().default(0),
-  status: queuedTaskStatus().default("queued").notNull(),
-  // Groups all steps that belong to one chain run.
-  runId: uuid("runId")
-    .default(sql`gen_random_uuid()`)
-    .notNull(),
-  // The step's SystemOne answer, chosen branch and any note.
-  result: json("result"),
-  // Immutable snapshot of a choice that is waiting for the user.
-  pendingChoice: json("pendingChoice"),
-  queued_at: timestamp("queued_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-  queued_by: integer("queued_by").notNull(),
-  // Per-step generation model override.
-  model: text("model"),
-  // Per-step decision model override.
-  decisionModel: text("decisionModel"),
-});
+export const queuedTasks = pgTable(
+  "queuedTasks",
+  {
+    id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+    taskId: integer("taskId").notNull(),
+    state: text("state").notNull(),
+    /** Accumulated structured tool output, separate from the immutable state. */
+    toolState: json("toolState")
+      .$type<ToolStateEntry[]>()
+      .notNull()
+      .default(sql`'[]'::json`),
+    /** Set for foreach children. */
+    parentQueuedTaskId: integer("parentQueuedTaskId"),
+    /**
+     * Groups a foreach fan-out and its join barrier. Every branch row inherits
+     * the group; the join row uses it to wait for its siblings. Null outside a
+     * fan-out (and for rows after the fan-in).
+     */
+    forkGroupId: uuid("forkGroupId"),
+    /** Per-item ordinal inside a fan-out, used for deterministic join ordering. */
+    forkIndex: integer("forkIndex"),
+    /** True for the single barrier row that runs after all branches finish. */
+    isJoin: boolean("isJoin").default(false).notNull(),
+    /** Chain depth, used instead of a shared per-run step budget. */
+    depth: integer("depth").notNull().default(0),
+    status: queuedTaskStatus().default("queued").notNull(),
+    // Groups all steps that belong to one chain run.
+    runId: uuid("runId")
+      .default(sql`gen_random_uuid()`)
+      .notNull(),
+    // The step's SystemOne answer, chosen branch and any note.
+    result: json("result"),
+    // Immutable snapshot of a choice that is waiting for the user.
+    pendingChoice: json("pendingChoice"),
+    queued_at: timestamp("queued_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    queued_by: integer("queued_by").notNull(),
+    // Per-step generation model override.
+    model: text("model"),
+    // Per-step decision model override.
+    decisionModel: text("decisionModel"),
+  },
+  (table) => [index("queued_tasks_fork_group_idx").on(table.forkGroupId)],
+);
 
 export const models = pgTable("models", {
   name: text("name").unique().primaryKey().notNull(),

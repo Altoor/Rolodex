@@ -14,14 +14,22 @@ import {
 } from "./step-store";
 import type { QueuedRow, TaskRow } from "./types";
 
-// A single in-process guard: only one queue loop runs at a time.
+// A single in-process guard: only one queue loop runs at a time. A wake-up
+// arriving while the loop runs is remembered so the loop re-checks the queue
+// after it drains, instead of exiting just before work becomes runnable.
 let processing = false;
+let rerunRequested = false;
 
 /**
- * Kicks off the queue loop (no-op if one is already running).
- * Fire-and-forget; called by the createQueuedTask mutation and on startup.
+ * Kicks off the queue loop. If a loop is already running, it is asked to run
+ * once more after it drains. Fire-and-forget; called by the createQueuedTask
+ * mutation, run settlement and the join release sweep.
  */
 export function triggerQueue(): void {
+  if (processing) {
+    rerunRequested = true;
+    return;
+  }
   void processQueue();
 }
 
@@ -39,9 +47,23 @@ export async function resetStaleRunningTasks(): Promise<void> {
 }
 
 async function processQueue(): Promise<void> {
-  if (processing) return;
-  processing = true;
+  if (processing) {
+    rerunRequested = true;
+    return;
+  }
 
+  processing = true;
+  try {
+    do {
+      rerunRequested = false;
+      await runQueueLoop();
+    } while (rerunRequested);
+  } finally {
+    processing = false;
+  }
+}
+
+async function runQueueLoop(): Promise<void> {
   const running = new Map<number, Promise<void>>();
   let exclusiveRunning = false;
 
@@ -101,21 +123,53 @@ async function processQueue(): Promise<void> {
       : task;
   };
 
-  try {
-    for (;;) {
-      // While steps are running, warm the model for whatever is next so the
-      // load overlaps the current work instead of delaying the next step.
-      if (running.size > 0) {
-        const upcoming = await findNextQueuedStep();
-        if (upcoming) void warmQueuedRows([upcoming]);
+  for (;;) {
+    // While steps are running, warm the model for whatever is next so the
+    // load overlaps the current work instead of delaying the next step.
+    if (running.size > 0) {
+      const upcoming = await findNextQueuedStep();
+      if (upcoming) void warmQueuedRows([upcoming]);
+    }
+
+    // Nothing is running: prioritized work goes first, then parallel-capable,
+    // then exclusive.
+    if (running.size === 0) {
+      const row = await findNextQueuedStep();
+      if (!row) break;
+
+      const task = await loadRunnableTask(row);
+      if (!task) {
+        await finishStep(row.id, "failed", {
+          note: "task no longer exists",
+        });
+        await failAssistedRun(row, "task no longer exists");
+        await settleStandardRunIfIdle(row.runId).catch(() => undefined);
+        continue;
       }
 
-      // Nothing is running: prioritized work goes first, then parallel-capable,
-      // then exclusive.
-      if (running.size === 0) {
-        const row = await findNextQueuedStep();
-        if (!row) break;
+      launch(row, task);
+      continue;
+    }
 
+    // An exclusive step owns the queue until it finishes.
+    if (exclusiveRunning) {
+      if (running.size > 0) await Promise.race(running.values());
+      continue;
+    }
+
+    // A prioritized exclusive step must be next. Do not start more parallel
+    // work; let the in-flight steps drain so it can run alone.
+    if (await hasPrioritizedExclusiveStep()) {
+      if (running.size > 0) await Promise.race(running.values());
+      continue;
+    }
+
+    const settings = await getAppSettings();
+    const maxParallel = Math.max(1, settings.maxParallelTasks);
+
+    if (running.size < maxParallel) {
+      const row = await findNextQueuedStep({ onlyParallel: true });
+      if (row) {
         const task = await loadRunnableTask(row);
         if (!task) {
           await finishStep(row.id, "failed", {
@@ -129,54 +183,18 @@ async function processQueue(): Promise<void> {
         launch(row, task);
         continue;
       }
-
-      // An exclusive step owns the queue until it finishes.
-      if (exclusiveRunning) {
-        if (running.size > 0) await Promise.race(running.values());
-        continue;
-      }
-
-      // A prioritized exclusive step must be next. Do not start more parallel
-      // work; let the in-flight steps drain so it can run alone.
-      if (await hasPrioritizedExclusiveStep()) {
-        if (running.size > 0) await Promise.race(running.values());
-        continue;
-      }
-
-      const settings = await getAppSettings();
-      const maxParallel = Math.max(1, settings.maxParallelTasks);
-
-      if (running.size < maxParallel) {
-        const row = await findNextQueuedStep({ onlyParallel: true });
-        if (row) {
-          const task = await loadRunnableTask(row);
-          if (!task) {
-            await finishStep(row.id, "failed", {
-              note: "task no longer exists",
-            });
-            await failAssistedRun(row, "task no longer exists");
-            await settleStandardRunIfIdle(row.runId).catch(() => undefined);
-            continue;
-          }
-
-          launch(row, task);
-          continue;
-        }
-      }
-
-      // No parallel work can start; wait for capacity or for all of it to
-      // drain so an exclusive step can finally run. The map can drain while
-      // `getAppSettings`/`findNextQueuedStep` above were in flight, and racing
-      // an empty iterator would wait forever.
-      if (running.size > 0) {
-        await Promise.race(running.values());
-      }
     }
 
-    await Promise.allSettled(running.values());
-  } finally {
-    processing = false;
+    // No parallel work can start; wait for capacity or for all of it to
+    // drain so an exclusive step can finally run. The map can drain while
+    // `getAppSettings`/`findNextQueuedStep` above were in flight, and racing
+    // an empty iterator would wait forever.
+    if (running.size > 0) {
+      await Promise.race(running.values());
+    }
   }
+
+  await Promise.allSettled(running.values());
 }
 
 async function processStep(row: QueuedRow, task: TaskRow): Promise<void> {

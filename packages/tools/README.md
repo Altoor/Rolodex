@@ -60,6 +60,29 @@ tasks can use `name`, `description`, and so on directly.
 
 `fields` and the raw `format` escape hatch cannot be combined.
 
+## Current date and time
+
+Models do not know the actual current date, so relative wording such as
+"tomorrow" or "before Saturday" has nothing to resolve against. Set
+`includeCurrentTime` to append the current time to the system prompt, and use
+`timeZone` to pick an IANA zone (it defaults to the server's zone):
+
+```json
+{
+  "includeCurrentTime": true,
+  "timeZone": "Europe/Copenhagen",
+  "fields": {
+    "doByDate": {
+      "type": "string",
+      "description": "Absolute ISO 8601 deadline, for example 2026-11-27T23:59:59+01:00"
+    }
+  }
+}
+```
+
+The injected block includes the ISO timestamp, weekday, zone and a reminder to
+resolve relative dates against it.
+
 ## Tool config templates
 
 Every tool config string supports `{{path}}` placeholders that resolve against

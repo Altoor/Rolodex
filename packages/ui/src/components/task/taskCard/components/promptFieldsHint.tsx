@@ -14,7 +14,11 @@ export function PromptFieldsHint() {
 
   return (
     <FieldDescription>
-      Prompt uses the generation model. Leave it empty to use your default.{" "}
+      Prompt uses the generation model. Leave it empty to use your default. Set{" "}
+      <code className="font-mono">includeCurrentTime</code> to give the model
+      the current date, optionally with an IANA{" "}
+      <code className="font-mono">timeZone</code> such as{" "}
+      <code className="font-mono">Europe/Copenhagen</code>.{" "}
       {fieldNames.length > 0 ? (
         <>
           <code className="font-mono">fields</code> publishes these downstream

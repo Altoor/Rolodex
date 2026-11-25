@@ -2,10 +2,11 @@ import { builder } from "../builder";
 import { requireUserId } from "../auth";
 import {
   getApiEndpoint,
+  getStandardApiKey,
   listApiEndpoints,
   listApiRequests,
 } from "@repo/api";
-import { ApiEndpoint, ApiRequest } from "./api-endpoint";
+import { ApiEndpoint, ApiRequest, StandardApiKey } from "./api-endpoint";
 
 builder.queryType({
   fields: (t) => ({
@@ -14,6 +15,15 @@ builder.queryType({
       description: "The current user's outward API endpoints.",
       resolve: async (_root, _args, ctx) =>
         listApiEndpoints(requireUserId(ctx)),
+    }),
+
+    standardApiKey: t.field({
+      type: StandardApiKey,
+      description:
+        "The current user's dedicated key metadata for the /api/v1 surface.",
+      nullable: true,
+      resolve: async (_root, _args, ctx) =>
+        getStandardApiKey(requireUserId(ctx)),
     }),
 
     apiRequests: t.field({

@@ -52,6 +52,7 @@ export interface TaskDraft {
   toolOutputType?: "normal" | "foreach";
   onTrueTaskId?: number | null;
   onFalseTaskId?: number | null;
+  joinTaskId?: number | null;
   fallbackTaskId?: number | null;
   model?: string | null;
   decisionModel?: string | null;
@@ -270,6 +271,8 @@ function readDraft(value: unknown, label: string): TaskDraft {
       typeof value.onTrueTaskId === "number" ? value.onTrueTaskId : null,
     onFalseTaskId:
       typeof value.onFalseTaskId === "number" ? value.onFalseTaskId : null,
+    joinTaskId:
+      typeof value.joinTaskId === "number" ? value.joinTaskId : null,
     fallbackTaskId,
     model: typeof value.model === "string" ? value.model : null,
     decisionModel:

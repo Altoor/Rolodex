@@ -3,15 +3,19 @@ import type {
   apiRequests,
   queuedTasks,
   runs,
+  standardApiKeys,
 } from "@repo/db";
 
 export type ApiEndpointRow = typeof apiEndpoints.$inferSelect;
 export type ApiRequestRow = typeof apiRequests.$inferSelect;
 export type RunRow = typeof runs.$inferSelect;
+export type StandardApiKeyRow = typeof standardApiKeys.$inferSelect;
 
 export interface ApiEndpointInput {
   name: string;
   description?: string;
+  /** Optional custom URL segment. A random slug is generated when omitted. */
+  slug?: string | null;
   taskId: number;
   stateField?: string | null;
 }
@@ -19,6 +23,8 @@ export interface ApiEndpointInput {
 export interface ApiEndpointUpdate {
   name?: string;
   description?: string;
+  /** Optional custom URL segment. Omit to keep the current slug. */
+  slug?: string;
   taskId?: number;
   stateField?: string | null;
   enabled?: boolean;
@@ -27,6 +33,12 @@ export interface ApiEndpointUpdate {
 export interface CreatedApiEndpoint {
   endpoint: ApiEndpointRow;
   /** Plaintext key. Only returned on create and rotate. */
+  apiKey: string;
+}
+
+export interface CreatedStandardApiKey {
+  standardApiKey: StandardApiKeyRow;
+  /** Plaintext key. Only returned when creating or rotating. */
   apiKey: string;
 }
 
@@ -52,6 +64,10 @@ export interface FlowStepSnapshot {
   summary: string | null;
   note: string | null;
   queuedAt: string;
+  /** Per-item ordinal when the step belongs to a foreach fan-out. */
+  forkIndex: number | null;
+  /** True for the post-fan-out join barrier row. */
+  isJoin: boolean;
 }
 
 export interface FlowSnapshot {

@@ -49,6 +49,28 @@ export async function parseInvocation(
   return { state: raw, files: [], fields: {} };
 }
 
+/** Reads a JSON request body, rejecting empty or non-JSON payloads. */
+export async function readJsonBody(
+  req: IncomingMessage,
+  limit = MAX_BODY_BYTES,
+): Promise<unknown> {
+  const contentType = String(req.headers["content-type"] ?? "").toLowerCase();
+  if (contentType && !contentType.includes("application/json")) {
+    throw new RequestInputError("Request body must be JSON", 415);
+  }
+
+  const raw = await readLimitedBody(req, limit);
+  if (!raw.trim()) {
+    throw new RequestInputError("Request body is required", 400);
+  }
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new RequestInputError("Request body is not valid JSON", 400);
+  }
+}
+
 export function stateFromValue(
   value: unknown,
   endpoint: ApiEndpointRow,
@@ -80,9 +102,7 @@ function stateFromFields(
 ): string {
   if (endpoint.stateField && fields[endpoint.stateField] !== undefined) {
     const value = fields[endpoint.stateField];
-    return typeof value === "string"
-      ? value
-      : JSON.stringify(value, null, 2);
+    return typeof value === "string" ? value : JSON.stringify(value, null, 2);
   }
 
   for (const key of ["state", "message", "prompt", "text"]) {
@@ -90,9 +110,7 @@ function stateFromFields(
     if (typeof value === "string") return value;
   }
 
-  return Object.keys(fields).length > 0
-    ? JSON.stringify(fields, null, 2)
-    : "";
+  return Object.keys(fields).length > 0 ? JSON.stringify(fields, null, 2) : "";
 }
 
 async function readLimitedBody(
@@ -107,10 +125,7 @@ async function readLimitedBody(
     size += buffer.length;
 
     if (size > limit) {
-      throw new RequestInputError(
-        `Request body exceeds ${limit} bytes`,
-        413,
-      );
+      throw new RequestInputError(`Request body exceeds ${limit} bytes`, 413);
     }
 
     chunks.push(buffer);
@@ -140,9 +155,7 @@ function parseMultipart(
         },
       });
     } catch {
-      reject(
-        new RequestInputError("Invalid multipart request", 400),
-      );
+      reject(new RequestInputError("Invalid multipart request", 400));
       return;
     }
 

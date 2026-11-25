@@ -22,6 +22,17 @@ export const promptDefinition: ToolDefinition = {
         description:
           "Optional system prompt. Supports the same `{{path}}` placeholders as `prompt`.",
       },
+      includeCurrentTime: {
+        type: "boolean",
+        description:
+          'Add the current date and time to the system prompt. Enable when the model must resolve relative dates such as "tomorrow" or "before Saturday".',
+        default: false,
+      },
+      timeZone: {
+        type: "string",
+        description:
+          'Optional IANA time zone for the current time, for example "Europe/Copenhagen". Defaults to the server time zone.',
+      },
       model: {
         type: "string",
         description:

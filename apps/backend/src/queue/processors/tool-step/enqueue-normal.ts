@@ -1,5 +1,6 @@
 import type { ToolExecution, ToolStateEntry } from "@repo/tools";
 import type { queuedTasks } from "@repo/db";
+import { inheritedForkFields } from "../../joins";
 import type { QueuedRow } from "../../types";
 
 export type QueuedStepInsert = typeof queuedTasks.$inferInsert;
@@ -30,5 +31,6 @@ export function planNormalNext({
     queued_by: row.queued_by,
     model: execution.nextModel ?? row.model,
     decisionModel: execution.nextDecisionModel ?? row.decisionModel,
+    ...inheritedForkFields(row),
   };
 }

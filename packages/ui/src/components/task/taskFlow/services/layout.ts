@@ -5,7 +5,7 @@ import { switchTargetTaskIds } from "./switch-config";
 export const COLUMN_WIDTH = 460;
 export const ROW_HEIGHT = 200;
 
-function relatedTaskIds(task: FlowTask | undefined): number[] {
+export function relatedTaskIds(task: FlowTask | undefined): number[] {
   if (!task) return [];
 
   return [
@@ -24,6 +24,9 @@ function relatedTaskIds(task: FlowTask | undefined): number[] {
       : []),
     ...(task.onTrueTaskId != null ? [task.onTrueTaskId] : []),
     ...(task.onFalseTaskId != null ? [task.onFalseTaskId] : []),
+    ...(task.toolOutputType === "foreach" && task.joinTaskId != null
+      ? [task.joinTaskId]
+      : []),
     ...(task.toolKey === "switch" ? switchTargetTaskIds(task) : []),
   ];
 }

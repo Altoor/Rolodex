@@ -1,5 +1,6 @@
 import { and, eq, inArray, notInArray } from "drizzle-orm";
 import { db, queuedTasks, runs } from "@repo/db";
+import { ACTIVE_STEP_STATUSES, releaseReadyJoins } from "./joins";
 import { standardRunOutcome } from "./run-status";
 
 export type RunRow = typeof runs.$inferSelect;
@@ -61,13 +62,17 @@ export async function setRunStatus(
  * whose outcome has no next task.
  */
 export async function completeRunIfIdle(runId: string): Promise<boolean> {
+  // A join barrier may have become ready after the last branch finished. Move
+  // it to the queue before deciding whether the run is idle.
+  await releaseReadyJoins(runId);
+
   const [active] = await db
     .select({ id: queuedTasks.id })
     .from(queuedTasks)
     .where(
       and(
         eq(queuedTasks.runId, runId),
-        inArray(queuedTasks.status, ["queued", "running", "awaiting_input"]),
+        inArray(queuedTasks.status, [...ACTIVE_STEP_STATUSES]),
       ),
     )
     .limit(1);
@@ -85,13 +90,17 @@ export async function completeRunIfIdle(runId: string): Promise<boolean> {
 export async function settleStandardRunIfIdle(
   runId: string,
 ): Promise<RunStatus | null> {
+  // Release any join barrier whose branches just finished. This is the central
+  // hook so every enqueue/finish path gets the same behaviour.
+  await releaseReadyJoins(runId);
+
   const [active] = await db
     .select({ id: queuedTasks.id })
     .from(queuedTasks)
     .where(
       and(
         eq(queuedTasks.runId, runId),
-        inArray(queuedTasks.status, ["queued", "running", "awaiting_input"]),
+        inArray(queuedTasks.status, [...ACTIVE_STEP_STATUSES]),
       ),
     )
     .limit(1);
