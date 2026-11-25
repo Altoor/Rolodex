@@ -103,9 +103,23 @@ Source: local review of `feature/api` vs `origin/main`. Checked items are implem
 - [x] Keep `plan.md` at the repo root as the live checklist (explicit user requirement).
 - [x] Document `apiRequests` retention policy and rate-limiting/idempotency follow-ups.
 
+## Final PR review (round 2)
+
+- [x] Apply draft visibility to every client-supplied task reference, not just top-level services:
+  - builder snapshots (`createDraftTask`, `startAssistedRun`, `snapshotReferences`),
+  - revision replacements/insertions and `runNext` targets,
+  - task results (`taskId` / `resultTaskId`, including scoped list/get queries),
+  - user-decision options (CRUD service and `saveUserDecisionOptions`),
+  - decision option targets and task-config switch/join targets (`assertValidTaskConfig(input, userId)`).
+- [x] Count multipart form-field bytes toward the 50 MiB request cap, not just file bytes.
+- [x] Replace the stale "reuse endpoint keys" comment on `/api/v1` with the standard-key-only rule.
+- [x] Remove leftover dead code: `acceptDecision`, `listRunSteps`, `loadTaskRow`, `findApiKeyOwner`, unused `keySource`, `tasks` re-export, and stale imports.
+- [x] Add `snapshotReferences` unit tests (nested and flat builder snapshots, invalid targets).
+
 ## Verification
 
-- [x] `pnpm test` passes (138 tests).
+- [x] `pnpm test` passes (141 tests, 29 files).
 - [x] `pnpm check-types` passes (11 packages).
-- [x] `pnpm lint` passes for the touched packages; `API_PUBLIC_ORIGIN` / `API_CORS_ORIGINS` are registered in `turbo.json`.
+- [x] `pnpm lint` passes for `@repo/api`, `@repo/ui`, `@repo/db`, and `@repo/trial-workspace`; backend has only pre-existing warnings outside the changed lines.
+- [x] `API_PUBLIC_ORIGIN` / `API_CORS_ORIGINS` are registered in `turbo.json`.
 - [x] Final review of the diff for scope and regressions.

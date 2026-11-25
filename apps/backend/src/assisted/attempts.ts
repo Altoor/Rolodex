@@ -185,8 +185,5 @@ export function taskFromSnapshot(snapshot: TaskSnapshot): TaskRow {
   return snapshot.task;
 }
 
-export async function loadTaskRow(taskId: number): Promise<TaskRow | undefined> {
-  return db.query.tasks.findFirst({ where: { id: taskId } });
-}
 
 export { persistSnapshot } from "./persist-snapshot";

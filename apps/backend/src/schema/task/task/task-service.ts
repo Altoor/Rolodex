@@ -77,7 +77,7 @@ export async function createTask(userId: number, input: CreateTaskInput) {
     forceUserDecideIfNoMatch: task.forceUserDecideIfNoMatch,
     userDecisionType: task.userDecisionType,
     userDecisionConfig: task.userDecisionConfig,
-  });
+  }, userId);
 
   const [created] = await db.insert(tasks).values(task).returning();
   return created;
@@ -140,7 +140,7 @@ export async function updateTask(userId: number, input: UpdateTaskInput) {
     forceUserDecideIfNoMatch: nextForceUserDecideIfNoMatch,
     userDecisionType: nextUserDecisionType,
     userDecisionConfig: nextUserDecisionConfig,
-  });
+  }, userId);
 
   const taskDto = {
     name: input.name ?? task.name,

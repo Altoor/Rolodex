@@ -120,7 +120,7 @@ async function generateDraft(
       toolOutputType: draft.toolOutputType,
       model: null,
       decisionModel: null,
-    });
+    }, userId);
 
     return draft;
   } catch (err) {

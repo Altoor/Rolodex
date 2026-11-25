@@ -16,6 +16,7 @@ import {
   type TaskSnapshot,
 } from "../attempts";
 import type { RevisionProposal } from "../domain/revision";
+import { assertTasksVisible } from "../../schema/task/task/task-visibility";
 import {
   assertRevisionFits,
   inspectGraph,
@@ -54,6 +55,10 @@ export async function applyInsertionRevision(
   const { userId, attempt, runId, step, snapshot, result, proposal } = input;
 
   const insertions = proposal.insertions ?? [];
+  await assertTasksVisible(
+    userId,
+    insertions.flatMap((draft) => draftTargets(draft, true)),
+  );
   for (const draft of insertions) {
     if (draft.type !== "tool") {
       throw badInput(

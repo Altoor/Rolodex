@@ -1,6 +1,6 @@
 import { GraphQLError } from "graphql";
 import { eq } from "drizzle-orm";
-import { db, stepAttempts, tasks } from "@repo/db";
+import { db, stepAttempts } from "@repo/db";
 import { inheritedForkFields } from "../../queue/joins";
 import { completeRunIfIdle, getRun, setRunStatus } from "../../queue/run-store";
 import {
@@ -22,6 +22,10 @@ import {
   type RevisionProposal,
 } from "../domain/revision";
 import { recordTrace } from "../infrastructure/trace";
+import {
+  assertTaskVisible,
+  assertTasksVisible,
+} from "../../schema/task/task/task-visibility";
 import { assertRevisionFits, RevisionGraphError } from "../graph-safety";
 import { applyInsertionRevision } from "./apply-insertion-revision";
 import {
@@ -116,6 +120,7 @@ export async function applyStepRevision(
   if (proposal.kind === "replaceTask") {
     const replacement = proposal.replacement!;
     validateToolDraft(replacement);
+    await assertTasksVisible(userId, draftTargets(replacement, true));
 
     try {
       await assertRevisionFits({
@@ -155,6 +160,19 @@ export async function applyStepRevision(
         "This step has no next task. Add or wire a target first.",
         { extensions: { code: "BAD_USER_INPUT" } },
       );
+    }
+
+    await assertTaskVisible(userId, target);
+    try {
+      await assertRevisionFits({
+        stepDepth: step.depth,
+        insertionCount: 0,
+        currentTaskId: snapshot.task.id,
+        currentNextId: target,
+      });
+    } catch (err) {
+      if (err instanceof RevisionGraphError) throw badInput(err.message);
+      throw err;
     }
 
     const claimed = await claimReviewedStep(step.id);
@@ -231,4 +249,3 @@ export async function applyStepRevision(
   });
 }
 
-export { tasks };

@@ -173,6 +173,17 @@ function parseMultipart(
     }
 
     busboy.on("field", (name, value) => {
+      // Fields are part of the request too, so they count toward the total cap.
+      totalBytes += Buffer.byteLength(value);
+      if (totalBytes > MAX_MULTIPART_BYTES) {
+        fail(
+          new RequestInputError(
+            `Request body exceeds ${MAX_MULTIPART_BYTES} bytes`,
+            413,
+          ),
+        );
+        return;
+      }
       fields[name] = value;
     });
 

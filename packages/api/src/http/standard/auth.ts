@@ -5,7 +5,6 @@ import { HttpError, readApiKey } from "../respond";
 
 export interface StandardAuth {
   userId: number;
-  keySource: "standard";
 }
 
 /**
@@ -25,5 +24,5 @@ export async function authenticateStandardRequest(
   const standardOwner = await findStandardKeyOwner(hashApiKey(key));
   if (!standardOwner) throw new HttpError("Invalid API key", 401);
 
-  return { userId: standardOwner.userId, keySource: "standard" };
+  return { userId: standardOwner.userId };
 }

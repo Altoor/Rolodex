@@ -4,6 +4,7 @@ import { runAssistedAttempt } from "../../queue/assisted-step";
 import { resumeReviewedStep } from "../../queue/step-store";
 import { supersedeAttempt, type TaskSnapshot } from "../attempts";
 import { recordTrace } from "../infrastructure/trace";
+import { assertTaskVisible } from "../../schema/task/task/task-visibility";
 import { loadReviewContext } from "./optimize-context";
 
 export interface NewDecisionOptionInput {
@@ -35,6 +36,10 @@ export async function addDecisionOption(
     throw new GraphQLError("The option needs a label", {
       extensions: { code: "BAD_USER_INPUT" },
     });
+  }
+
+  if (input.targetTaskId != null) {
+    await assertTaskVisible(userId, input.targetTaskId);
   }
 
   const optionValue = input.value?.trim() || input.label.trim();

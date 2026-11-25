@@ -1,6 +1,7 @@
 import { GraphQLError } from "graphql";
 import { eq } from "drizzle-orm";
 import { db, taskResults } from "@repo/db";
+import { assertTaskVisible } from "../task/task-visibility";
 
 export type TaskResultType = "choice" | "noul" | "score";
 
@@ -29,7 +30,15 @@ function keepOrSet<T>(provided: T | undefined, fallback: T): T {
   return provided !== undefined ? provided : fallback;
 }
 
-export async function createTaskResult(input: CreateTaskResultInput) {
+export async function createTaskResult(
+  userId: number,
+  input: CreateTaskResultInput,
+) {
+  await assertTaskVisible(userId, input.taskId);
+  if (input.resultTaskId != null) {
+    await assertTaskVisible(userId, input.resultTaskId);
+  }
+
   const taskResult = {
     taskId: input.taskId,
     type: input.type as TaskResultType,
@@ -44,7 +53,10 @@ export async function createTaskResult(input: CreateTaskResultInput) {
   return created;
 }
 
-export async function updateTaskResult(input: UpdateTaskResultInput) {
+export async function updateTaskResult(
+  userId: number,
+  input: UpdateTaskResultInput,
+) {
   const taskResult = await db.query.taskResults.findFirst({
     where: { id: input.id },
   });
@@ -53,6 +65,14 @@ export async function updateTaskResult(input: UpdateTaskResultInput) {
     throw new GraphQLError("TaskResult not found", {
       extensions: { code: "BAD_USER_INPUT" },
     });
+  }
+
+  await assertTaskVisible(userId, taskResult.taskId);
+  if (input.taskId != null) {
+    await assertTaskVisible(userId, input.taskId);
+  }
+  if (input.resultTaskId != null) {
+    await assertTaskVisible(userId, input.resultTaskId);
   }
 
   // An explicitly provided value (even null) overrides the stored one,
@@ -81,7 +101,10 @@ export async function updateTaskResult(input: UpdateTaskResultInput) {
   return updated;
 }
 
-export async function deleteTaskResult(id: number): Promise<string> {
+export async function deleteTaskResult(
+  userId: number,
+  id: number,
+): Promise<string> {
   const taskResult = await db.query.taskResults.findFirst({
     where: { id },
   });
@@ -91,6 +114,8 @@ export async function deleteTaskResult(id: number): Promise<string> {
       extensions: { code: "BAD_USER_INPUT" },
     });
   }
+
+  await assertTaskVisible(userId, taskResult.taskId);
 
   await db.delete(taskResults).where(eq(taskResults.id, id));
 

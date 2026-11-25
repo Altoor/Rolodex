@@ -30,7 +30,7 @@ async function createToolTask(
     toolOutputType: draft.toolOutputType,
     model: null,
     decisionModel: null,
-  });
+  }, userId);
 
   const [task] = await db
     .insert(tasks)

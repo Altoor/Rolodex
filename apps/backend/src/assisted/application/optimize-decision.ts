@@ -5,7 +5,7 @@ import { db, stepAttempts } from "@repo/db";
 import { setRunStatus } from "../../queue/run-store";
 import { runAssistedAttempt } from "../../queue/assisted-step";
 import { resumeReviewedStep } from "../../queue/step-store";
-import { supersedeAttempt, type TaskSnapshot } from "../attempts";
+import { supersedeAttempt } from "../attempts";
 import { preserveChoiceOptions } from "../domain/decision";
 import { coerceDecisionPremise } from "../../schema/ai/decision-premise";
 import { recordTrace } from "../infrastructure/trace";

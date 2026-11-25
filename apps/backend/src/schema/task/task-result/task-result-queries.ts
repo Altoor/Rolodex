@@ -1,15 +1,23 @@
 import { GraphQLError } from "graphql";
+import { and, eq } from "drizzle-orm";
+import { taskResults, tasks } from "@repo/db";
 import { builder, db } from "../../builder";
-import { requireUser } from "../../auth";
+import { requireUserId } from "../../auth";
+import { visibleTaskCondition } from "../task/task-visibility";
 import { TaskResult } from "./task-result";
 
 builder.queryType({
   fields: (t) => ({
     taskResults: t.drizzleField({
       type: [TaskResult],
-      resolve: (_query, _root, _args, ctx) => {
-        requireUser(ctx, "BAD_USER_INPUT");
-        return db.query.taskResults.findMany();
+      resolve: async (_query, _root, _args, ctx) => {
+        const userId = requireUserId(ctx);
+        const rows = await db
+          .select({ result: taskResults })
+          .from(taskResults)
+          .innerJoin(tasks, eq(tasks.id, taskResults.taskId))
+          .where(visibleTaskCondition(userId));
+        return rows.map((row) => row.result);
       },
     }),
 
@@ -19,19 +27,22 @@ builder.queryType({
         id: t.arg.int({ required: true }),
       },
       resolve: async (_query, _root, { id }, ctx) => {
-        requireUser(ctx, "BAD_USER_INPUT");
+        const userId = requireUserId(ctx);
 
-        const taskResult = await db.query.taskResults.findFirst({
-          where: { id },
-        });
+        const [row] = await db
+          .select({ result: taskResults })
+          .from(taskResults)
+          .innerJoin(tasks, eq(tasks.id, taskResults.taskId))
+          .where(and(eq(taskResults.id, id), visibleTaskCondition(userId)))
+          .limit(1);
 
-        if (!taskResult) {
+        if (!row) {
           throw new GraphQLError("TaskResult not found", {
             extensions: { code: "BAD_USER_INPUT" },
           });
         }
 
-        return taskResult;
+        return row.result;
       },
     }),
   }),

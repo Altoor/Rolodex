@@ -1,13 +1,8 @@
 import { GraphQLError } from "graphql";
 import { inArray } from "drizzle-orm";
-import {
-  db,
-  fileEntries,
-  queuedTasks,
-  taskResults,
-  userDecisionOptions,
-} from "@repo/db";
+import { db, fileEntries, queuedTasks } from "@repo/db";
 import { toFileEntryRef } from "@repo/tools/tools/file/services/dto";
+import { assertTasksVisible } from "../../schema/task/task/task-visibility";
 import { queueEvents } from "../../queue";
 import { createRun } from "../../queue/run-store";
 import type { TaskRow } from "../../queue/types";
@@ -21,6 +16,7 @@ import {
   createDraftTask,
   normalizeOption,
   normalizeResult,
+  snapshotReferences,
   taskSource,
   taskValues,
   type SnapshotRecord,
@@ -173,6 +169,10 @@ export async function startAssistedRun(
   }
 
   snapshot ??= await loadTaskSnapshot(task);
+
+  // The starting snapshot may come from the client, so apply the draft rule to
+  // every task it can branch to before the queue executes it.
+  await assertTasksVisible(userId, snapshotReferences(snapshot));
 
   if (snapshot.task.type === "decision" && snapshot.task.decisionId == null) {
     throw new GraphQLError(

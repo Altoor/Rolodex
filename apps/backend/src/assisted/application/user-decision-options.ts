@@ -9,6 +9,7 @@ import {
   type TaskSnapshot,
 } from "../attempts";
 import { recordTrace } from "../infrastructure/trace";
+import { assertTasksVisible } from "../../schema/task/task/task-visibility";
 
 export interface UserDecisionOptionEdit {
   id?: number | null;
@@ -74,6 +75,13 @@ export async function saveUserDecisionOptions(
     string,
     unknown
   >[];
+
+  await assertTasksVisible(
+    userId,
+    rows.map((row) =>
+      typeof row.resultTaskId === "number" ? row.resultTaskId : null,
+    ),
+  );
 
   // Edits are additive/updating only. Dynamic selectors and yes/no rows are
   // part of the task definition and must never be deleted by a wording save.

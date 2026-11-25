@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { builder, db } from "../../builder";
-import { requireUser, requireUserId } from "../../auth";
+import { requireUserId } from "../../auth";
 import { queuedTasks, runs } from "@repo/db";
 import { QueuedTask } from "./queued-task";
 

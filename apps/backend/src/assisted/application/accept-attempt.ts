@@ -1,12 +1,9 @@
 import { GraphQLError } from "graphql";
-import { and, eq } from "drizzle-orm";
-import { db, queuedTasks, runs, stepAttempts } from "@repo/db";
-import { inheritedForkFields } from "../../queue/joins";
+import { db } from "@repo/db";
 import {
   claimReviewedStep,
   enqueueSteps,
   finishStep,
-  publish,
   releaseReviewedStepClaim,
 } from "../../queue/step-store";
 import {
@@ -29,11 +26,6 @@ import {
 } from "../infrastructure/workspace";
 import { ASSISTED_CONFIDENCE_FLOOR } from "../domain/decision";
 import { recordTrace } from "../infrastructure/trace";
-import {
-  decisionResultLabel,
-  type PendingChoice,
-} from "../../queue/user-choice";
-import { decisionOptionDescription } from "./target-context";
 
 type QueuedStepInsert = typeof QueuedTasksTable.$inferInsert;
 
@@ -156,7 +148,6 @@ export async function acceptAttempt(userId: number, attemptId: number) {
   const nextSteps = nextStepsFromResult(attempt.result);
 
   let result: Record<string, unknown>;
-  let inserted: number[] = [];
   try {
     // Tool attempts commit their trial workspace first. A failed commit leaves
     // the attempt uncommitted so the user can retry or cancel. A retry after a
@@ -206,7 +197,7 @@ export async function acceptAttempt(userId: number, attemptId: number) {
     throw err;
   }
 
-  inserted = nextSteps.length > 0 ? await enqueueSteps(nextSteps) : [];
+  const inserted = nextSteps.length > 0 ? await enqueueSteps(nextSteps) : [];
 
   await recordTrace({
     runId: run.id,
@@ -232,20 +223,4 @@ export async function acceptAttempt(userId: number, attemptId: number) {
   return run.id;
 }
 
-/** Marks a decision attempt accepted without changing its definition. */
-export async function acceptDecision(userId: number, attemptId: number) {
-  return acceptAttempt(userId, attemptId);
-}
-
-
 export { overrideDecision } from "./override-decision";
-
-export async function listRunSteps(runId: string) {
-  return db
-    .select()
-    .from(queuedTasks)
-    .where(eq(queuedTasks.runId, runId))
-    .orderBy(queuedTasks.id);
-}
-
-export { runs };

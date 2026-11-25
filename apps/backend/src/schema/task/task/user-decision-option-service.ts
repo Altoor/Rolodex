@@ -2,6 +2,7 @@ import { GraphQLError } from "graphql";
 import { eq } from "drizzle-orm";
 import { db, userDecisionOptions } from "@repo/db";
 import { validateWhereExpression } from "@repo/tools";
+import { assertTaskVisible } from "./task-visibility";
 
 export type UserDecisionOptionKind = "static" | "dynamic";
 
@@ -70,15 +71,12 @@ function assertKind(kind: string): UserDecisionOptionKind {
 }
 
 export async function createUserDecisionOption(
+  userId: number,
   input: CreateUserDecisionOptionInput,
 ) {
-  const task = await db.query.tasks.findFirst({
-    where: { id: input.taskId },
-  });
-  if (!task) {
-    throw new GraphQLError("Task not found", {
-      extensions: { code: "BAD_USER_INPUT" },
-    });
+  await assertTaskVisible(userId, input.taskId);
+  if (input.resultTaskId != null) {
+    await assertTaskVisible(userId, input.resultTaskId);
   }
 
   assertSelector(input.selector);
@@ -105,6 +103,7 @@ export async function createUserDecisionOption(
 }
 
 export async function updateUserDecisionOption(
+  userId: number,
   input: UpdateUserDecisionOptionInput,
 ) {
   const option = await db.query.userDecisionOptions.findFirst({
@@ -114,6 +113,11 @@ export async function updateUserDecisionOption(
     throw new GraphQLError("UserDecisionOption not found", {
       extensions: { code: "BAD_USER_INPUT" },
     });
+  }
+
+  await assertTaskVisible(userId, option.taskId);
+  if (input.resultTaskId != null) {
+    await assertTaskVisible(userId, input.resultTaskId);
   }
 
   assertSelector(input.selector);
@@ -141,7 +145,10 @@ export async function updateUserDecisionOption(
   return updated;
 }
 
-export async function deleteUserDecisionOption(id: number): Promise<string> {
+export async function deleteUserDecisionOption(
+  userId: number,
+  id: number,
+): Promise<string> {
   const option = await db.query.userDecisionOptions.findFirst({
     where: { id },
   });
@@ -150,6 +157,8 @@ export async function deleteUserDecisionOption(id: number): Promise<string> {
       extensions: { code: "BAD_USER_INPUT" },
     });
   }
+
+  await assertTaskVisible(userId, option.taskId);
 
   await db.delete(userDecisionOptions).where(eq(userDecisionOptions.id, id));
   return "successfully deleted user decision option";

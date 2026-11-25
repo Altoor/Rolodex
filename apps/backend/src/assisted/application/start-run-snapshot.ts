@@ -1,5 +1,4 @@
 import { GraphQLError } from "graphql";
-import { inArray } from "drizzle-orm";
 import { db, tasks } from "@repo/db";
 import type { TaskRow } from "../../queue/types";
 import type { TaskSnapshot } from "../attempts";
@@ -11,8 +10,34 @@ import {
   type SnapshotRecord,
 } from "./snapshot-record";
 import { syncSnapshotChildren } from "./snapshot-children";
+import { assertTasksVisible } from "../../schema/task/task/task-visibility";
 
 export { asBoolean, asNumber, asRecord, asString, type SnapshotRecord };
+
+/**
+ * Task ids a snapshot can branch to. Callers use this to apply the same draft
+ * visibility rule to client-supplied builder snapshots that saved task rows
+ * already get.
+ */
+export function snapshotReferences(snapshot: object): number[] {
+  const source = snapshot as SnapshotRecord;
+  const task = taskSource(source);
+  const results = Array.isArray(source.results)
+    ? (source.results as SnapshotRecord[])
+    : [];
+  const options = Array.isArray(source.userDecisionOptions)
+    ? (source.userDecisionOptions as SnapshotRecord[])
+    : [];
+
+  return [
+    asNumber(task.fallbackTaskId),
+    asNumber(task.onTrueTaskId),
+    asNumber(task.onFalseTaskId),
+    asNumber(task.joinTaskId),
+    ...results.map((row) => asNumber(row.resultTaskId)),
+    ...options.map((row) => asNumber(row.resultTaskId)),
+  ].filter((id): id is number => id != null);
+}
 
 export function taskSource(snapshot: SnapshotRecord): SnapshotRecord {
   const nested = snapshot.task;
@@ -117,6 +142,10 @@ export async function createDraftTask(
   snapshot: SnapshotRecord,
 ): Promise<TaskRow> {
   const source = taskSource(snapshot);
+
+  // A client-supplied builder snapshot must not reference another user's
+  // private draft, even if it is only stored on a hidden task for now.
+  await assertTasksVisible(userId, snapshotReferences(snapshot));
 
   if (source.type === "decision" && !asNumber(source.decisionId)) {
     throw new GraphQLError(

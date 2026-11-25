@@ -1,6 +1,6 @@
 import { GraphQLError } from "graphql";
 import { and, eq } from "drizzle-orm";
-import { db, queuedTasks, runs, stepAttempts } from "@repo/db";
+import { db, queuedTasks, stepAttempts } from "@repo/db";
 import { inheritedForkFields } from "../../queue/joins";
 import {
   claimReviewedStep,

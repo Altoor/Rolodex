@@ -52,24 +52,6 @@ export async function findApiEndpointBySlug(
   return row ?? null;
 }
 
-/** Resolves the owner of an enabled key hash for the standard API surface. */
-export async function findApiKeyOwner(
-  keyHash: string,
-): Promise<{ endpointId: string; userId: number } | null> {
-  const [row] = await db
-    .select({
-      endpointId: apiEndpoints.id,
-      userId: apiEndpoints.userId,
-    })
-    .from(apiEndpoints)
-    .where(
-      and(eq(apiEndpoints.keyHash, keyHash), eq(apiEndpoints.enabled, true)),
-    )
-    .limit(1);
-
-  return row ?? null;
-}
-
 export async function createApiEndpoint(
   userId: number,
   input: ApiEndpointInput,
