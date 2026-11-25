@@ -15,6 +15,7 @@ import { setStateTool } from "../tools/toolState/setState";
 import { ifTool } from "../tools/if/ifTool";
 import { switchTool } from "../tools/switch/switchTool";
 import { displayBlockTool } from "../tools/display/displayBlock";
+import { endFlowTool } from "../tools/end/endFlow";
 import { findFileTool } from "../tools/file/findFile";
 import { findFilesTool } from "../tools/file/findFiles";
 import { findFolderTool } from "../tools/file/findFolder";
@@ -50,6 +51,7 @@ export const tools: Tool[] = [
   ifTool,
   switchTool,
   displayBlockTool,
+  endFlowTool,
   findFileTool,
   findFilesTool,
   findFolderTool,

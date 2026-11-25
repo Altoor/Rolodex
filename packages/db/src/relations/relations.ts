@@ -53,6 +53,33 @@ export const relations = defineRelations(schema, (r) => ({
     traceEvents: r.many.traceEvents(),
   },
 
+  apiEndpoints: {
+    user: r.one.users({
+      from: r.apiEndpoints.userId,
+      to: r.users.id,
+    }),
+    task: r.one.tasks({
+      from: r.apiEndpoints.taskId,
+      to: r.tasks.id,
+    }),
+    requests: r.many.apiRequests(),
+  },
+
+  apiRequests: {
+    endpoint: r.one.apiEndpoints({
+      from: r.apiRequests.endpointId,
+      to: r.apiEndpoints.id,
+    }),
+    user: r.one.users({
+      from: r.apiRequests.userId,
+      to: r.users.id,
+    }),
+    run: r.one.runs({
+      from: r.apiRequests.runId,
+      to: r.runs.id,
+    }),
+  },
+
   queuedTasks: {
     user: r.one.users({
       from: r.queuedTasks.queued_by,

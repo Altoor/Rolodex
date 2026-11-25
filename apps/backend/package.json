@@ -5,6 +5,7 @@
   "private": true,
   "dependencies": {
     "@repo/ai": "workspace:*",
+    "@repo/api": "workspace:*",
     "@repo/db": "workspace:*",
     "@repo/tools": "workspace:*",
     "@repo/trial-workspace": "workspace:*",

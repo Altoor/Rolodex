@@ -9,6 +9,7 @@ export interface BuildToolResultArgs {
   itemCount?: number;
   childQueuedTaskIds: number[];
   note?: string;
+  endFlow?: boolean;
 }
 
 /** Builds the JSON payload stored on `queuedTasks.result`. */
@@ -21,6 +22,7 @@ export function buildToolResult({
   itemCount,
   childQueuedTaskIds,
   note,
+  endFlow,
 }: BuildToolResultArgs): Record<string, unknown> {
   return {
     toolKey,
@@ -29,6 +31,7 @@ export function buildToolResult({
     outputType,
     branch,
     nextTaskId,
+    ...(endFlow ? { endFlow: true } : {}),
     ...(execution.branchLabel
       ? { branchLabel: execution.branchLabel }
       : {}),

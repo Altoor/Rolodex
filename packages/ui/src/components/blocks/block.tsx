@@ -68,7 +68,10 @@ export function Block({
   className,
   showRaw = true,
 }: BlockProps) {
-  if (toolKey === "display_block" && isDisplayOutput(output)) {
+  if (
+    (toolKey === "display_block" || toolKey === "end_flow") &&
+    isDisplayOutput(output)
+  ) {
     return (
       <div className={className}>
         <DisplayOutput output={output} showRaw={false} />

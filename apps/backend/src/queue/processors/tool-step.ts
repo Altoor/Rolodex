@@ -75,8 +75,9 @@ export async function executeToolAttempt(
     const nextState = execution.nextState ?? row.state;
 
     const resolved = resolveToolBranch(task, execution);
-    let nextTaskId = resolved.nextTaskId;
-    let note = resolved.note;
+    const endFlow = execution.endFlow === true;
+    let nextTaskId = endFlow ? null : resolved.nextTaskId;
+    let note = endFlow ? undefined : resolved.note;
     let nextSteps: QueuedStepInsert[] = [];
     const childQueuedTaskIds: number[] = [];
     let itemCount: number | undefined;
@@ -127,6 +128,7 @@ export async function executeToolAttempt(
       itemCount,
       childQueuedTaskIds,
       note,
+      endFlow,
     });
 
     return {

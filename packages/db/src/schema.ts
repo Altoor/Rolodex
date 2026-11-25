@@ -268,6 +268,70 @@ export const runs = pgTable(
   ],
 );
 
+/**
+ * One externally reachable REST hook owned by a user. The slug is random and
+ * unguessable; requests must also present the endpoint's API key.
+ */
+export const apiEndpoints = pgTable(
+  "apiEndpoints",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: integer("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description").notNull().default(""),
+    slug: text("slug").notNull().unique(),
+    taskId: integer("taskId")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    /** SHA-256 of the full API key. The key itself is never stored. */
+    keyHash: text("keyHash").notNull(),
+    keyPrefix: text("keyPrefix").notNull(),
+    keyLastFour: text("keyLastFour").notNull(),
+    /** Optional field in the request body used as the task state. */
+    stateField: text("stateField"),
+    enabled: boolean("enabled").default(true).notNull(),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updatedAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [index("api_endpoints_user_idx").on(table.userId)],
+);
+
+/**
+ * One accepted invocation of an API endpoint. It maps the public request id to
+ * the standard run that executes the endpoint's task.
+ */
+export const apiRequests = pgTable(
+  "apiRequests",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    endpointId: uuid("endpointId")
+      .notNull()
+      .references(() => apiEndpoints.id, { onDelete: "cascade" }),
+    userId: integer("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    runId: uuid("runId")
+      .notNull()
+      .unique()
+      .references(() => runs.id, { onDelete: "cascade" }),
+    /** Snapshot of the state that was queued. */
+    state: text("state").notNull(),
+    createdAt: timestamp("createdAt", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("api_requests_endpoint_idx").on(table.endpointId),
+    index("api_requests_user_idx").on(table.userId),
+  ],
+);
+
 export const attemptKind = pgEnum("attemptKind", [
   "initial",
   "revision",

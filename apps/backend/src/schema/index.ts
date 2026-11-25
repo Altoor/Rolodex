@@ -9,5 +9,6 @@ import "./llmModel/index";
 import "./file/index";
 import "./appSettings/index";
 import "./assisted/index";
+import "./api/index";
 
 export const schema = builder.toSchema();
