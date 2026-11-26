@@ -1,0 +1,100 @@
+# Published-image stack for Unraid + Compose Manager Plus.
+#
+# 1. Publish images with .github/workflows/publish-images.yml.
+# 2. Copy unraid.env.example to .env beside this file and fill it in.
+# 3. Create $ROLODEX_DATA_DIR and make pgdata writable by Postgres:
+#      mkdir -p /mnt/user/appdata/rolodex/{pgdata,files,ollama}
+#      chown -R 999:999 /mnt/user/appdata/rolodex/pgdata
+# 4. With Tailscale Serve, keep ROLODEX_BIND_ADDR=127.0.0.1 and run:
+#      tailscale serve --bg --https=443  http://127.0.0.1:3001
+#      tailscale serve --bg --https=8443 http://127.0.0.1:4000
+#    For direct tailnet port access, set ROLODEX_BIND_ADDR=0.0.0.0 and use
+#    http:// origins in .env instead.
+name: rolodex
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg18
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rolo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-rolo}
+    volumes:
+      - ${ROLODEX_DATA_DIR:-./data}/pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # Runs once per stack start. Makes a fresh database ready for the vector
+  # columns the backend creates, and is harmless on an existing database.
+  postgres-init:
+    image: pgvector/pgvector:pg18
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rolo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-rolo}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        PGPASSWORD="$$POSTGRES_PASSWORD"
+        psql -h postgres -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"
+        -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+    restart: "no"
+
+  backend:
+    image: ${ROLODEX_IMAGE_PREFIX:-ghcr.io/altoor}/rolodex-backend:${ROLODEX_TAG:-latest}
+    env_file: [.env]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-rolo}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-rolo}
+      TOKEN_SECRET: ${TOKEN_SECRET:?set TOKEN_SECRET in .env}
+      FILES_ROOT: /app/files
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+    ports:
+      - "${ROLODEX_BIND_ADDR:-127.0.0.1}:4000:4000"
+    volumes:
+      - ${ROLODEX_DATA_DIR:-./data}/files:/app/files
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  web:
+    image: ${ROLODEX_IMAGE_PREFIX:-ghcr.io/altoor}/rolodex-web:${ROLODEX_TAG:-latest}
+    environment:
+      PORT: 3001
+      API_PUBLIC_ORIGIN: ${API_PUBLIC_ORIGIN:-}
+    ports:
+      - "${ROLODEX_BIND_ADDR:-127.0.0.1}:3001:3001"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # Optional bundled Ollama. Enabled by COMPOSE_PROFILES=ollama in .env.
+  # Remove that line (and point OLLAMA_BASE_URL at your own server) to skip it.
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ollama"]
+    volumes:
+      - ${ROLODEX_DATA_DIR:-./data}/ollama:/root/.ollama
+    environment:
+      OLLAMA_KEEP_ALIVE: 30m
+      OLLAMA_NUM_PARALLEL: 2
+      OLLAMA_CONTEXT_LENGTH: 64000
+    # Unraid NVIDIA GPU (install the Nvidia Driver plugin first):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    restart: unless-stopped

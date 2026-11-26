@@ -365,6 +365,89 @@ with `WHISPER_COMPUTE_TYPE=float16`. The model cache lives in the
 `whisper_data` volume. The Ollama service keeps the WSL2 `/dev/dxg` passthrough
 from the original `compose.yml`; remove those entries on a native Linux host.
 
+## Unraid (published images)
+
+`.github/workflows/publish-images.yml` publishes two `linux/amd64` images to the
+GitHub Container Registry on every push to `main`, on `v*` tags, and on manual
+dispatch:
+
+- `ghcr.io/<owner>/rolodex-backend`
+- `ghcr.io/<owner>/rolodex-web`
+
+Builds are tagged with the commit (`sha-…`), the git/semver tag when present,
+and `latest` on the default branch. `compose.unraid.yml` pulls these images, so
+the Unraid host only needs Docker and Compose Manager Plus, not this repository
+or a build toolchain.
+
+1. **Publish the images.** Merge to `main`, or open **Actions → Publish images →
+   Run workflow** and pick a branch. The manual run publishes `sha-…` tags only
+   outside the default branch.
+
+2. **Let Unraid pull the images.** GHCR packages are private by default. Either
+   set both packages to public in their GitHub package settings, or create a
+   classic PAT with `read:packages` and log in:
+
+   ```sh
+   echo "$GHCR_TOKEN" | docker login ghcr.io -u YOUR_GITHUB_USER --password-stdin
+   ```
+
+   `/root` on Unraid is temporary, so repeat the login after a reboot, or make
+   the packages public.
+
+3. **Create the stack.** In Compose Manager Plus, create a stack and put
+   `compose.unraid.yml` in its project directory (any standard compose filename
+   works), with `unraid.env.example` copied to `.env` beside it. Fill in the
+   secrets and set `ROLODEX_IMAGE_PREFIX=ghcr.io/<owner>`. Use hex values for
+   `POSTGRES_PASSWORD` (`openssl rand -hex 16`) and `TOKEN_SECRET`
+   (`openssl rand -hex 32`).
+
+4. **Create the data directories.** Postgres runs as UID/GID `999`:
+
+   ```sh
+   mkdir -p /mnt/user/appdata/rolodex/{pgdata,files,ollama}
+   chown -R 999:999 /mnt/user/appdata/rolodex/pgdata
+   ```
+
+5. **Expose it on the tailnet only.** Keep `ROLODEX_BIND_ADDR=127.0.0.1` and
+   start the stack. Enable HTTPS certificates for the tailnet in the Tailscale
+   admin console, then publish both ports with Tailscale Serve:
+
+   ```sh
+   tailscale serve --bg --https=443  http://127.0.0.1:3001
+   tailscale serve --bg --https=8443 http://127.0.0.1:4000
+   ```
+
+   Set `API_PUBLIC_ORIGIN=https://<host>.<tailnet>.ts.net:8443` and
+   `API_CORS_ORIGINS=https://<host>.<tailnet>.ts.net`, then open
+   `https://<host>.<tailnet>.ts.net/` from a tailnet device.
+
+For direct tailnet access without Serve, set `ROLODEX_BIND_ADDR=0.0.0.0` and use
+`http://<host>:3001` and `http://<host>:4000` in the two API-origin variables.
+Do not port-forward either port on the router.
+
+The bundled Ollama container is behind the `ollama` Compose profile. The example
+`.env` enables it with `COMPOSE_PROFILES=ollama`; remove that line to skip it and
+point `OLLAMA_BASE_URL` at an existing Ollama server instead.
+
+### Updating
+
+```sh
+docker compose pull
+docker compose up -d
+```
+
+`latest` follows `main`. Pin `ROLODEX_TAG=sha-…` or a version tag for
+reproducible deployments; changing the tag is also the rollback path. The
+backend applies schema changes with `drizzle-kit push --force` on startup, so
+take a Postgres backup before updating:
+
+```sh
+docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > rolodex-backup.sql
+```
+
+Changing `API_PUBLIC_ORIGIN` only needs the web container recreated; the web
+bundle itself is deployment-agnostic.
+
 ## What's inside?
 
 This Turborepo includes the following packages/apps:

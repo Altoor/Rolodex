@@ -1,8 +1,11 @@
 FROM node:24-bookworm-slim AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable
 WORKDIR /app
+COPY package.json ./
+# Install the pnpm version pinned in package.json so the final images do not
+# download anything from the network on every container start.
+RUN npm install -g "$(node -p 'require("./package.json").packageManager')"
 
 FROM base AS deps
 COPY . .
