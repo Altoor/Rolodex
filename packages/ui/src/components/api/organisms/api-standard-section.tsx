@@ -11,15 +11,8 @@ import {
 import { Button } from "#components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "#components/ui/card";
 import { Spinner } from "#components/ui/spinner";
+import { useApiOrigin } from "#lib/apiOriginContext";
 import { formatApiDate, standardApiUrl } from "../lib/api-utils";
-
-const listExample = `curl '${standardApiUrl("/todos")}?done=false&limit=25' \\
-  -H 'Authorization: Bearer <api-key>'`;
-
-const updateExample = `curl -X PATCH '${standardApiUrl("/todos/42")}' \\
-  -H 'Authorization: Bearer <api-key>' \\
-  -H 'Content-Type: application/json' \\
-  -d '{"done":true}'`;
 
 const listResponse = `{
   "items": [
@@ -78,6 +71,16 @@ export function ApiStandardSection({
   onRotate,
   onRetry,
 }: ApiStandardSectionProps) {
+  // Resolve the origin during render so API_PUBLIC_ORIGIN can change at
+  // runtime without rebuilding the web bundle.
+  const apiOrigin = useApiOrigin();
+  const listExample = `curl '${standardApiUrl(apiOrigin, "/todos")}?done=false&limit=25' \\
+  -H 'Authorization: Bearer <api-key>'`;
+  const updateExample = `curl -X PATCH '${standardApiUrl(apiOrigin, "/todos/42")}' \\
+  -H 'Authorization: Bearer <api-key>' \\
+  -H 'Content-Type: application/json' \\
+  -d '{"done":true}'`;
+
   return (
     <Card>
       <CardHeader>
@@ -123,10 +126,10 @@ export function ApiStandardSection({
         ) : null}
 
         <p className="text-xs text-muted-foreground">
-          These routes act on your own data. Use the standard key above; endpoint
-          keys are scoped to their single hook and are rejected here. Send it as{" "}
-          <code className="font-mono">Authorization: Bearer …</code> or{" "}
-          <code className="font-mono">X-API-Key</code>. Query-string keys are
+          These routes act on your own data. Use the standard key above;
+          endpoint keys are scoped to their single hook and are rejected here.
+          Send it as <code className="font-mono">Authorization: Bearer …</code>{" "}
+          or <code className="font-mono">X-API-Key</code>. Query-string keys are
           accepted only for WebSocket upgrades.
         </p>
 

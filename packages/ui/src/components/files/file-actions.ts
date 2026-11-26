@@ -8,7 +8,8 @@ import {
   UPDATE_FILE_ENTRY,
   WRITE_FILE_TEXT,
 } from "@repo/queries/files/file-mutations";
-import { authHeaders, FILE_API_ORIGIN } from "./file-api";
+import { useApiOrigin } from "#lib/apiOriginContext";
+import { authHeaders } from "./file-api";
 import { toFileEntry, type FileEntry } from "./types";
 
 export interface CreateEntryOptions {
@@ -51,6 +52,7 @@ function requireEntry(
 
 /** Streams one file to the backend without buffering it in memory. */
 export async function uploadFileToServer(
+  apiOrigin: string,
   file: File,
   parentId: number | null,
 ): Promise<FileEntry> {
@@ -58,7 +60,7 @@ export async function uploadFileToServer(
   if (parentId !== null) params.set("parentId", String(parentId));
 
   const response = await fetch(
-    `${FILE_API_ORIGIN}/files/upload?${params.toString()}`,
+    `${apiOrigin}/files/upload?${params.toString()}`,
     {
       method: "POST",
       headers: {
@@ -85,11 +87,12 @@ export async function uploadFileToServer(
  * later file fails, so the page can refresh and show what did land on disk.
  */
 export async function uploadFilesToServer(
+  apiOrigin: string,
   files: File[],
   parentId: number | null,
 ): Promise<FileEntry[]> {
   const results = await Promise.allSettled(
-    files.map((file) => uploadFileToServer(file, parentId)),
+    files.map((file) => uploadFileToServer(apiOrigin, file, parentId)),
   );
 
   const uploaded = results.flatMap((result) =>
@@ -116,6 +119,7 @@ export async function uploadFilesToServer(
 }
 
 export function useFileActions() {
+  const apiOrigin = useApiOrigin();
   const [createEntryMutation] = useMutation(CREATE_FILE_ENTRY);
   const [updateEntryMutation] = useMutation(UPDATE_FILE_ENTRY);
   const [deleteEntryMutation] = useMutation(DELETE_FILE_ENTRY);
@@ -174,6 +178,7 @@ export function useFileActions() {
     updateEntry,
     deleteEntry,
     saveText,
-    uploadFiles: uploadFilesToServer,
+    uploadFiles: (files: File[], parentId: number | null) =>
+      uploadFilesToServer(apiOrigin, files, parentId),
   };
 }

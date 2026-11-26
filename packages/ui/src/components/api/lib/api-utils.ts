@@ -2,7 +2,6 @@ import type {
   ApiEndpointsQuery,
   ApiRequestsQuery,
 } from "@repo/queries/__generated__/graphql";
-import { API_ORIGIN } from "#lib/apiOrigin";
 
 export type ApiEndpoint = NonNullable<
   NonNullable<ApiEndpointsQuery["apiEndpoints"]>[number]
@@ -22,21 +21,21 @@ export interface RevealedKey {
   endpointName: string;
 }
 
-export function invokeUrl(slug: string | null): string {
-  return `${API_ORIGIN}/api/hooks/${slug ?? "<slug>"}`;
+export function invokeUrl(apiOrigin: string, slug: string | null): string {
+  return `${apiOrigin}/api/hooks/${slug ?? "<slug>"}`;
 }
 
-export function statusUrl(slug: string | null): string {
-  return `${invokeUrl(slug)}/requests/{requestId}`;
+export function statusUrl(apiOrigin: string, slug: string | null): string {
+  return `${invokeUrl(apiOrigin, slug)}/requests/{requestId}`;
 }
 
-export function websocketUrl(slug: string | null): string {
-  return `${invokeUrl(slug).replace(/^http/, "ws")}/ws`;
+export function websocketUrl(apiOrigin: string, slug: string | null): string {
+  return `${invokeUrl(apiOrigin, slug).replace(/^http/, "ws")}/ws`;
 }
 
 /** Base URL for the standard, user-scoped API namespace. */
-export function standardApiUrl(path: string): string {
-  return `${API_ORIGIN}/api/v1${path}`;
+export function standardApiUrl(apiOrigin: string, path: string): string {
+  return `${apiOrigin}/api/v1${path}`;
 }
 
 export function formatApiDate(value: unknown): string {

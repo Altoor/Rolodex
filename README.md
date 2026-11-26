@@ -299,26 +299,27 @@ with preview and download actions. `display_block` can force this with
 ## API origin
 
 File uploads, downloads, media previews, and GraphQL all use one backend
-origin. Set `NEXT_PUBLIC_API_ORIGIN` when the API is not reachable at
+origin. Set `API_PUBLIC_ORIGIN` when the API is not reachable at
 `http://<web-host>:4000`, for example:
 
 ```sh
 # apps/web/.env.local
-NEXT_PUBLIC_API_ORIGIN=http://localhost:5454
+API_PUBLIC_ORIGIN=http://localhost:5454
 ```
 
-Trailing slashes are ignored. `NEXT_PUBLIC_*` values are inlined when the web
-app is built, so rebuild after changing it (`pnpm build`, or
-`docker compose -f compose.app.yml up --build`). With Docker, set
-`NEXT_PUBLIC_API_ORIGIN` in `.env`; the compose files pass it to the web build.
-Turbo lists it in `globalEnv`, so a change also invalidates cached builds.
+The web server reads this at runtime, injects it into the page, and the browser
+uses it for every backend request. Changing the public URL only requires
+restarting the web process or container; the web bundle does not bake the
+origin in at build time. Trailing slashes are ignored. With Docker, set
+`API_PUBLIC_ORIGIN` in `.env`; the compose files pass it to both the web and
+backend containers.
 
 Without the variable the browser keeps the API on port 4000 on the same host
 as the web app. When the web app is served on port 80 or 443, it instead uses
 its own origin, which suits a reverse proxy in front of both apps. Server
 rendering falls back to `http://localhost:4000`.
 
-The outward REST API has its own settings:
+The same value also configures the outward REST API:
 
 - `API_PUBLIC_ORIGIN` sets the base URL returned in `statusUrl` and
   `websocketUrl`, so a spoofed `Host` cannot change those links.

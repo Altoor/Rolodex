@@ -3,17 +3,26 @@
 import { usePathname } from "next/navigation";
 import HeaderMenu from "@repo/ui/components/headerMenu/headerMenu";
 import { AuthProvider } from "@repo/ui/components/auth/auth-provider";
+import { ApiOriginProvider } from "@repo/ui/lib/apiOriginContext";
 import GraphQlProvider from "./GraphQlProvider";
 
-export default function App({ children }: { children: React.ReactNode }) {
+interface AppProps {
+  /** Runtime API_PUBLIC_ORIGIN from the root layout. */
+  apiOrigin: string;
+  children: React.ReactNode;
+}
+
+export default function App({ apiOrigin, children }: AppProps) {
   const pathname = usePathname();
 
   return (
-    <GraphQlProvider>
-      <AuthProvider>
-        <HeaderMenu currentPath={pathname} />
-        <main className="w-full">{children}</main>
-      </AuthProvider>
-    </GraphQlProvider>
+    <ApiOriginProvider apiOrigin={apiOrigin}>
+      <GraphQlProvider>
+        <AuthProvider>
+          <HeaderMenu currentPath={pathname} />
+          <main className="w-full">{children}</main>
+        </AuthProvider>
+      </GraphQlProvider>
+    </ApiOriginProvider>
   );
 }
