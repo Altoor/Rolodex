@@ -119,6 +119,7 @@ const definition: ToolDefinition = {
 /** Reads an explicit destination parent, ignoring embedded source entries. */
 async function resolveDestinationParent(
   input: Record<string, unknown>,
+  viewerId: number,
 ): Promise<FileEntryRow | null> {
   if (hasInputKey(input, "parentId")) {
     const value = input.parentId;
@@ -128,7 +129,7 @@ async function resolveDestinationParent(
     if (id === undefined) {
       throw new ToolInputError('"parentId" must be a number or null');
     }
-    return resolveParentFolderById(id);
+    return resolveParentFolderById(id, viewerId);
   }
 
   if (hasInputKey(input, "parentPath")) {
@@ -137,7 +138,7 @@ async function resolveDestinationParent(
     if (typeof value !== "string") {
       throw new ToolInputError('"parentPath" must be a string or null');
     }
-    return resolveParentFolderByPath(value);
+    return resolveParentFolderByPath(value, viewerId);
   }
 
   return null;
@@ -197,16 +198,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 async function resolveSource(
   value: unknown,
   index: number,
+  viewerId: number,
 ): Promise<FileEntryRow> {
   if (typeof value === "number" && Number.isFinite(value)) {
-    const row = await getFileEntryById(value);
+    const row = await getFileEntryById(value, { viewerId });
     if (!row) throw new ToolInputError(`file entry ${value} not found`);
     return row;
   }
 
   if (typeof value === "string" && value.trim()) {
     const relativePath = normalizeRelativePath(value);
-    const row = await getFileEntryByPath(relativePath);
+    const row = await getFileEntryByPath(relativePath, { viewerId });
     if (!row) {
       throw new ToolInputError(`file entry "${relativePath}" not found`);
     }
@@ -216,7 +218,7 @@ async function resolveSource(
   if (isRecord(value)) {
     const id = value.id ?? value.fileId ?? value.folderId ?? value.entryId;
     if (typeof id === "number" && Number.isFinite(id)) {
-      const row = await getFileEntryById(id);
+      const row = await getFileEntryById(id, { viewerId });
       if (!row) throw new ToolInputError(`file entry ${id} not found`);
       return row;
     }
@@ -224,7 +226,7 @@ async function resolveSource(
     const path = value.path ?? value.relativePath;
     if (typeof path === "string" && path.trim()) {
       const relativePath = normalizeRelativePath(path);
-      const row = await getFileEntryByPath(relativePath);
+      const row = await getFileEntryByPath(relativePath, { viewerId });
       if (!row) {
         throw new ToolInputError(`file entry "${relativePath}" not found`);
       }
@@ -267,7 +269,7 @@ export const moveFilesTool: Tool = {
 
       const byId = new Map<number, FileEntryRow>();
       for (const [index, value] of sourceValues.entries()) {
-        const row = await resolveSource(value, index);
+        const row = await resolveSource(value, index, context.userId);
         byId.set(row.id, row);
       }
       const sources = [...byId.values()];
@@ -289,7 +291,7 @@ export const moveFilesTool: Tool = {
         }
       }
 
-      const parent = await resolveDestinationParent(input);
+      const parent = await resolveDestinationParent(input, context.userId);
       const folderName = readString(input, "folderName");
       const destinationPath =
         folderName !== undefined
@@ -324,7 +326,9 @@ export const moveFilesTool: Tool = {
           }
           plannedTargets.add(targetPath);
 
-          const existing = await getFileEntryByPath(targetPath);
+          const existing = await getFileEntryByPath(targetPath, {
+            viewerId: context.userId,
+          });
           if (existing && existing.id !== source.id) {
             throw new ToolInputError(`"${targetPath}" already exists`);
           }
@@ -345,6 +349,7 @@ export const moveFilesTool: Tool = {
               name: folderName,
               description: readString(input, "folderDescription") ?? "",
               reuseExisting: true,
+              viewerId: context.userId,
             })
           : parent;
 

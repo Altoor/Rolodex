@@ -87,7 +87,10 @@ export const updateFileMetadataTool: Tool = {
           throw new ToolInputError('"parentId" must be a number or null');
         }
 
-        const parent = await resolveParentFolderById(value as number | null);
+        const parent = await resolveParentFolderById(
+          value as number | null,
+          context.userId,
+        );
         parentId = parent?.id ?? null;
         parentPath = parent?.relativePath ?? "";
       }
@@ -103,7 +106,9 @@ export const updateFileMetadataTool: Tool = {
       }
 
       if (newPath !== row.relativePath) {
-        const destination = await getFileEntryByPath(newPath);
+        const destination = await getFileEntryByPath(newPath, {
+          viewerId: context.userId,
+        });
         if (destination && destination.id !== row.id) {
           throw new ToolInputError(`"${newPath}" already exists`);
         }

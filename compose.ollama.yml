@@ -57,7 +57,7 @@ services:
     ports:
       - "4000:4000"
     volumes:
-      - ./files:/app/files
+      - ${ROLODEX_FILES_DIR:-./files}:/app/files
     depends_on:
       postgres:
         condition: service_healthy

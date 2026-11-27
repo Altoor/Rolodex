@@ -3,6 +3,7 @@ import { db, todos } from "@repo/db";
 import { mergeToolInput, readBoolean, readString } from "../../utils";
 import { ToolInputError, type Tool, type ToolDefinition } from "../../model";
 import { parseTodoDateTimeLenient, todoDateWarning } from "./services/date";
+import { canManageTodo } from "./services/permissions";
 import {
   resolveTodoId,
   saveTodoWithEmbedding,
@@ -95,6 +96,18 @@ export const updateTodoTool: Tool = {
       );
       console.warn(`[update_todo] ${warning}`);
       warnings.push(warning);
+    }
+
+    // An actor may only toggle done. Everything else belongs to the author.
+    if (
+      !canManageTodo(todo, context.userId) &&
+      (name !== undefined ||
+        description !== undefined ||
+        doByDate !== undefined)
+    ) {
+      throw new ToolInputError(
+        "only the todo's author can change its name, description, or due date; an actor may only mark it done",
+      );
     }
 
     if (

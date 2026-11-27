@@ -1,15 +1,13 @@
 import { GraphQLError } from "graphql";
-import { inArray } from "drizzle-orm";
+import { and, inArray, isNull } from "drizzle-orm";
 import { db, fileEntries, queuedTasks } from "@repo/db";
+import { accessibleFileEntryCondition } from "@repo/tools/tools/file/services/access";
 import { toFileEntryRef } from "@repo/tools/tools/file/services/dto";
 import { assertTasksVisible } from "../../schema/task/task/task-visibility";
 import { queueEvents } from "../../queue";
 import { createRun } from "../../queue/run-store";
 import type { TaskRow } from "../../queue/types";
-import {
-  loadTaskSnapshot,
-  type TaskSnapshot,
-} from "../attempts";
+import { loadTaskSnapshot, type TaskSnapshot } from "../attempts";
 import {
   asRecord,
   asString,
@@ -99,16 +97,25 @@ async function buildSnapshotFromDraft(
 }
 
 async function loadAttachments(
+  userId: number,
   ids: number[] | null | undefined,
   kind: "file" | "folder",
 ): Promise<Record<string, unknown>[]> {
   const unique = [...new Set((ids ?? []).filter((id) => id > 0))];
   if (unique.length === 0) return [];
 
+  // Never attach entries the caller cannot see, including private folders
+  // owned by someone else and internal trial paths.
   const rows = await db
     .select()
     .from(fileEntries)
-    .where(inArray(fileEntries.id, unique));
+    .where(
+      and(
+        inArray(fileEntries.id, unique),
+        isNull(fileEntries.deletedAt),
+        accessibleFileEntryCondition(userId),
+      ),
+    );
 
   const wrong = rows.filter((row) => row.kind !== kind);
   if (wrong.length > 0) {
@@ -182,8 +189,8 @@ export async function startAssistedRun(
   }
 
   const [files, folders] = await Promise.all([
-    loadAttachments(input.fileIds, "file"),
-    loadAttachments(input.folderIds, "folder"),
+    loadAttachments(userId, input.fileIds, "file"),
+    loadAttachments(userId, input.folderIds, "folder"),
   ]);
 
   const toolState: Record<string, unknown>[] = [];

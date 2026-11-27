@@ -14,8 +14,29 @@ npx create-turbo@latest -e with-tailwind
 
 Files live in a shared `files/` directory at the repository root. Set
 `FILES_ROOT` to an absolute path to use a different location; the backend
-creates it on startup. Uploads and tool-created entries are indexed in the
+creates it on startup. In Docker the backend always uses `/app/files`; point
+the host side at another folder or volume with `ROLODEX_FILES_DIR` (for Unraid,
+see `unraid.env.example`). Uploads and tool-created entries are indexed in the
 `fileEntries` table, and the web app at `/files` browses that index.
+
+### Private and root folders
+
+A folder can be marked **Private** by its owner from the file metadata editor.
+Only that user can see the folder or anything below it through GraphQL, file
+tools, downloads, uploads, or live updates. Other users' task flows cannot
+search or resolve it. Privacy is inherited through the path, so moving a folder
+into or out of a private tree updates its descendants automatically.
+
+A folder can also be marked **Root**. There is at most one root folder: marking
+a folder as Root clears the previous root. When a root exists, `find_file`,
+`find_files`, `find_folder`, and `find_folders` treat it as the workspace root
+and only search inside its subtree. With no root folder they search the whole
+accessible tree. Explicit ids and paths in tool state still work, subject to the
+private-folder check.
+
+`create_file` and `create_folder` use the same root folder as their default
+destination. With a root they create inside it; with no root they use the
+files-tree root.
 
 ### Indexing
 
@@ -67,6 +88,8 @@ subscription drops.
   returned without absolute paths.
 - Browser auth tokens expire after 7 days by default
   (`AUTH_TOKEN_TTL_SECONDS`).
+- Private folders and their descendants are filtered from GraphQL, search,
+  scans, downloads, uploads, and live updates for every other user.
 
 ## Assisted runs
 
@@ -308,11 +331,17 @@ API_PUBLIC_ORIGIN=http://localhost:5454
 ```
 
 The web server reads this at runtime, injects it into the page, and the browser
-uses it for every backend request. Changing the public URL only requires
-restarting the web process or container; the web bundle does not bake the
-origin in at build time. Trailing slashes are ignored. With Docker, set
-`API_PUBLIC_ORIGIN` in `.env`; the compose files pass it to both the web and
-backend containers.
+uses it for every backend request. The web bundle does not bake the origin in at
+build time, so changing the public URL does not require rebuilding. Recreate
+**both** the web and backend containers, because the backend also uses the value
+for outward REST `statusUrl` and `websocketUrl` links. Trailing slashes are
+ignored. With Docker, set `API_PUBLIC_ORIGIN` in `.env`; the compose files pass
+it to both the web and backend containers.
+
+> Migrating from an older checkout: rename `NEXT_PUBLIC_API_ORIGIN` to
+> `API_PUBLIC_ORIGIN`. The old `NEXT_PUBLIC_*` variable is no longer read, so a
+> split-origin deployment that keeps only the old name will silently fall back
+> to the browser-derived origin.
 
 Without the variable the browser keeps the API on port 4000 on the same host
 as the web app. When the web app is served on port 80 or 443, it instead uses
@@ -332,7 +361,8 @@ See `packages/api/README.md` for authentication, limits and operational notes.
 
 Four standalone compose files are available. All of them include PostgreSQL,
 the backend, and the web app; the backend applies schema changes with
-`drizzle-kit push --force` on startup.
+`drizzle-kit push --force` on startup. In a local checkout, run
+`pnpm --filter backend push` after pulling a schema change.
 
 ```sh
 # Frontend + backend (+ PostgreSQL)
@@ -349,9 +379,11 @@ docker compose -f compose.full.yml up --build
 ```
 
 The web app is served at `http://localhost:3001` and the API at
-`http://localhost:4000`. The shared `files/` directory is mounted into the
-backend. Compose reads `.env`; `TOKEN_SECRET` is required. Database URLs inside
-the containers use the `postgres` service hostname.
+`http://localhost:4000`. The files workspace is mounted into the backend at
+`/app/files` from `${ROLODEX_FILES_DIR:-./files}`; set `ROLODEX_FILES_DIR` in
+`.env` to keep the workspace on another disk or share. Compose reads `.env`;
+`TOKEN_SECRET` is required. Database URLs inside the containers use the
+`postgres` service hostname.
 
 The bundled Whisper service is [Speaches](https://github.com/speaches-ai/speaches)
 (`ghcr.io/speaches-ai/speaches:latest-cpu`), an OpenAI-compatible
@@ -394,19 +426,27 @@ or a build toolchain.
    `/root` on Unraid is temporary, so repeat the login after a reboot, or make
    the packages public.
 
-3. **Create the stack.** In Compose Manager Plus, create a stack and put
-   `compose.unraid.yml` in its project directory (any standard compose filename
-   works), with `unraid.env.example` copied to `.env` beside it. Fill in the
-   secrets and set `ROLODEX_IMAGE_PREFIX=ghcr.io/<owner>`. Use hex values for
-   `POSTGRES_PASSWORD` (`openssl rand -hex 16`) and `TOKEN_SECRET`
+3. **Create the stack.** In Compose Manager Plus, create a stack and paste the
+   contents of `compose.unraid.yml` into the stack's `compose.yml` (or rename it
+   to a standard name: `compose.yaml`, `compose.yml`, `docker-compose.yaml`, or
+   `docker-compose.yml`). Compose Manager Plus does not auto-discover
+   `compose.unraid.yml`. Copy `unraid.env.example` to `.env` beside it, fill in
+   the secrets, and set `ROLODEX_IMAGE_PREFIX=ghcr.io/<owner>`. Use hex values
+   for `POSTGRES_PASSWORD` (`openssl rand -hex 16`) and `TOKEN_SECRET`
    (`openssl rand -hex 32`).
 
 4. **Create the data directories.** Postgres runs as UID/GID `999`:
 
    ```sh
-   mkdir -p /mnt/user/appdata/rolodex/{pgdata,files,ollama}
+   mkdir -p /mnt/user/appdata/rolodex/{pgdata,ollama}
+   mkdir -p /mnt/user/files/rolodex
    chown -R 999:999 /mnt/user/appdata/rolodex/pgdata
    ```
+
+   `ROLODEX_DATA_DIR` holds Postgres and Ollama data; `ROLODEX_FILES_DIR` is the
+   files workspace and can point at any array/cache share. Both are required, so
+   a missing value fails the stack instead of writing to the USB flash under
+   `/boot`.
 
 5. **Expose it on the tailnet only.** Keep `ROLODEX_BIND_ADDR=127.0.0.1` and
    start the stack. Enable HTTPS certificates for the tailnet in the Tailscale
@@ -421,8 +461,13 @@ or a build toolchain.
    `API_CORS_ORIGINS=https://<host>.<tailnet>.ts.net`, then open
    `https://<host>.<tailnet>.ts.net/` from a tailnet device.
 
-For direct tailnet access without Serve, set `ROLODEX_BIND_ADDR=0.0.0.0` and use
-`http://<host>:3001` and `http://<host>:4000` in the two API-origin variables.
+For direct tailnet access without Serve, set `ROLODEX_BIND_ADDR=0.0.0.0` and:
+
+```sh
+API_PUBLIC_ORIGIN=http://<host>:4000
+API_CORS_ORIGINS=http://<host>:3001
+```
+
 Do not port-forward either port on the router.
 
 The bundled Ollama container is behind the `ollama` Compose profile. The example
@@ -445,8 +490,11 @@ take a Postgres backup before updating:
 docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > rolodex-backup.sql
 ```
 
-Changing `API_PUBLIC_ORIGIN` only needs the web container recreated; the web
-bundle itself is deployment-agnostic.
+Changing `API_PUBLIC_ORIGIN` needs both the web and backend containers
+recreated (the backend uses it for outward REST links); the web bundle itself is
+deployment-agnostic. The web service waits for the backend health endpoint, which
+only answers after the startup `drizzle-kit push` has finished, so the first page
+load cannot race the schema update.
 
 ## What's inside?
 

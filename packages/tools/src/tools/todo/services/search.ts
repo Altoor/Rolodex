@@ -38,6 +38,8 @@ export interface TodoCandidate {
   doByDate: string | null;
   createdAt: string | null;
   archivedAt: string | null;
+  authorId: number;
+  actorId: number;
   score: number;
 }
 
@@ -122,6 +124,8 @@ export async function findTodoMatches(
         doByDate: todo.doByDate?.toISOString() ?? null,
         createdAt: todo.createdAt?.toISOString() ?? null,
         archivedAt: todo.archivedAt?.toISOString() ?? null,
+        authorId: todo.authorId,
+        actorId: todo.actorId,
         score: 1,
       },
       candidates: [],
@@ -165,6 +169,8 @@ export async function findTodoMatches(
         doByDate: todos.doByDate,
         createdAt: todos.createdAt,
         archivedAt: todos.archivedAt,
+        authorId: todos.authorId,
+        actorId: todos.actorId,
         distance,
       })
       .from(todos)
@@ -187,6 +193,8 @@ export async function findTodoMatches(
         doByDate: row.doByDate?.toISOString() ?? null,
         createdAt: row.createdAt?.toISOString() ?? null,
         archivedAt: row.archivedAt?.toISOString() ?? null,
+        authorId: row.authorId,
+        actorId: row.actorId,
         score: 1 - Number(row.distance),
       }))
       .filter((row) => passesMinimumScore(row.score, minimumScore));
@@ -203,6 +211,8 @@ export async function findTodoMatches(
         doByDate: todos.doByDate,
         createdAt: todos.createdAt,
         archivedAt: todos.archivedAt,
+        authorId: todos.authorId,
+        actorId: todos.actorId,
       })
       .from(todos)
       .where(
@@ -251,6 +261,8 @@ export async function findTodoMatches(
         doByDate: selected.doByDate?.toISOString() ?? null,
         createdAt: selected.createdAt?.toISOString() ?? null,
         archivedAt: selected.archivedAt?.toISOString() ?? null,
+        authorId: selected.authorId,
+        actorId: selected.actorId,
         score: 1,
       },
     ];

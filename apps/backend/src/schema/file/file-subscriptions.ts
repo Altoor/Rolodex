@@ -1,5 +1,6 @@
 import { builder } from "../builder";
 import { GraphQLError } from "graphql/error";
+import { isPathAccessibleToViewer } from "@repo/tools/tools/file/services/access";
 import {
   fileEvents,
   type FileEntryEventPayload,
@@ -34,6 +35,16 @@ builder.subscriptionType({
           const event = await new Promise<FileEntryEventPayload>((resolve) =>
             fileEvents.once("fileEntry", resolve),
           );
+
+          // Private folders and their descendants are not announced to other
+          // users, because the event path itself would leak their existence.
+          if (
+            !(await isPathAccessibleToViewer(user.id, event.path, {
+              includeDeleted: event.type === "deleted",
+            }))
+          ) {
+            continue;
+          }
 
           yield event;
         }

@@ -22,7 +22,7 @@ export async function createFileViewTokenForApi(
   userId: number,
   id: number,
 ): Promise<{ url: string; expiresAt: Date }> {
-  const row = await requireLiveEntry(id);
+  const row = await requireLiveEntry(id, userId);
 
   if (row.kind !== "file") {
     throw badInput(`"${row.relativePath}" is not a file`);
@@ -69,7 +69,7 @@ export async function verifyFileViewToken(
     throw new FileViewError("File view token user no longer exists", 401);
   }
 
-  const row = await getFileEntryById(id);
+  const row = await getFileEntryById(id, { viewerId: payload.sub });
   if (!row || row.kind !== "file") {
     throw new FileViewError("File not found", 404);
   }

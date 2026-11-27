@@ -1,6 +1,8 @@
 name: Publish images
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
     tags: ["v*"]
@@ -15,7 +17,40 @@ permissions:
   packages: write
 
 jobs:
+  # Pull requests build both image targets without publishing, so a broken
+  # Dockerfile is caught before it reaches main.
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: backend
+          platforms: linux/amd64
+          push: false
+          cache-from: type=gha,scope=rolodex-validate
+
+      - name: Build web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: web
+          platforms: linux/amd64
+          push: false
+          cache-from: type=gha,scope=rolodex-validate
+
   publish:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - name: Check out the repository

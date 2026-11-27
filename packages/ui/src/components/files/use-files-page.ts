@@ -121,6 +121,8 @@ export function useFilesPage() {
   const handleMetadataSave = async (values: {
     name: string;
     description: string;
+    private?: boolean;
+    root?: boolean;
   }) => {
     if (!selectedEntry) throw new Error("No file or folder is selected.");
 

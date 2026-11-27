@@ -21,6 +21,10 @@ import {
   getFileEntryByPath,
   type FileEntryRow,
 } from "./entry";
+import {
+  accessibleFileEntryCondition,
+  fileSearchScopeCondition,
+} from "./access";
 import { normalizeRelativePath } from "./paths";
 import { selectFileEntryWithDecision } from "./selection";
 import {
@@ -60,7 +64,9 @@ export async function findFileMatches(
 
   const explicitId = readEmbeddedId(input, kind);
   if (explicitId !== undefined) {
-    const row = await getFileEntryById(explicitId);
+    const row = await getFileEntryById(explicitId, {
+      viewerId: context.userId,
+    });
     if (!row || (kind !== undefined && row.kind !== kind)) {
       throw new ToolInputError(`${label} ${explicitId} not found`);
     }
@@ -70,7 +76,9 @@ export async function findFileMatches(
   const explicitPath = readEmbeddedPath(input, kind);
   if (explicitPath !== undefined) {
     const normalized = normalizeRelativePath(explicitPath);
-    const row = await getFileEntryByPath(normalized);
+    const row = await getFileEntryByPath(normalized, {
+      viewerId: context.userId,
+    });
     if (!row || (kind !== undefined && row.kind !== kind)) {
       throw new ToolInputError(`${label} "${normalized}" not found`);
     }
@@ -100,6 +108,10 @@ export async function findFileMatches(
   const kindCondition =
     kind !== undefined ? eq(fileEntries.kind, kind) : undefined;
   const live = isNull(fileEntries.deletedAt);
+  const visible = and(
+    accessibleFileEntryCondition(context.userId),
+    await fileSearchScopeCondition(context.userId),
+  );
 
   let candidates: FileEntryCandidate[] = [];
 
@@ -111,7 +123,9 @@ export async function findFileMatches(
     const ranked = await db
       .select({ id: fileEntries.id, distance })
       .from(fileEntries)
-      .where(and(kindCondition, live, isNotNull(fileEntries.embedding)))
+      .where(
+        and(kindCondition, live, isNotNull(fileEntries.embedding), visible),
+      )
       .orderBy(distance)
       .limit(limit);
 
@@ -156,6 +170,7 @@ export async function findFileMatches(
         and(
           kindCondition,
           live,
+          visible,
           or(
             ilike(fileEntries.name, pattern),
             ilike(fileEntries.description, pattern),
@@ -180,7 +195,7 @@ export async function findFileMatches(
     const rows = await db
       .select()
       .from(fileEntries)
-      .where(and(kindCondition, live));
+      .where(and(kindCondition, live, visible));
 
     if (rows.length === 0) {
       throw new ToolNoMatchError(`no matching ${label} found`);
@@ -218,7 +233,7 @@ export async function resolveFileEntryRow(
   options: FindFileMatchesOptions = {},
 ): Promise<FileEntryRow> {
   const { entry } = await findFileMatches(context, options);
-  const row = await getFileEntryById(entry.id);
+  const row = await getFileEntryById(entry.id, { viewerId: context.userId });
 
   if (!row) {
     throw new ToolInputError(`file entry ${entry.id} not found`);

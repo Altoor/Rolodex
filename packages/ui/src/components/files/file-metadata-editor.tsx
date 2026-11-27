@@ -3,6 +3,7 @@
 import { useId, useState } from "react";
 import { ErrorState } from "#components/feedback/error-state";
 import { Button } from "#components/ui/button";
+import { Checkbox } from "#components/ui/checkbox";
 import { Input } from "#components/ui/input";
 import { Label } from "#components/ui/label";
 import { Textarea } from "#components/ui/textarea";
@@ -10,7 +11,12 @@ import type { FileEntry } from "./types";
 
 interface FileMetadataEditorProps {
   entry: FileEntry;
-  onSave: (values: { name: string; description: string }) => Promise<void>;
+  onSave: (values: {
+    name: string;
+    description: string;
+    private?: boolean;
+    root?: boolean;
+  }) => Promise<void>;
   onCancel: () => void;
 }
 
@@ -21,14 +27,21 @@ export function FileMetadataEditor({
 }: FileMetadataEditorProps) {
   const nameId = useId();
   const descriptionId = useId();
+  const privateId = useId();
+  const rootId = useId();
   const [name, setName] = useState(entry.name);
   const [description, setDescription] = useState(entry.description);
+  const [isPrivate, setIsPrivate] = useState(entry.private);
+  const [isRoot, setIsRoot] = useState(entry.root);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
+  const isFolder = entry.kind === "folder";
   const trimmedName = name.trim();
   const unchanged =
-    trimmedName === entry.name && description === entry.description;
+    trimmedName === entry.name &&
+    description === entry.description &&
+    (!isFolder || (isPrivate === entry.private && isRoot === entry.root));
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -42,7 +55,11 @@ export function FileMetadataEditor({
     setSaving(true);
 
     try {
-      await onSave({ name: trimmedName, description });
+      await onSave({
+        name: trimmedName,
+        description,
+        ...(isFolder ? { private: isPrivate, root: isRoot } : {}),
+      });
     } catch (err) {
       setError(err);
     } finally {
@@ -73,6 +90,43 @@ export function FileMetadataEditor({
           disabled={saving}
         />
       </div>
+
+      {isFolder ? (
+        <div className="flex flex-col gap-2 rounded-md border p-3">
+          <div className="flex items-start gap-2">
+            <Checkbox
+              id={privateId}
+              checked={isPrivate}
+              onCheckedChange={(checked) => setIsPrivate(checked === true)}
+              disabled={saving}
+            />
+            <div className="flex flex-col gap-0.5">
+              <Label htmlFor={privateId}>Private folder</Label>
+              <p className="text-xs text-muted-foreground">
+                Only you can see this folder and anything inside it. Other users
+                and their task flows cannot access it.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-2">
+            <Checkbox
+              id={rootId}
+              checked={isRoot}
+              onCheckedChange={(checked) => setIsRoot(checked === true)}
+              disabled={saving}
+            />
+            <div className="flex flex-col gap-0.5">
+              <Label htmlFor={rootId}>Root folder</Label>
+              <p className="text-xs text-muted-foreground">
+                Task and flow file searches use this folder as their root and
+                only search inside it. Only one folder can be the root; marking
+                this one clears the previous root.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {error ? (
         <ErrorState title="Could not save file details" error={error} />

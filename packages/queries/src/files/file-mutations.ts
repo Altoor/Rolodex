@@ -7,6 +7,8 @@ export const CREATE_FILE_ENTRY = gql(/* GraphQL */ `
     $name: String!
     $description: String
     $content: String
+    $private: Boolean
+    $root: Boolean
   ) {
     createFileEntry(
       kind: $kind
@@ -14,6 +16,8 @@ export const CREATE_FILE_ENTRY = gql(/* GraphQL */ `
       name: $name
       description: $description
       content: $content
+      private: $private
+      root: $root
     ) {
       ...FileEntryFields
     }
@@ -26,12 +30,16 @@ export const UPDATE_FILE_ENTRY = gql(/* GraphQL */ `
     $name: String
     $description: String
     $parentId: Int
+    $private: Boolean
+    $root: Boolean
   ) {
     updateFileEntry(
       id: $id
       name: $name
       description: $description
       parentId: $parentId
+      private: $private
+      root: $root
     ) {
       ...FileEntryFields
     }

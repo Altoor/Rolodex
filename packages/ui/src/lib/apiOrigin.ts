@@ -21,7 +21,10 @@ interface OriginLocation {
 export function normalizeApiOrigin(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
-  return trimmed ? trimmed.replace(/\/+$/, "") : undefined;
+  if (!trimmed) return undefined;
+
+  const normalized = trimmed.replace(/\/+$/, "");
+  return normalized || undefined;
 }
 
 /**

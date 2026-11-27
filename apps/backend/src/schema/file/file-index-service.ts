@@ -7,18 +7,25 @@ import {
 } from "@repo/tools/tools/file/services/entry";
 import { statEntry } from "@repo/tools/tools/file/services/storage";
 import { syncFileTree } from "@repo/tools/tools/file/services/sync";
+import { filterScanReportForViewer } from "@repo/tools/tools/file/services/access";
 import { publishFileEvent } from "./file-events";
 import { asGraphQLError } from "./file-errors";
 
-export async function indexFileTreeForApi(options: {
-  path?: string | null;
-  apply?: boolean | null;
-}) {
+export async function indexFileTreeForApi(
+  options: {
+    path?: string | null;
+    apply?: boolean | null;
+  },
+  userId: number,
+) {
   try {
-    const report = await syncFileTree({
-      path: options.path ?? undefined,
-      apply: options.apply ?? true,
-    });
+    const report = await filterScanReportForViewer(
+      await syncFileTree({
+        path: options.path ?? undefined,
+        apply: options.apply ?? true,
+      }),
+      userId,
+    );
 
     publishFileEvent({
       type: "indexed",

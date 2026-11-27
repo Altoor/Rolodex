@@ -24,6 +24,9 @@ interface RawFileEntry {
   description: string;
   path: string;
   parentId: number | null;
+  ownerId: number | null;
+  private: boolean;
+  root: boolean;
   fileType: string | null;
   mimeType: string | null;
   size: number | null;
@@ -58,6 +61,9 @@ function toRawFile(value: unknown): RawFileEntry | null {
       typeof value.description === "string" ? value.description : "",
     path: value.path,
     parentId: typeof value.parentId === "number" ? value.parentId : null,
+    ownerId: typeof value.ownerId === "number" ? value.ownerId : null,
+    private: value.private === true,
+    root: value.root === true,
     fileType: typeof value.fileType === "string" ? value.fileType : null,
     mimeType: typeof value.mimeType === "string" ? value.mimeType : null,
     size: typeof value.size === "number" ? value.size : null,
@@ -132,6 +138,9 @@ function toPreviewEntry(file: RawFileEntry): FileEntry | null {
     name: file.name,
     description: file.description,
     path: file.path,
+    ownerId: file.ownerId,
+    private: file.private,
+    root: file.root,
     fileType:
       file.fileType !== null && FILE_TYPES.has(file.fileType)
         ? (file.fileType as FileEntry["fileType"])

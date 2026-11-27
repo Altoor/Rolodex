@@ -20,6 +20,8 @@ import type { TodoDraft, TodoItemData } from "./types";
 interface TodoItemProps {
   todo: TodoItemData;
   editable?: boolean;
+  /** Current user id; only the author gets edit/archive/delete controls. */
+  viewerId?: number | null;
   pending?: boolean;
   onToggle?: (todo: TodoItemData, done: boolean) => void;
   onSave?: (
@@ -33,6 +35,7 @@ interface TodoItemProps {
 export function TodoItem({
   todo,
   editable = false,
+  viewerId,
   pending = false,
   onToggle,
   onSave,
@@ -40,7 +43,10 @@ export function TodoItem({
   onDelete,
 }: TodoItemProps) {
   const [editing, setEditing] = useState(false);
-  const canMutate = editable && todo.id != null && !pending;
+  const canToggle = editable && todo.id != null && !pending;
+  // Actors may mark done, but only the author may edit, archive, or delete.
+  const canManage =
+    canToggle && viewerId != null && todo.authorId === viewerId;
   const archived = todo.archivedAt != null;
 
   if (editing && onSave) {
@@ -65,7 +71,7 @@ export function TodoItem({
       <ItemMedia>
         <Checkbox
           checked={todo.done}
-          disabled={!canMutate}
+          disabled={!canToggle}
           onCheckedChange={(checked) => onToggle?.(todo, checked)}
           className="size-6"
           aria-label={
@@ -90,7 +96,7 @@ export function TodoItem({
         </div>
       </ItemContent>
 
-      {editable ? (
+      {editable && canManage ? (
         <ItemActions>
           <Button
             type="button"
@@ -98,7 +104,7 @@ export function TodoItem({
             size="icon-sm"
             title={`Edit ${todo.name}`}
             aria-label={`Edit ${todo.name}`}
-            disabled={!canMutate}
+            disabled={!canManage}
             onClick={() => setEditing(true)}
           >
             <Pencil />
@@ -114,7 +120,7 @@ export function TodoItem({
               aria-label={
                 archived ? `Restore ${todo.name}` : `Archive ${todo.name}`
               }
-              disabled={!canMutate}
+              disabled={!canManage}
               onClick={() => onArchive(todo, !archived)}
             >
               {archived ? <RotateCcw /> : <Archive />}
@@ -124,7 +130,7 @@ export function TodoItem({
             <ConfirmButton
               title={`Delete ${todo.name}`}
               onConfirm={() => onDelete(todo)}
-              disabled={!canMutate}
+              disabled={!canManage}
             >
               <Trash2 />
             </ConfirmButton>

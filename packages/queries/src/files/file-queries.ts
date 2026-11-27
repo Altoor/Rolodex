@@ -8,6 +8,9 @@ export const FILE_ENTRY_FIELDS = gql(/* GraphQL */ `
     name
     description
     path
+    ownerId
+    private
+    root
     fileType
     mimeType
     size

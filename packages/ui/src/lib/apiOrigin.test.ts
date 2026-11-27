@@ -20,6 +20,11 @@ describe("normalizeApiOrigin", () => {
     expect(normalizeApiOrigin(null)).toBeUndefined();
     expect(normalizeApiOrigin(42)).toBeUndefined();
   });
+
+  it("treats a slash-only value as unset", () => {
+    expect(normalizeApiOrigin("/")).toBeUndefined();
+    expect(normalizeApiOrigin("///")).toBeUndefined();
+  });
 });
 
 describe("resolveApiOrigin", () => {

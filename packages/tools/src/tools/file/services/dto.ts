@@ -11,6 +11,9 @@ export interface FileEntryRef {
   description: string;
   path: string;
   parentId: number | null;
+  ownerId: number | null;
+  private: boolean;
+  root: boolean;
   fileType: string | null;
   mimeType: string | null;
   size: number | null;
@@ -34,6 +37,9 @@ export function toFileEntryRef(row: FileEntryRow): FileEntryRef {
     description: row.description,
     path: row.relativePath,
     parentId: row.parentId,
+    ownerId: row.ownerId,
+    private: row.isPrivate,
+    root: row.isRoot,
     fileType: row.fileType,
     mimeType: row.mimeType,
     size: row.size,

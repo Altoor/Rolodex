@@ -1,6 +1,7 @@
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { db, fileEntries } from "@repo/db";
 import { fileEntryEmbeddingText, tryEmbedText } from "@repo/ai";
+import { accessibleFileEntryCondition } from "./access";
 
 export type FileEntryRow = typeof fileEntries.$inferSelect;
 export type NewFileEntryRow = typeof fileEntries.$inferInsert;
@@ -12,10 +13,16 @@ export interface FileEntryEmbeddingSource {
   description: string;
 }
 
+export interface FileEntryLookupOptions {
+  includeDeleted?: boolean;
+  /** When set, private folders owned by other users are excluded. */
+  viewerId?: number;
+}
+
 /** Loads one live (or optionally deleted) entry by id. */
 export async function getFileEntryById(
   id: number,
-  options: { includeDeleted?: boolean } = {},
+  options: FileEntryLookupOptions = {},
 ): Promise<FileEntryRow | null> {
   const rows = await db
     .select()
@@ -24,6 +31,9 @@ export async function getFileEntryById(
       and(
         eq(fileEntries.id, id),
         options.includeDeleted ? undefined : isNull(fileEntries.deletedAt),
+        options.viewerId === undefined
+          ? undefined
+          : accessibleFileEntryCondition(options.viewerId),
       ),
     )
     .limit(1);
@@ -34,7 +44,7 @@ export async function getFileEntryById(
 /** Loads one live (or optionally deleted) entry by relative path. */
 export async function getFileEntryByPath(
   relativePath: string,
-  options: { includeDeleted?: boolean } = {},
+  options: FileEntryLookupOptions = {},
 ): Promise<FileEntryRow | null> {
   const rows = await db
     .select()
@@ -43,6 +53,9 @@ export async function getFileEntryByPath(
       and(
         eq(fileEntries.relativePath, relativePath),
         options.includeDeleted ? undefined : isNull(fileEntries.deletedAt),
+        options.viewerId === undefined
+          ? undefined
+          : accessibleFileEntryCondition(options.viewerId),
       ),
     )
     .limit(1);
@@ -58,10 +71,15 @@ export async function listFileEntries(
   options: {
     parentId?: number | null;
     includeDeleted?: boolean;
+    /** When set, private folders owned by other users are excluded. */
+    viewerId?: number;
   } = {},
 ): Promise<FileEntryRow[]> {
   const conditions = [
     options.includeDeleted ? undefined : isNull(fileEntries.deletedAt),
+    options.viewerId === undefined
+      ? undefined
+      : accessibleFileEntryCondition(options.viewerId),
   ];
 
   if (options.parentId !== undefined) {
@@ -82,8 +100,9 @@ export async function listFileEntries(
 /** Returns direct children of a folder, or root entries when id is null. */
 export async function listFileEntryChildren(
   parentId: number | null,
+  viewerId?: number,
 ): Promise<FileEntryRow[]> {
-  return listFileEntries({ parentId });
+  return listFileEntries({ parentId, viewerId });
 }
 
 /** Inserts a new entry and returns the stored row. */

@@ -1,6 +1,7 @@
 import { GraphQLError } from "graphql";
-import { and, eq, inArray, lt } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt } from "drizzle-orm";
 import { db, fileEntries, queuedTasks } from "@repo/db";
+import { accessibleFileEntryCondition } from "@repo/tools/tools/file/services/access";
 import { toFileEntryRef } from "@repo/tools/tools/file/services/dto";
 import { getUserSettings } from "../../user/user-settings-service";
 import { assertTaskVisible } from "../task/task-visibility";
@@ -23,6 +24,7 @@ export interface CreateQueuedTaskInput {
 }
 
 async function loadContextEntries(
+  userId: number,
   ids: number[] | null | undefined,
   kind: "file" | "folder",
 ) {
@@ -32,10 +34,18 @@ async function loadContextEntries(
 
   if (unique.length === 0) return [];
 
+  // The caller may only attach entries they can see. A private folder or file
+  // owned by someone else must look missing, so the ids never enter toolState.
   const rows = await db
     .select()
     .from(fileEntries)
-    .where(inArray(fileEntries.id, unique));
+    .where(
+      and(
+        inArray(fileEntries.id, unique),
+        isNull(fileEntries.deletedAt),
+        accessibleFileEntryCondition(userId),
+      ),
+    );
 
   const byId = new Map(rows.map((row) => [row.id, row]));
   const missing = unique.filter((id) => !byId.has(id));
@@ -85,8 +95,8 @@ export async function createQueuedTask(
   let folders: Awaited<ReturnType<typeof loadContextEntries>> = [];
   if (!input.toolState) {
     [files, folders] = await Promise.all([
-      loadContextEntries(input.fileIds, "file"),
-      loadContextEntries(input.folderIds, "folder"),
+      loadContextEntries(userId, input.fileIds, "file"),
+      loadContextEntries(userId, input.folderIds, "folder"),
     ]);
   }
 

@@ -17,12 +17,16 @@ export interface CreateEntryOptions {
   name: string;
   description?: string;
   content?: string;
+  private?: boolean;
+  root?: boolean;
 }
 
 export interface UpdateEntryOptions {
   name?: string;
   description?: string;
   parentId?: number | null;
+  private?: boolean;
+  root?: boolean;
 }
 
 interface UploadResponse {
@@ -136,6 +140,8 @@ export function useFileActions() {
         name: options.name,
         description: options.description,
         content: options.content,
+        private: options.private,
+        root: options.root,
       },
     });
 
@@ -149,6 +155,8 @@ export function useFileActions() {
         name: options.name,
         description: options.description,
         parentId: options.parentId,
+        private: options.private,
+        root: options.root,
       },
     });
 

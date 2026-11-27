@@ -161,10 +161,9 @@ export const deleteTodosOlderThanTool: Tool = {
     }
 
     const cutoff = subtractDuration(new Date(), duration);
-    const ownership = or(
-      eq(todos.authorId, context.userId),
-      eq(todos.actorId, context.userId),
-    );
+    // Deleting is an author-only action. Assigned todos are visible to their
+    // actor, but a bulk cleanup must not remove someone else's work.
+    const ownership = eq(todos.authorId, context.userId);
 
     const basisCondition: SQL | undefined =
       basis === "doByDate"

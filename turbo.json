@@ -14,9 +14,9 @@
     "AUTH_TOKEN_TTL_SECONDS",
     "MAX_STREAM_UPLOAD_BYTES",
     "SMOKE_DECISION_MODEL",
-    "API_PUBLIC_ORIGIN",
     "API_CORS_ORIGINS"
   ],
+  "globalPassThroughEnv": ["API_PUBLIC_ORIGIN"],
   "tasks": {
     "codegen": {
       "dependsOn": ["^codegen"],

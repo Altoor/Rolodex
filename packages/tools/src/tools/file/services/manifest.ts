@@ -4,6 +4,7 @@ import {
   FilesystemError,
   ensureFilesRoot,
   isIgnoredName,
+  isInternalPath,
   normalizeRelativePath,
   parentRelativePath,
   resolveFilesPath,
@@ -46,6 +47,13 @@ export async function buildManifest(
   await ensureFilesRoot();
 
   const rootPath = options.path ? normalizeRelativePath(options.path) : "";
+
+  // Internal workspaces must never be indexed, even when a caller asks for
+  // them explicitly. Scanning the parent root already skips them.
+  if (isInternalPath(rootPath)) {
+    throw new FilesystemError(`refusing to scan internal path "${rootPath}"`);
+  }
+
   const maxEntries = options.maxEntries ?? DEFAULT_MAX_ENTRIES;
   const warnings: string[] = [];
   const entries: ManifestEntry[] = [];

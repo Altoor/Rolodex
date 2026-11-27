@@ -30,6 +30,15 @@ const server = createServer((req, res) => {
   const url = new URL(req.url ?? "/", "http://localhost");
   const pathname = url.pathname;
 
+  // The server only starts listening after drizzle-kit push finishes, so a
+  // successful response here also means the schema is ready.
+  if (pathname === "/health" || pathname === "/health/") {
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.end(JSON.stringify({ status: "ok" }));
+    return;
+  }
+
   if (pathname === "/files/upload" || pathname === "/files/upload/") {
     void handleFileUploadRequest(req, res);
     return;

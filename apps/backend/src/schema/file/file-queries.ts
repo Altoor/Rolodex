@@ -17,8 +17,9 @@ builder.queryType({
         includeDeleted: t.arg.boolean({ required: false }),
       },
       resolve: (_root, args, ctx) => {
-        requireUserId(ctx);
+        const userId = requireUserId(ctx);
         return listFileEntriesForApi({
+          userId,
           parentId: args.parentId,
           includeDeleted: args.includeDeleted ?? false,
         });
@@ -32,8 +33,8 @@ builder.queryType({
         id: t.arg.int({ required: true }),
       },
       resolve: (_root, { id }, ctx) => {
-        requireUserId(ctx);
-        return getFileEntryForApi(id);
+        const userId = requireUserId(ctx);
+        return getFileEntryForApi(id, userId);
       },
     }),
 
@@ -45,8 +46,8 @@ builder.queryType({
         maxBytes: t.arg.int({ required: false }),
       },
       resolve: (_root, { id, maxBytes }, ctx) => {
-        requireUserId(ctx);
-        return getFileTextForApi(id, maxBytes);
+        const userId = requireUserId(ctx);
+        return getFileTextForApi(id, maxBytes, userId);
       },
     }),
 

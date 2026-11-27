@@ -42,9 +42,16 @@ export function runWithFilesRoot<T>(root: string, fn: () => Promise<T>) {
 /** Name of the upload staging directory inside the root. */
 export const TEMP_DIR_NAME = ".tmp";
 
+/** Internal directory that holds assisted trial workspaces. */
+export const TRIALS_DIR_NAME = ".trials";
+
+/** Directories that are implementation details, never user-visible files. */
+const INTERNAL_DIR_NAMES = new Set([TEMP_DIR_NAME, TRIALS_DIR_NAME]);
+
 const IGNORED_NAMES = new Set([
   ".gitkeep",
   TEMP_DIR_NAME,
+  TRIALS_DIR_NAME,
   ".DS_Store",
   "Thumbs.db",
   "desktop.ini",
@@ -273,11 +280,20 @@ export function isIgnoredPath(relativePath: string): boolean {
   const normalized = normalizeRelativePath(relativePath, { allowRoot: true });
   if (!normalized) return false;
 
-  const segments = normalized.split("/");
-  const last = segments[segments.length - 1];
-  if (last && isIgnoredName(last)) return true;
+  return normalized.split("/").some(isIgnoredName);
+}
 
-  return segments.includes(TEMP_DIR_NAME);
+/**
+ * True when a path is inside an internal workspace directory (uploads or
+ * assisted trials). Internal paths are never treated as user-visible files.
+ */
+export function isInternalPath(relativePath: string): boolean {
+  const normalized = normalizeRelativePath(relativePath, { allowRoot: true });
+  if (!normalized) return false;
+
+  return normalized
+    .split("/")
+    .some((segment) => INTERNAL_DIR_NAMES.has(segment));
 }
 
 /** True when a relative path is the root or lies below it (always true here). */

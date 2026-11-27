@@ -7,6 +7,8 @@ export interface TodoItemData {
   createdAt?: string | null;
   archivedAt?: string | null;
   score?: number | null;
+  authorId: number | null;
+  actorId: number | null;
 }
 
 export interface TodoInput {
@@ -18,6 +20,8 @@ export interface TodoInput {
   createdAt?: unknown;
   archivedAt?: unknown;
   score?: number | null;
+  authorId?: number | null;
+  actorId?: number | null;
 }
 
 export interface TodoDraft {
@@ -45,5 +49,7 @@ export function toTodoItem(todo: TodoInput): TodoItemData | null {
     archivedAt:
       typeof todo.archivedAt === "string" ? todo.archivedAt : null,
     ...(typeof todo.score === "number" ? { score: todo.score } : {}),
+    authorId: typeof todo.authorId === "number" ? todo.authorId : null,
+    actorId: typeof todo.actorId === "number" ? todo.actorId : null,
   };
 }
