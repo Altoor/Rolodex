@@ -31,9 +31,9 @@ export const apiRuntime: ApiRuntime = {
     }
   },
 
-  async uploadFiles(files) {
+  async uploadFiles(files, userId) {
     try {
-      const rows = await uploadFilesForApi(files);
+      const rows = await uploadFilesForApi(files, null, userId);
       return rows.map((row) => ({ id: row.id }));
     } catch (err) {
       throw toHttpError(err, 400);

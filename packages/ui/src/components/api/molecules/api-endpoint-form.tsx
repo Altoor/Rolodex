@@ -5,6 +5,7 @@ import { Button } from "#components/ui/button";
 import { Field, FieldLabel } from "#components/ui/field";
 import { Input } from "#components/ui/input";
 import { Spinner } from "#components/ui/spinner";
+import { useApiOrigin } from "#lib/apiOriginContext";
 import { invokeUrl, type ApiEndpoint, type TaskOption } from "../lib/api-utils";
 
 export interface EndpointFormValues {
@@ -36,6 +37,7 @@ export function ApiEndpointForm({
   const [taskId, setTaskId] = useState(String(endpoint.taskId ?? ""));
   const [description, setDescription] = useState(endpoint.description ?? "");
   const [stateField, setStateField] = useState(endpoint.stateField ?? "");
+  const apiOrigin = useApiOrigin();
 
   return (
     <form
@@ -73,7 +75,7 @@ export function ApiEndpointForm({
           Changing this changes the URL clients call.
         </p>
         <p className="font-mono text-[11px] break-all text-muted-foreground">
-          {invokeUrl(slug.trim() || null)}
+          {invokeUrl(apiOrigin, slug.trim() || null)}
         </p>
       </Field>
       <Field>

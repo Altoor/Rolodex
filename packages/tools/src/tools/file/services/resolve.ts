@@ -1,11 +1,13 @@
 import { mergeToolInput, readNumber, readString } from "../../../utils";
 import { ToolInputError, type ToolRunContext } from "../../../model";
+import { accessibleRootFolders } from "./access";
 import {
   getFileEntryById,
   getFileEntryByPath,
   type FileEntryRow,
 } from "./entry";
 import { normalizeRelativePath } from "./paths";
+import { selectDefaultRootFolder } from "./roots";
 
 export function hasInputKey(
   input: Record<string, unknown>,
@@ -17,10 +19,11 @@ export function hasInputKey(
 /** Loads a parent folder by id, or returns null for the root. */
 export async function resolveParentFolderById(
   id: number | null,
+  viewerId?: number,
 ): Promise<FileEntryRow | null> {
   if (id === null) return null;
 
-  const row = await getFileEntryById(id);
+  const row = await getFileEntryById(id, { viewerId });
   if (!row || row.kind !== "folder") {
     throw new ToolInputError(`folder ${id} not found`);
   }
@@ -31,11 +34,12 @@ export async function resolveParentFolderById(
 /** Loads a parent folder by relative path, or returns null for the root. */
 export async function resolveParentFolderByPath(
   path: string,
+  viewerId?: number,
 ): Promise<FileEntryRow | null> {
   if (!path.trim()) return null;
 
   const normalized = normalizeRelativePath(path);
-  const row = await getFileEntryByPath(normalized);
+  const row = await getFileEntryByPath(normalized, { viewerId });
 
   if (!row || row.kind !== "folder") {
     throw new ToolInputError(`folder "${normalized}" not found`);
@@ -55,38 +59,51 @@ export async function resolveParentFolderFromInput(
   if (hasInputKey(input, "parentId")) {
     const value = input.parentId;
 
-    if (value === null) return null;
+    if (value === null) return defaultParentFolder(context.userId);
 
     const id = readNumber(input, "parentId");
     if (id === undefined) {
       throw new ToolInputError('"parentId" must be a number or null');
     }
 
-    return resolveParentFolderById(id);
+    return resolveParentFolderById(id, context.userId);
   }
 
   if (hasInputKey(input, "parentPath")) {
     const value = input.parentPath;
 
-    if (value === null) return null;
+    if (value === null) return defaultParentFolder(context.userId);
     if (typeof value !== "string") {
       throw new ToolInputError('"parentPath" must be a string or null');
     }
 
-    return resolveParentFolderByPath(value);
+    if (!value.trim()) return defaultParentFolder(context.userId);
+
+    return resolveParentFolderByPath(value, context.userId);
   }
 
   const embedded = embeddedFolder(input);
   if (embedded) {
     const id = readNumber(embedded, "id");
-    if (id !== undefined) return resolveParentFolderById(id);
+    if (id !== undefined) return resolveParentFolderById(id, context.userId);
 
     const path =
       readString(embedded, "path") ?? readString(embedded, "relativePath");
-    if (path) return resolveParentFolderByPath(path);
+    if (path) return resolveParentFolderByPath(path, context.userId);
   }
 
-  return null;
+  return defaultParentFolder(context.userId);
+}
+
+/**
+ * Implicit parent for create tools. Root folders are the task workspace, so a
+ * create without an explicit parent lands inside the configured root. Multiple
+ * roots are ambiguous and require an explicit parent.
+ */
+async function defaultParentFolder(
+  viewerId: number,
+): Promise<FileEntryRow | null> {
+  return selectDefaultRootFolder(await accessibleRootFolders(viewerId));
 }
 
 function embeddedFolder(

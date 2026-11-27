@@ -14,6 +14,9 @@ export interface FileEntry {
   name: string;
   description: string;
   path: string;
+  ownerId: number | null;
+  private: boolean;
+  root: boolean;
   fileType: FileType | null;
   mimeType: string | null;
   size: number | null;
@@ -53,6 +56,9 @@ export function toFileEntry(
     name: fragment.name,
     description: fragment.description ?? "",
     path: fragment.path,
+    ownerId: fragment.ownerId ?? null,
+    private: fragment.private ?? false,
+    root: fragment.root ?? false,
     fileType: fragment.fileType,
     mimeType: fragment.mimeType,
     size: fragment.size,

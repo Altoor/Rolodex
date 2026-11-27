@@ -15,7 +15,7 @@ export function createInvokeRoute(runtime: ApiRuntime): ApiRoute {
       const input = await parseInvocation(req, endpoint);
       const uploaded =
         input.files.length > 0
-          ? await runtime.uploadFiles(input.files)
+          ? await runtime.uploadFiles(input.files, endpoint.userId)
           : [];
       const queued = await runtime.queueFlow({
         userId: endpoint.userId,

@@ -1,6 +1,7 @@
 "use client";
 
 import { TodoList } from "#components/todo/todo-list";
+import { useAuth } from "../auth/auth-provider";
 import { toTodoItem, type TodoInput, type TodoItemData } from "../todo/types";
 import { useTodoActions } from "../todo/use-todo-actions";
 import { useMemo, useState } from "react";
@@ -98,6 +99,7 @@ function hasTodoShape(output: unknown): boolean {
 }
 
 export function TodoBlock({ output }: BlockComponentProps) {
+  const { user } = useAuth();
   const extracted = useMemo(() => extractBlockTodos(output), [output]);
   const [todos, setTodos] = useState(extracted);
 
@@ -123,6 +125,7 @@ export function TodoBlock({ output }: BlockComponentProps) {
       <TodoList
         todos={todos}
         editable
+        viewerId={user?.id ?? null}
         showEmpty={false}
         pendingIds={pendingIds}
         onToggle={(todo, done) => {

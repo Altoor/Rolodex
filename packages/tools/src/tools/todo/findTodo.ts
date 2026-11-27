@@ -85,6 +85,8 @@ export const findTodoTool: Tool = {
             doByDate: todo.doByDate,
             createdAt: todo.createdAt,
             archivedAt: todo.archivedAt,
+            authorId: todo.authorId,
+            actorId: todo.actorId,
           },
           score: todo.score,
           candidates,

@@ -1,4 +1,5 @@
 "use client";
+import { useMemo } from "react";
 import {
   ApolloClient,
   ApolloLink,
@@ -15,9 +16,7 @@ import {
   Client,
   RequestParams,
 } from "graphql-sse";
-import { API_ORIGIN } from "@repo/ui/lib/apiOrigin";
-
-const GRAPHQL_URL = `${API_ORIGIN}/graphql`;
+import { useApiOrigin } from "@repo/ui/lib/apiOriginContext";
 
 function authHeaders(): Record<string, string> {
   const token =
@@ -32,7 +31,7 @@ class SSELink extends ApolloLink {
     RequestParams,
     ApolloLink.Operation
   >();
-  // Feel free to adjust the options type here to be what you need to be dynamic
+  // Feel free to adjust the options type to be what you need to be dynamic
   constructor(options: ClientOptions) {
     super();
     this.client = createClient({
@@ -74,51 +73,62 @@ class SSELink extends ApolloLink {
     });
   }
 }
-const sseLink = new SSELink({
-  url: GRAPHQL_URL,
-  headers: () => authHeaders(),
-});
 
-const authLink = new ApolloLink((operation, forward) => {
-  operation.setContext({
-    headers: {
-      ...operation.getContext().headers,
-      ...authHeaders(),
-    },
+function createHttpLink(apiOrigin: string): ApolloLink {
+  const graphqlUrl = `${apiOrigin}/graphql`;
+  const sseLink = new SSELink({
+    url: graphqlUrl,
+    headers: () => authHeaders(),
   });
 
-  return forward(operation);
-});
+  const authLink = new ApolloLink((operation, forward) => {
+    operation.setContext({
+      headers: {
+        ...operation.getContext().headers,
+        ...authHeaders(),
+      },
+    });
 
-const httpLink = authLink.concat(
-  new UploadHttpLink({
-    uri: GRAPHQL_URL,
-  }),
-);
+    return forward(operation);
+  });
 
-export const link = ApolloLink.split(
-  ({ query }) => {
-    const definition = getMainDefinition(query);
-    return (
-      definition.kind === "OperationDefinition" &&
-      definition.operation === "subscription"
-    );
-  },
-  sseLink,
-  httpLink,
-);
+  const httpLink = authLink.concat(
+    new UploadHttpLink({
+      uri: graphqlUrl,
+    }),
+  );
 
-const client = new ApolloClient({
-  ssrMode: typeof window === "undefined",
-  link,
-  cache: new InMemoryCache(),
-});
+  return ApolloLink.split(
+    ({ query }) => {
+      const definition = getMainDefinition(query);
+      return (
+        definition.kind === "OperationDefinition" &&
+        definition.operation === "subscription"
+      );
+    },
+    sseLink,
+    httpLink,
+  );
+}
+
+function createApolloClient(apiOrigin: string): ApolloClient {
+  return new ApolloClient({
+    ssrMode: typeof window === "undefined",
+    link: createHttpLink(apiOrigin),
+    cache: new InMemoryCache(),
+  });
+}
 
 interface IGraphQlProviderProps {
   children: React.ReactNode;
 }
 
 const GraphQlProvider: React.FC<IGraphQlProviderProps> = ({ children }) => {
+  // The origin is passed in by the root layout at runtime, so it must be read
+  // during render instead of being frozen into a module-level URL.
+  const apiOrigin = useApiOrigin();
+  const client = useMemo(() => createApolloClient(apiOrigin), [apiOrigin]);
+
   return <ApolloProvider client={client}>{children}</ApolloProvider>;
 };
 

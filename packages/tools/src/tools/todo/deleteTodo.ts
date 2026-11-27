@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { db, todos } from "@repo/db";
 import { mergeToolInput, readBoolean } from "../../utils";
 import { ToolInputError, type Tool, type ToolDefinition } from "../../model";
+import { canManageTodo } from "./services/permissions";
 import { resolveTodoId } from "./services/todo";
 
 const definition: ToolDefinition = {
@@ -53,6 +54,10 @@ export const deleteTodoTool: Tool = {
     const allowNotDone = readBoolean(input, "allowNotDone") ?? false;
     const allowNotArchived = readBoolean(input, "allowNotArchived") ?? false;
     const todo = await resolveTodoId(context, { includeArchived: true });
+
+    if (!canManageTodo(todo, context.userId)) {
+      throw new ToolInputError("only the todo's author can delete it");
+    }
 
     const done = todo.done;
     const archived = todo.archivedAt != null;

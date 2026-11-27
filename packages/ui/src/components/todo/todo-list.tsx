@@ -7,6 +7,8 @@ import type { TodoDraft, TodoItemData } from "./types";
 interface TodoListProps {
   todos: TodoItemData[];
   editable?: boolean;
+  /** Current user id; controls for other users' todos are hidden. */
+  viewerId?: number | null;
   pendingIds?: ReadonlySet<number>;
   onToggle?: (todo: TodoItemData, done: boolean) => void;
   onSave?: (
@@ -24,6 +26,7 @@ interface TodoListProps {
 export function TodoList({
   todos,
   editable = false,
+  viewerId,
   pendingIds,
   onToggle,
   onSave,
@@ -59,6 +62,7 @@ export function TodoList({
                 key={todo.id ?? `${todo.name}-${todo.description}`}
                 todo={todo}
                 editable={editable}
+                viewerId={viewerId}
                 pending={todo.id != null && pendingIds?.has(todo.id)}
                 onToggle={onToggle}
                 onSave={onSave}
@@ -81,6 +85,7 @@ export function TodoList({
                 key={todo.id ?? `${todo.name}-${todo.description}`}
                 todo={todo}
                 editable={editable}
+                viewerId={viewerId}
                 pending={todo.id != null && pendingIds?.has(todo.id)}
                 onToggle={onToggle}
                 onSave={onSave}
@@ -103,6 +108,7 @@ export function TodoList({
                 key={todo.id ?? `${todo.name}-${todo.description}`}
                 todo={todo}
                 editable={editable}
+                viewerId={viewerId}
                 pending={todo.id != null && pendingIds?.has(todo.id)}
                 onToggle={onToggle}
                 onSave={onSave}

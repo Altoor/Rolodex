@@ -2,9 +2,10 @@
 
 import { useQuery } from "@apollo/client/react";
 import { CREATE_FILE_VIEW_TOKEN } from "@repo/queries/files/file-queries";
-import { FILE_API_ORIGIN } from "./file-api";
+import { useApiOrigin } from "#lib/apiOriginContext";
 
 export function useFileViewUrl(id: number) {
+  const apiOrigin = useApiOrigin();
   const { data, loading, error, refetch } = useQuery(CREATE_FILE_VIEW_TOKEN, {
     variables: { id },
     fetchPolicy: "network-only",
@@ -13,7 +14,7 @@ export function useFileViewUrl(id: number) {
   const path = data?.createFileViewToken?.url;
 
   return {
-    url: path ? `${FILE_API_ORIGIN}${path}` : null,
+    url: path ? `${apiOrigin}${path}` : null,
     loading,
     error,
     refetch,

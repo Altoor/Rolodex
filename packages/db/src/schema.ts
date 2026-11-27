@@ -1,18 +1,18 @@
-import { boolean } from "drizzle-orm/cockroach-core";
 import { sql } from "drizzle-orm";
 import {
-  integer,
-  text,
-  pgTable,
-  pgEnum,
-  date,
   bigint,
-  json,
-  real,
-  timestamp,
-  uuid,
+  boolean,
+  date,
   index,
+  integer,
+  json,
+  pgEnum,
+  pgTable,
+  real,
+  text,
+  timestamp,
   uniqueIndex,
+  uuid,
   vector,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
@@ -71,8 +71,12 @@ export const fileType = pgEnum("fileType", [
 
 /**
  * One shared tree of files and folders backed by the physical files/ root.
- * `relativePath` is POSIX-style and relative to FILES_ROOT; there is no owner
- * column because the workspace is global.
+ * `relativePath` is POSIX-style and relative to FILES_ROOT.
+ *
+ * Folders can be marked private by their owner. Privacy is inherited through
+ * the path: a row is visible only when no ancestor folder is private for a
+ * different user. `root` folders narrow task/flow file searches to their
+ * subtrees (when at least one accessible root folder exists).
  */
 export const fileEntries = pgTable(
   "fileEntries",
@@ -86,6 +90,11 @@ export const fileEntries = pgTable(
     name: text("name").notNull(),
     description: text("description").notNull().default(""),
     relativePath: text("relativePath").notNull(),
+    ownerId: integer("ownerId").references((): AnyPgColumn => users.id, {
+      onDelete: "set null",
+    }),
+    isPrivate: boolean("isPrivate").notNull().default(false),
+    isRoot: boolean("isRoot").notNull().default(false),
     fileType: fileType("fileType"),
     mimeType: text("mimeType"),
     size: bigint("size", { mode: "number" }),
@@ -111,6 +120,8 @@ export const fileEntries = pgTable(
       .on(table.relativePath)
       .where(sql`"deletedAt" IS NULL`),
     index("file_entries_parent_idx").on(table.parentId),
+    index("file_entries_owner_idx").on(table.ownerId),
+    index("file_entries_private_root_idx").on(table.isPrivate, table.isRoot),
     index("file_entries_embedding_idx").using(
       "hnsw",
       table.embedding.op("vector_cosine_ops"),

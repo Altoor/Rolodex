@@ -8,6 +8,8 @@ import {
   FileText,
   FileVideo,
   Folder,
+  FolderRoot,
+  Lock,
 } from "lucide-react";
 import {
   FileTree,
@@ -49,6 +51,36 @@ function FileEntryIcon({ entry }: { entry: FileEntry }) {
   }
 }
 
+/** Badges shown at the far right of a folder row. */
+function FolderBadges({ entry }: { entry: FileEntry }) {
+  if (!entry.private && !entry.root) return null;
+
+  return (
+    <>
+      {entry.private ? (
+        <span
+          className="flex shrink-0 items-center text-muted-foreground"
+          title="Private folder"
+          role="img"
+          aria-label="Private folder"
+        >
+          <Lock className="size-3.5" aria-hidden="true" />
+        </span>
+      ) : null}
+      {entry.root ? (
+        <span
+          className="flex shrink-0 items-center text-muted-foreground"
+          title="Root folder"
+          role="img"
+          aria-label="Root folder"
+        >
+          <FolderRoot className="size-3.5" aria-hidden="true" />
+        </span>
+      ) : null}
+    </>
+  );
+}
+
 function flattenNodes(nodes: FileTreeNode[]): FileTreeNode[] {
   return nodes.flatMap((node) => [node, ...flattenNodes(node.children)]);
 }
@@ -81,6 +113,11 @@ export function FileTreeView({
           name={node.name}
           value={value}
           icon={icon}
+          actions={
+            node.private || node.root ? (
+              <FolderBadges entry={node} />
+            ) : undefined
+          }
           open={expandedIds.has(node.id)}
           onOpenChange={(open) => onToggle(node.id, open)}
           dropTarget={dragOverId === node.id}

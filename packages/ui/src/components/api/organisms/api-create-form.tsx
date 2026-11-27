@@ -13,6 +13,7 @@ import {
 import { Field, FieldLabel } from "#components/ui/field";
 import { Input } from "#components/ui/input";
 import { Spinner } from "#components/ui/spinner";
+import { useApiOrigin } from "#lib/apiOriginContext";
 import { invokeUrl, type TaskOption } from "../lib/api-utils";
 
 export interface ApiCreateValues {
@@ -38,6 +39,7 @@ export function ApiCreateForm({
   onSubmit,
 }: ApiCreateFormProps) {
   const [name, setName] = useState("");
+  const apiOrigin = useApiOrigin();
   const [slug, setSlug] = useState("");
   const [taskId, setTaskId] = useState("");
   const [description, setDescription] = useState("");
@@ -97,7 +99,7 @@ export function ApiCreateForm({
               or underscores; leave empty for a random slug.
             </p>
             <p className="font-mono text-[11px] break-all text-muted-foreground">
-              {invokeUrl(slug.trim() || null)}
+              {invokeUrl(apiOrigin, slug.trim() || null)}
             </p>
           </Field>
 
@@ -149,10 +151,7 @@ export function ApiCreateForm({
             <ErrorState title="Could not create the endpoint" error={error} />
           ) : null}
 
-          <Button
-            type="submit"
-            disabled={busy || !name.trim() || !taskId}
-          >
+          <Button type="submit" disabled={busy || !name.trim() || !taskId}>
             {busy ? <Spinner /> : null}
             Create API link
           </Button>

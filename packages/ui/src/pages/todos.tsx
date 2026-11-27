@@ -4,6 +4,7 @@ import { useQuery } from "@apollo/client/react";
 import { GET_TODOS } from "@repo/queries/todos/todo-queries";
 import { useMemo, useState } from "react";
 import { AuthGate } from "../components/auth/auth-gate";
+import { useAuth } from "../components/auth/auth-provider";
 import { ErrorState } from "#components/feedback/error-state";
 import { LoadingState } from "#components/feedback/loading-state";
 import { PageContainer } from "#components/layout/page-container";
@@ -30,6 +31,7 @@ export default function TodosPage() {
 }
 
 function TodosPageContent() {
+  const { user } = useAuth();
   const [showArchived, setShowArchived] = useState(false);
   const { data, error: queryError, loading } = useQuery(GET_TODOS, {
     variables: { includeArchived: showArchived },
@@ -46,6 +48,8 @@ function TodosPageContent() {
         doByDate: todo.doByDate,
         createdAt: todo.createdAt,
         archivedAt: todo.archivedAt,
+        authorId: todo.authorId,
+        actorId: todo.actorId,
       });
       return item ? [item] : [];
     });
@@ -108,6 +112,7 @@ function TodosPageContent() {
         <TodoList
           todos={todos}
           editable
+          viewerId={user?.id ?? null}
           pendingIds={pendingIds}
           onToggle={(todo, done) => {
             void markDone(todo, done);

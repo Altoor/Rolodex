@@ -20,15 +20,20 @@ builder.mutationType({
         name: t.arg.string({ required: true }),
         description: t.arg.string({ required: false }),
         content: t.arg.string({ required: false }),
+        private: t.arg.boolean({ required: false }),
+        root: t.arg.boolean({ required: false }),
       },
       resolve: (_root, args, ctx) => {
-        requireUserId(ctx);
+        const userId = requireUserId(ctx);
         return createFileEntryForApi({
           kind: args.kind,
           parentId: args.parentId,
           name: args.name,
           description: args.description,
           content: args.content,
+          private: args.private,
+          root: args.root,
+          userId,
         });
       },
     }),
@@ -40,15 +45,22 @@ builder.mutationType({
         name: t.arg.string({ required: false }),
         description: t.arg.string({ required: false }),
         parentId: t.arg.int({ required: false }),
+        private: t.arg.boolean({ required: false }),
+        root: t.arg.boolean({ required: false }),
       },
       resolve: (_root, args, ctx) => {
-        requireUserId(ctx);
+        const userId = requireUserId(ctx);
         return updateFileEntryForApi({
           id: args.id,
           name: args.name,
           description: args.description,
           parentId: args.parentId,
           parentIdProvided: "parentId" in args,
+          private: args.private,
+          privateProvided: "private" in args,
+          root: args.root,
+          rootProvided: "root" in args,
+          userId,
         });
       },
     }),
@@ -60,8 +72,8 @@ builder.mutationType({
         recursive: t.arg.boolean({ required: false }),
       },
       resolve: (_root, { id, recursive }, ctx) => {
-        requireUserId(ctx);
-        return deleteFileEntryForApi(id, recursive);
+        const userId = requireUserId(ctx);
+        return deleteFileEntryForApi(id, recursive, userId);
       },
     }),
 
@@ -72,8 +84,8 @@ builder.mutationType({
         content: t.arg.string({ required: true }),
       },
       resolve: (_root, { id, content }, ctx) => {
-        requireUserId(ctx);
-        return writeFileTextForApi(id, content);
+        const userId = requireUserId(ctx);
+        return writeFileTextForApi(id, content, userId);
       },
     }),
 
@@ -84,8 +96,8 @@ builder.mutationType({
         parentId: t.arg.int({ required: false }),
       },
       resolve: (_root, { files, parentId }, ctx) => {
-        requireUserId(ctx);
-        return uploadFilesForApi(files as File[], parentId);
+        const userId = requireUserId(ctx);
+        return uploadFilesForApi(files as File[], parentId, userId);
       },
     }),
 
@@ -96,8 +108,8 @@ builder.mutationType({
         apply: t.arg.boolean({ required: false }),
       },
       resolve: (_root, { path, apply }, ctx) => {
-        requireUserId(ctx);
-        return indexFileTreeForApi({ path, apply });
+        const userId = requireUserId(ctx);
+        return indexFileTreeForApi({ path, apply }, userId);
       },
     }),
   }),

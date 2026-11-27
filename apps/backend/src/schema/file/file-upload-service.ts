@@ -22,10 +22,11 @@ const MAX_UPLOAD_FILE_BYTES = 25 * 1024 * 1024;
 
 /** Validates an upload target before the request body is streamed. */
 export async function resolveUploadParent(
-  parentId?: number | null,
+  parentId: number | null | undefined,
+  userId: number,
 ): Promise<FileEntryRow | null> {
   try {
-    return await resolveParent(parentId);
+    return await resolveParent(parentId, userId);
   } catch (err) {
     throw asGraphQLError(err);
   }
@@ -39,9 +40,10 @@ export async function completeStreamedUpload(input: {
   tempRelativePath: string;
   originalName: string;
   parentId?: number | null;
+  userId: number;
 }): Promise<FileEntryRow> {
   try {
-    const parent = await resolveParent(input.parentId);
+    const parent = await resolveParent(input.parentId, input.userId);
     const parentPath = parent?.relativePath ?? "";
     const sanitized = sanitizeUploadName(input.originalName);
     const name = await resolveUniqueName(parentPath, sanitized);
@@ -78,7 +80,8 @@ export async function completeStreamedUpload(input: {
 
 export async function uploadFilesForApi(
   files: File[],
-  parentId?: number | null,
+  parentId: number | null | undefined,
+  userId: number,
 ): Promise<FileEntryRow[]> {
   if (files.length > MAX_UPLOAD_FILES) {
     throw badInput(
@@ -94,7 +97,7 @@ export async function uploadFilesForApi(
     }
   }
 
-  const parent = await resolveParent(parentId).catch((err: unknown) => {
+  const parent = await resolveParent(parentId, userId).catch((err: unknown) => {
     throw asGraphQLError(err);
   });
   const parentPath = parent?.relativePath ?? "";

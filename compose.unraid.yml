@@ -1,0 +1,127 @@
+# Published-image stack for Unraid + Compose Manager Plus.
+#
+# 1. Publish images with .github/workflows/publish-images.yml.
+# 2. Copy unraid.env.example to .env beside this file. Compose Manager Plus
+#    only auto-discovers compose.yaml, compose.yml, docker-compose.yaml, and
+#    docker-compose.yml, so paste this file's contents into the stack's
+#    compose.yml (or rename this file to compose.yml).
+# 3. Create the data and files directories:
+#      mkdir -p "$ROLODEX_DATA_DIR"/{pgdata,ollama} "$ROLODEX_FILES_DIR"
+#      chown -R 999:999 "$ROLODEX_DATA_DIR"/pgdata
+#    ROLODEX_FILES_DIR is the host folder that backs /app/files. Point it at a
+#    dedicated share or volume; it does not have to live under appdata.
+# 4. With Tailscale Serve, keep ROLODEX_BIND_ADDR=127.0.0.1 and run:
+#      tailscale serve --bg --https=443  http://127.0.0.1:3001
+#      tailscale serve --bg --https=8443 http://127.0.0.1:4000
+#    For direct tailnet port access, set ROLODEX_BIND_ADDR=0.0.0.0 and use
+#    API_PUBLIC_ORIGIN=http://<host>:4000 with
+#    API_CORS_ORIGINS=http://<host>:3001.
+name: rolodex
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg18
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rolo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-rolo}
+    volumes:
+      - ${ROLODEX_DATA_DIR:?set ROLODEX_DATA_DIR in .env}/pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # Runs once per stack start. Makes a fresh database ready for the vector
+  # columns the backend creates, and is harmless on an existing database.
+  postgres-init:
+    image: pgvector/pgvector:pg18
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rolo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-rolo}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        PGPASSWORD="$$POSTGRES_PASSWORD"
+        psql -h postgres -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"
+        -c 'CREATE EXTENSION IF NOT EXISTS vector;'
+    restart: "no"
+
+  backend:
+    image: ${ROLODEX_IMAGE_PREFIX:-ghcr.io/altoor}/rolodex-backend:${ROLODEX_TAG:-latest}
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-rolo}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-rolo}
+      TOKEN_SECRET: ${TOKEN_SECRET:?set TOKEN_SECRET in .env}
+      AUTH_TOKEN_TTL_SECONDS: ${AUTH_TOKEN_TTL_SECONDS:-604800}
+      FILES_ROOT: /app/files
+      API_PUBLIC_ORIGIN: ${API_PUBLIC_ORIGIN:?set API_PUBLIC_ORIGIN in .env}
+      API_CORS_ORIGINS: ${API_CORS_ORIGINS:?set API_CORS_ORIGINS in .env}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+      VISION_MODEL: ${VISION_MODEL:-}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      WHISPER_API_URL: ${WHISPER_API_URL:-}
+      WHISPER_BACKEND: ${WHISPER_BACKEND:-}
+      WHISPER_MODEL: ${WHISPER_MODEL:-}
+      MAX_STREAM_UPLOAD_BYTES: ${MAX_STREAM_UPLOAD_BYTES:-}
+    ports:
+      - "${ROLODEX_BIND_ADDR:-127.0.0.1}:4000:4000"
+    volumes:
+      - ${ROLODEX_FILES_DIR:?set ROLODEX_FILES_DIR in .env}:/app/files
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4000/health').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    restart: unless-stopped
+
+  web:
+    image: ${ROLODEX_IMAGE_PREFIX:-ghcr.io/altoor}/rolodex-web:${ROLODEX_TAG:-latest}
+    environment:
+      PORT: 3001
+      API_PUBLIC_ORIGIN: ${API_PUBLIC_ORIGIN:?set API_PUBLIC_ORIGIN in .env}
+    ports:
+      - "${ROLODEX_BIND_ADDR:-127.0.0.1}:3001:3001"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Optional bundled Ollama. Enabled by COMPOSE_PROFILES=ollama in .env.
+  # Remove that line (and point OLLAMA_BASE_URL at your own server) to skip it.
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ollama"]
+    volumes:
+      - ${ROLODEX_DATA_DIR:?set ROLODEX_DATA_DIR in .env}/ollama:/root/.ollama
+    environment:
+      OLLAMA_KEEP_ALIVE: 30m
+      OLLAMA_NUM_PARALLEL: 2
+      OLLAMA_CONTEXT_LENGTH: 64000
+    # Unraid NVIDIA GPU (install the Nvidia Driver plugin first):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    restart: unless-stopped

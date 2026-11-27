@@ -13,6 +13,7 @@ import {
   type ScanCounts,
   type ScanEntry,
 } from "./services/sync";
+import { filterScanReportForViewer } from "./services/access";
 
 const definition: ToolDefinition = {
   key: "scan_files",
@@ -106,22 +107,25 @@ export const scanFilesTool: Tool = {
     const uploaded =
       scope === "uploaded" ? readUploadedPaths(context.toolState) : null;
 
-    const report = await syncFileTree({
-      path: readString(input, "path"),
-      apply: readBoolean(input, "apply") ?? true,
-      // A foreach run exists to process entries one by one, so unchanged
-      // entries are included unless the task explicitly opts out. Otherwise a
-      // scan of an already-indexed tree would silently enqueue nothing.
-      // Uploaded files are already indexed, so an uploaded scope behaves the
-      // same way: include them unless the task asks for changes only.
-      includeUnchanged:
-        readBoolean(input, "includeUnchanged") ??
-        (isForeach || scope === "uploaded"),
-      hash: readHashMode(input),
-      detectMoves: readBoolean(input, "detectMoves") ?? true,
-      maxEntries: readNumber(input, "maxEntries"),
-      maxHashBytes: readNumber(input, "maxHashBytes"),
-    });
+    const report = await filterScanReportForViewer(
+      await syncFileTree({
+        path: readString(input, "path"),
+        apply: readBoolean(input, "apply") ?? true,
+        // A foreach run exists to process entries one by one, so unchanged
+        // entries are included unless the task explicitly opts out. Otherwise
+        // a scan of an already-indexed tree would silently enqueue nothing.
+        // Uploaded files are already indexed, so an uploaded scope behaves the
+        // same way: include them unless the task asks for changes only.
+        includeUnchanged:
+          readBoolean(input, "includeUnchanged") ??
+          (isForeach || scope === "uploaded"),
+        hash: readHashMode(input),
+        detectMoves: readBoolean(input, "detectMoves") ?? true,
+        maxEntries: readNumber(input, "maxEntries"),
+        maxHashBytes: readNumber(input, "maxHashBytes"),
+      }),
+      context.userId,
+    );
 
     const scopedEntries = uploaded
       ? report.entries.filter((entry) => matchesUploaded(entry, uploaded))

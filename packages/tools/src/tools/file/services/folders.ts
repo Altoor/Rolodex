@@ -15,6 +15,8 @@ interface CreateFolderEntryArgs {
   description?: string;
   /** Return an existing folder instead of failing when the path exists. */
   reuseExisting?: boolean;
+  /** When set, folders private to other users are treated as unavailable. */
+  viewerId?: number;
 }
 
 /**
@@ -26,18 +28,26 @@ export async function createFolderEntry({
   name,
   description = "",
   reuseExisting = false,
+  viewerId,
 }: CreateFolderEntryArgs): Promise<FileEntryRow> {
   const safeName = validateEntryName(name);
   const parentPath = parent?.relativePath ?? "";
   const relativePath = joinRelativePath(parentPath, safeName);
 
-  const indexed = await getFileEntryByPath(relativePath);
+  const indexed = await getFileEntryByPath(relativePath, { viewerId });
   if (indexed) {
     if (indexed.kind !== "folder") {
       throw new ToolInputError(`"${relativePath}" is a file`);
     }
     if (reuseExisting) return indexed;
     throw new ToolInputError(`"${relativePath}" already exists`);
+  }
+
+  // The path may belong to another user's private folder. Do not reuse it;
+  // report the same generic conflict a public folder would produce.
+  if (viewerId !== undefined) {
+    const hidden = await getFileEntryByPath(relativePath);
+    if (hidden) throw new ToolInputError(`"${relativePath}" already exists`);
   }
 
   const existing = await statEntry(relativePath);

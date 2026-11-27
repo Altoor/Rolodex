@@ -105,8 +105,8 @@ export interface ApiRuntime {
     state: string;
     fileIds?: number[];
   }): Promise<QueuedFlow>;
-  /** Stores uploaded files and returns their file entry ids. */
-  uploadFiles(files: File[]): Promise<Array<{ id: number }>>;
+  /** Stores uploaded files for a user and returns their file entry ids. */
+  uploadFiles(files: File[], userId: number): Promise<Array<{ id: number }>>;
   /** Calls the listener whenever a step of the run changes. */
   onRunEvent(runId: string, listener: () => void): () => void;
   /** Best-effort cleanup when a run was queued but its request row failed. */

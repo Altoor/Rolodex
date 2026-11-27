@@ -36,6 +36,12 @@ export function FileMetadata({ entry }: { entry: FileEntry }) {
           {entry.kind}
           {entry.fileType ? ` · ${entry.fileType}` : ""}
         </MetadataItem>
+        {entry.kind === "folder" ? (
+          <MetadataItem label="Access">
+            {entry.private ? "Private" : "Shared"}
+            {entry.root ? " · Search root" : ""}
+          </MetadataItem>
+        ) : null}
         <MetadataItem label="MIME type">{entry.mimeType ?? "—"}</MetadataItem>
         <MetadataItem label="Last edited">
           {formatDateTime(entry.lastEditedAt)}

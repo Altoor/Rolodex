@@ -1,18 +1,17 @@
 FROM node:24-bookworm-slim AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable
 WORKDIR /app
+COPY package.json ./
+# Install the pnpm version pinned in package.json so the final images do not
+# download anything from the network on every container start.
+RUN npm install -g "$(node -p 'require("./package.json").packageManager')"
 
 FROM base AS deps
 COPY . .
 RUN pnpm install --frozen-lockfile
 
 FROM deps AS build
-# Inline the public backend origin into the web bundle. Empty means the browser
-# derives it from its own location at runtime.
-ARG NEXT_PUBLIC_API_ORIGIN=""
-ENV NEXT_PUBLIC_API_ORIGIN=${NEXT_PUBLIC_API_ORIGIN}
 RUN pnpm --filter @repo/queries build
 RUN pnpm --filter @repo/ui build:components
 RUN pnpm --filter @repo/ui build:styles

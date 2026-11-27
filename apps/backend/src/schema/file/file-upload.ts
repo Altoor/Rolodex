@@ -68,7 +68,7 @@ export async function handleFileUploadRequest(
     }
 
     const parentId = parseParentId(url.searchParams.get("parentId"));
-    await resolveUploadParent(parentId);
+    await resolveUploadParent(parentId, user.id);
 
     const declaredLength = Number(req.headers["content-length"]);
     if (Number.isFinite(declaredLength) && declaredLength > MAX_UPLOAD_BYTES) {
@@ -117,6 +117,7 @@ export async function handleFileUploadRequest(
         tempRelativePath,
         originalName,
         parentId,
+        userId: user.id,
       });
 
       respondJson(res, 201, { file: toFileEntryRef(row) });

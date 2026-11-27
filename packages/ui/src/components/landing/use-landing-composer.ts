@@ -10,6 +10,7 @@ import {
   type MutableRefObject,
 } from "react";
 import { useForm, type SubmitHandler } from "react-hook-form";
+import { useApiOrigin } from "#lib/apiOriginContext";
 import { FileUploadError, uploadFilesToServer } from "../files/file-actions";
 import { START_ASSISTED_RUN } from "../assisted";
 import {
@@ -48,6 +49,7 @@ export function useLandingComposer({
   onOpenRun,
   onAssistedStarted,
 }: UseLandingComposerArgs) {
+  const apiOrigin = useApiOrigin();
   const [createQueuedTask] = useMutation(CREATE_QUEUED_TASK);
   const [startAssistedRun] = useMutation(START_ASSISTED_RUN);
   const [attachments, setAttachments] = useState<File[]>([]);
@@ -137,7 +139,7 @@ export function useLandingComposer({
     try {
       const uploaded =
         attachments.length > 0
-          ? await uploadFilesToServer(attachments, null)
+          ? await uploadFilesToServer(apiOrigin, attachments, null)
           : [];
 
       const state = inputs.state.trim() || stateFromAttachments(attachments);
@@ -147,8 +149,9 @@ export function useLandingComposer({
         const { data } = await startAssistedRun({
           variables: { input: { taskId, state, fileIds } },
         });
-        const runId = (data as { startAssistedRun?: { id?: string } } | undefined)
-          ?.startAssistedRun?.id;
+        const runId = (
+          data as { startAssistedRun?: { id?: string } } | undefined
+        )?.startAssistedRun?.id;
         if (runId) onAssistedStarted(runId);
         setAttachments([]);
         reset({ state: "", taskId: inputs.taskId });

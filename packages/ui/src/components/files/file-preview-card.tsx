@@ -21,6 +21,8 @@ interface FilePreviewCardProps {
   onSaveMetadata: (values: {
     name: string;
     description: string;
+    private?: boolean;
+    root?: boolean;
   }) => Promise<void>;
   onSaveText: (content: string) => Promise<void>;
   onDirtyChange: (dirty: boolean) => void;

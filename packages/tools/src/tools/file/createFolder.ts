@@ -18,12 +18,13 @@ const definition: ToolDefinition = {
     properties: {
       parentId: {
         type: "number",
-        description: "Parent folder id. Omit or null for the root.",
+        description:
+          "Parent folder id. Omit or null to use the configured root folder (the files root when none is marked).",
       },
       parentPath: {
         type: "string",
         description:
-          "Parent folder path. Omit or use an empty string for the root.",
+          "Parent folder path. Omit or use an empty string to use the configured root folder (the files root when none is marked).",
       },
       name: {
         type: "string",
@@ -54,7 +55,12 @@ export const createFolderTool: Tool = {
       const name = requireNonEmptyString(readString(input, "name"), "name");
       const description = readString(input, "description") ?? "";
       const parent = await resolveParentFolderFromInput(context, input);
-      const folder = await createFolderEntry({ parent, name, description });
+      const folder = await createFolderEntry({
+        parent,
+        name,
+        description,
+        viewerId: context.userId,
+      });
       const ref = toFileEntryRef(folder);
 
       return {

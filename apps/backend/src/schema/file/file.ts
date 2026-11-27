@@ -19,6 +19,15 @@ export const FileEntry = builder.drizzleObject("fileEntries", {
     }),
     name: t.exposeString("name"),
     description: t.exposeString("description"),
+    ownerId: t.exposeInt("ownerId", { nullable: true }),
+    private: t.field({
+      type: "Boolean",
+      resolve: (parent) => parent.isPrivate,
+    }),
+    root: t.field({
+      type: "Boolean",
+      resolve: (parent) => parent.isRoot,
+    }),
     path: t.field({
       type: "String",
       resolve: (parent) => parent.relativePath,

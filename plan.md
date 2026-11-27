@@ -1,125 +1,125 @@
-# PR #8 fix plan
+# Ready-to-deploy fixes + private/root folders
 
-Source: local review of `feature/api` vs `origin/main`. Checked items are implemented in the working tree. Notes call out anything that needs a live database to test.
+Live checklist for the review of `feature/ready-to-deploy` plus the two new
+features. Checked items are implemented in the working tree. The bundled
+Ollama profile/default stays unchanged.
 
-## Must fix — authorization (IDOR)
+## Review fixes
 
-- [x] Add a single task-visibility helper (`visibleTaskCondition`, `loadVisibleTask`, `assertTaskVisible`, `assertTasksVisible`, `visibleTaskIds`).
-- [x] Enforce visibility in `getTask`.
-- [x] Enforce visibility in `exportTasksFile` (no ids + explicit ids).
-- [x] Enforce visibility in `createQueuedTask` (and default task).
-- [x] Enforce visibility in `createApiEndpoint` / `updateApiEndpoint` via `TaskNotVisibleError`.
-- [x] Enforce visibility in `updateTask` / `deleteTask`.
-- [x] Enforce visibility in `wireDecisionTargetTask` / target lookup.
-- [x] Enforce visibility in `importTasksFile(reuseExisting)`.
-- [x] Enforce ownership in `completeQueuedTask` / `deleteQueuedTask` / `deleteCompletedQueuedTasksBefore`.
-- [x] Scope `queuedTask(runId)` query to the caller's runs.
+- [x] Compose Manager Plus docs: use a standard compose filename (`compose.yml`).
+- [x] Document that changing `API_PUBLIC_ORIGIN` recreates web **and** backend.
+- [x] Require `ROLODEX_DATA_DIR` in `compose.unraid.yml`; never fall back to USB.
+- [x] Add a `NEXT_PUBLIC_API_ORIGIN` → `API_PUBLIC_ORIGIN` migration note.
+- [x] Require `API_PUBLIC_ORIGIN` in the Unraid stack and pass it to backend.
+- [x] Add pull-request Docker build validation to the publish workflow.
+- [x] Spell out the direct-tailnet `API_PUBLIC_ORIGIN` / `API_CORS_ORIGINS` values.
+- [x] Remove runtime-only `API_PUBLIC_ORIGIN` from Turbo `globalEnv`; declare it
+      in `globalPassThroughEnv` so the API lint rule stays satisfied without
+      invalidating build caches.
+- [x] Make `normalizeApiOrigin("/")` return `undefined`; add a test.
+- [x] Keep UI test files out of the library build output.
+- [x] Add a backend `/health` endpoint; make web wait for a healthy backend.
+- [x] Replace the backend `env_file` in `compose.unraid.yml` with explicit env.
 
-## Must fix — child-row writes
+## Configurable files directory
 
-- [x] Scope `syncSnapshotChildren` UPDATEs by `taskId`; treat foreign ids as inserts.
-- [x] Scope `persistSnapshot` result/option UPDATEs by `taskId`; foreign ids become inserts.
-- [x] Validate/normalize snapshot before persisting (visibility, graph cycles, decision ownership).
-- [x] Guard `persistSnapshot` against rewriting a decision owned by another author (copy instead).
+- [x] Add `ROLODEX_FILES_DIR` to the Unraid compose file, mapped to `/app/files`.
+- [x] Document `ROLODEX_FILES_DIR` in `unraid.env.example` and README.
+- [x] Use `${ROLODEX_FILES_DIR:-./files}` in the local compose files too.
+- [x] Confirm the backend still uses `FILES_ROOT=/app/files` inside containers.
 
-## Must fix — accept / revision concurrency
+## Private and root folders — data + access
 
-- [x] Make accept a conditional state transition (`awaiting_input` → `running` claim) and enqueue only when won.
-- [x] Reorder `acceptAttempt`: commit workspace, mark committed, persist, then complete step.
-- [x] Make `markAttemptCommitted` conditional on status and return whether it won.
-- [x] Replace racy `completeReviewedStep` with `claimReviewedStep` / `releaseReviewedStepClaim`; removed the old helper.
-- [x] Make `applyStepRevision` reject stale/concurrent reviews with a conditional step claim.
-- [x] Commit the workspace before rewiring the live graph in `applyStepRevision`.
-- [x] Ensure discarded/conflicted revisions clean up inserted draft tasks and restore live edges.
+- [x] Add `ownerId`, `isPrivate`, and `isRoot` to `fileEntries`.
+- [x] Add a shared access module: ancestor-aware SQL predicate, path checks,
+      hidden-folder lookup, and scan-report filtering.
+- [x] Make entry lookup/list helpers viewer-aware.
+- [x] Expose `ownerId`, `private`, and `root` on the GraphQL `FileEntry` type.
+- [x] Filter `fileEntries`/`getFileEntry`/`getFileText` by the viewer.
+- [x] Enforce access in `createFileEntry`, `updateFileEntry`, `deleteFileEntry`,
+      and `writeFileText`; allow folders to set `private`/`root`.
+- [x] Enforce access for streaming and GraphQL uploads.
+- [x] Enforce access when issuing and verifying file-view tokens.
+- [x] Make all file tools resolve parents/sources with the run's `userId`.
+- [x] Refuse to reuse another user's hidden private folder by name in
+      `create_folder` and `move_files`.
+- [x] Filter vector, lexical, and decision-model search by access.
+- [x] Treat accessible `root` folders as the task search root; search only
+      inside them (fall back to the whole accessible tree when none exist).
+- [x] Make `create_file`/`create_folder` default to the configured root folder
+      when no parent is supplied; no root falls back to the files-tree root.
+- [x] Enforce a single root folder: marking a folder as root clears the previous
+      root (including live-update events for the cleared folder).
+- [x] Show small lock/root badges at the right of folder rows in the file tree.
+- [x] Add tests for default-root selection and verify against a temp database.
+- [x] Hide private paths from `scan_files`, `indexFileTree`, and subscriptions.
 
-## Must fix — trial workspace
+## UI
 
-- [x] Fail closed on writes to tables outside `TRIAL_TABLES` in trial scope (including transactions).
-- [x] Document non-atomic DB+file commit and retry safety in `manager.ts`.
-- [x] Document the accepted O(workspace) copy cost in `manager.ts` / `schema.ts`.
-- [x] Keep `search_path` isolation explicit and explain why the allowlist backs it up.
+- [x] Add `private`, `root`, and `ownerId` to the query fragment and UI type.
+- [x] Add private/root controls for folders in the metadata editor.
+- [x] Show private/root state in file metadata.
+- [x] Regenerate GraphQL types for `packages/queries` (the web app has no file
+      documents of its own).
+- [x] Fix the `useAuth must be used inside AuthProvider` crash when opening run
+      history: compiled `dist` output still used `#components/...` aliases that
+      resolved back into `src/`, creating a second auth context. `build:components`
+      now rewrites those aliases to relative `dist` imports so consumers load a
+      single module graph.
 
-## Must fix — API hardening
+## Validation
 
-- [x] Require the dedicated standard key for `/api/v1` (endpoint keys cannot read account resources).
-- [x] Add a total 50 MiB multipart request byte cap.
-- [x] Stop accepting `?key=` outside WebSocket upgrades.
-- [x] Add CORS allowlist support (`API_CORS_ORIGINS`, safe same-origin default).
-- [x] Derive public origin from `API_PUBLIC_ORIGIN` instead of trusting `Host`.
-- [x] Validate UUID params (`requestId`, endpoint ids) and return 404 instead of 500.
-- [x] Compensate/clean up when the invoke run is queued but `apiRequests` insert fails (`runtime.cancelFlow`).
-- [x] Document the lack of rate limiting / idempotency as an explicit follow-up.
+- [x] Add/adjust tests for access filtering and origin normalization.
+- [x] Run `pnpm test` (152 passed), `pnpm check-types` (11/11 tasks),
+      `pnpm lint` (8/8 tasks).
+- [x] Validate all compose files, `actionlint`, both Docker targets, and the
+      backend `/health` endpoint in a built image.
+- [x] End-to-end GraphQL check with two users: the second user does not see the
+      private folder or its child, cannot open either by id, cannot create
+      inside it, and cannot mint a view token.
+- [x] Applied the additive `fileEntries` columns/indexes to the local dev
+      database (the full `drizzle-kit push` still asks about old trial schemas).
 
-## Must fix — migrations
+## Todo author/actor permissions (follow-up)
 
-- [x] Remove dead DDL churn (`decisionBiases`, `decisionFeedback`, `nextStepApproved`, `flowAutoImprovement`) from the migration chain.
-- [x] Replace `DROP COLUMN IF EXISTS` guarded drops with a documented consistent approach (only legacy, never-created columns stay guarded).
+Actors are assignees: they may see a todo and toggle done/not done, but only
+the author may change anything else.
 
-## File size / SOLID splits
+- [x] Add shared `canViewTodo` / `canMarkTodoDone` / `canManageTodo` helpers.
+- [x] GraphQL: `markTodoDone` allows author **and** actor; `updateTodo`,
+      `archiveTodo`, and `deleteTodo` are author-only and return `FORBIDDEN`
+      for actors (non-viewers still get `no todo found`).
+- [x] GraphQL: `createTodo`/`updateTodo` validate that `actor_id` references an
+      existing user; the caller is always the author.
+- [x] Tools: `update_todo` lets an actor change only `done`;
+      `archive_todo`/`delete_todo`/`delete_todos_older_than` are author-only.
+- [x] UI: assigned todos keep the done checkbox but hide edit/archive/delete.
+- [x] Tests: 156 passed (4 new permission tests), `pnpm check-types` 11/11,
+      `pnpm lint` 8/8.
+- [x] End-to-end GraphQL check with author, actor, and a third user covering
+      visibility, done toggling, forbidden edits, reassignment, and invalid
+      `actor_id`.
+- [x] Built the backend image for the E2E run and the web Docker target for the
+      UI changes.
 
-- [x] Split `task-transfer-service.ts` into export/import/parse/types modules with a re-export facade.
-- [x] Extract static tables from `packages/ui/src/lib/toolStatePaths.ts` into `toolStateDerivation.ts`; catalog/record helpers now live in `toolStateFields.ts`.
-- [x] Split `use-assisted-run.ts` (was 460 lines) into documents, `use-assisted-run-actions.ts`, `use-assisted-run-starter.ts`, `use-attempt-trace.ts`, and `use-decision-target-actions.ts`.
-- [x] Split `apply-revision.ts` by proposal family (`revision-support.ts`, `apply-insertion-revision.ts`); all files < 300 lines.
-- [x] Split `assisted.ts` into `assisted-access.ts`, `assisted-queries.ts`, `assisted-mutations.ts`, and `assisted-subscriptions.ts`; `assisted.ts` is now a facade.
-- [x] Split `start-run.ts` into snapshot/orchestration modules (`start-run-snapshot.ts`, `snapshot-children.ts`, `snapshot-record.ts`).
-- [x] Split `attempts.ts` into attempt lifecycle and `persist-snapshot.ts`.
-- [x] Split `accept-attempt.ts` into accept / override modules.
-- [x] Extract prompt-building from `optimize-decision.ts` into `optimize-prompt.ts`; wording/option actions now live in `decision-wording.ts` / `decision-option.ts` with shared `optimize-context.ts`.
-- [x] Split `task-service.ts` config validation into `task-config.ts`.
-- [x] Split `queued-task-service.ts` dismiss/retry into `queued-task-actions.ts`.
-- [x] Split `step-review-panel.tsx` decision/tool subflows into molecules.
-- [x] Split `decision-target-wiring.tsx` into picker + draft form + container.
-- [x] Extract per-type handlers from `queue/assisted-step.ts` into `queue/assisted/`.
-- [x] Split `api-endpoint-card.tsx` into presentational card + form + curl example + container.
-- [ ] Split smoke-script fixtures/helpers (lower priority, not needed for correctness).
+## Internal workspace and attachment hardening (follow-up)
 
-### Remaining >300-line files: assessment
+Trial copies of private files keep the original relative path below
+`.trials/<run>/<attempt>/`, so path-based privacy alone does not hide them.
+Uploads under `.tmp` are staging artifacts and must never be user-visible.
 
-- `packages/trial-workspace/src/manager.ts` (303) — one cohesive commit/copy lifecycle with inline docs; splitting would scatter the non-atomic commit contract. Kept intact.
-- `packages/ui/src/components/assisted/molecules/decision-review.tsx` and similar molecules (247) are now under the limit after extraction.
-- `README.md` is documentation, not code.
-- Every other touched `.ts`/`.tsx` file is now under 300 lines.
-
-## Atomic design
-
-- [x] Move assisted data-fetching containers out of templates/organisms/molecules (`containers/`).
-- [x] Reorganize `components/api/` into atoms/molecules/organisms/containers/lib.
-- [x] Keep all new components presentational (props in, callbacks out).
-- [x] Use existing primitives and design tokens instead of raw values.
-
-## Tests
-
-- [x] Task visibility helper tests (draft owner vs shared task).
-- [ ] `persistSnapshot` / `syncSnapshotChildren` scoping tests — needs a live Postgres; the code paths are scoped but not integration-tested here.
-- [x] Conditional `markAttemptCommitted` idempotency test (full concurrent DB race needs a live database).
-- [x] Trial workspace fail-closed test (`assertTableWritable`); commit-conflict remains covered by the shared `TrialCommitConflictError` path but needs a live database.
-- [x] Task transfer parse/remap tests (draft filtering is query-scoped but needs a live database to exercise).
-- [x] API tests: UUID validation, query-key gating, CORS/public-origin, multipart total cap (standard-only auth is enforced in code; a DB-backed auth test would need a database).
-
-## Smaller notes
-
-- [x] Mark in-flight attempts failed/superseded during `resetRunningSteps`.
-- [x] Keep `plan.md` at the repo root as the live checklist (explicit user requirement).
-- [x] Document `apiRequests` retention policy and rate-limiting/idempotency follow-ups.
-
-## Final PR review (round 2)
-
-- [x] Apply draft visibility to every client-supplied task reference, not just top-level services:
-  - builder snapshots (`createDraftTask`, `startAssistedRun`, `snapshotReferences`),
-  - revision replacements/insertions and `runNext` targets,
-  - task results (`taskId` / `resultTaskId`, including scoped list/get queries),
-  - user-decision options (CRUD service and `saveUserDecisionOptions`),
-  - decision option targets and task-config switch/join targets (`assertValidTaskConfig(input, userId)`).
-- [x] Count multipart form-field bytes toward the 50 MiB request cap, not just file bytes.
-- [x] Replace the stale "reuse endpoint keys" comment on `/api/v1` with the standard-key-only rule.
-- [x] Remove leftover dead code: `acceptDecision`, `listRunSteps`, `loadTaskRow`, `findApiKeyOwner`, unused `keySource`, `tasks` re-export, and stale imports.
-- [x] Add `snapshotReferences` unit tests (nested and flat builder snapshots, invalid targets).
-
-## Verification
-
-- [x] `pnpm test` passes (141 tests, 29 files).
-- [x] `pnpm check-types` passes (11 packages).
-- [x] `pnpm lint` passes for `@repo/api`, `@repo/ui`, `@repo/db`, and `@repo/trial-workspace`; backend has only pre-existing warnings outside the changed lines.
-- [x] `API_PUBLIC_ORIGIN` / `API_CORS_ORIGINS` are registered in `turbo.json`.
-- [x] Final review of the diff for scope and regressions.
+- [x] Mark `.trials` and `.tmp` as internal in the shared path helpers; skip
+      both while walking the tree.
+- [x] Reject an explicit manifest scan rooted at an internal path.
+- [x] Hide internal paths from entry lookups/lists, path access checks, scan
+      reports, and subscription events for every user.
+- [x] Filter `createQueuedTask` and assisted-run attachments through the
+      viewer's access predicate before they enter `toolState`.
+- [x] Add `paths.test.ts` coverage for internal roots, nested internal paths,
+      system files, and normal user paths.
+- [x] Run `pnpm test` (163 passed), `pnpm check-types` (11/11 tasks), and
+      `pnpm lint` (8/8 tasks).
+- [x] End-to-end GraphQL check against a separate database: user 4 cannot see
+      or open the private folder/child, cannot attach the private id or a live
+      trial copy, and can still attach a public file; the owner sees the
+      private entries while internal paths stay hidden from everyone.

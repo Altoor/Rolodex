@@ -5,7 +5,7 @@ import { useLazyQuery } from "@apollo/client/react";
 import { Download } from "lucide-react";
 import { CREATE_FILE_VIEW_TOKEN } from "@repo/queries/files/file-queries";
 import { Button } from "#components/ui/button";
-import { FILE_API_ORIGIN } from "./file-api";
+import { useApiOrigin } from "#lib/apiOriginContext";
 import { triggerBrowserDownload } from "./file-view";
 import type { FileEntry } from "./types";
 
@@ -32,6 +32,7 @@ export function FileDownloadButton({
   className,
   iconOnly = false,
 }: FileDownloadButtonProps) {
+  const apiOrigin = useApiOrigin();
   const [loadToken, { loading }] = useLazyQuery(CREATE_FILE_VIEW_TOKEN, {
     fetchPolicy: "network-only",
   });
@@ -46,7 +47,7 @@ export function FileDownloadButton({
 
       if (!path) throw new Error("No download URL was returned.");
 
-      triggerBrowserDownload(`${FILE_API_ORIGIN}${path}`, entry.name);
+      triggerBrowserDownload(`${apiOrigin}${path}`, entry.name);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
